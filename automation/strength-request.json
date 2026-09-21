@@ -1,185 +1,31 @@
 {
-  "request_id": "chat-2026-09-21-import-2026-09-17-strength-v3",
-  "date": "2026-09-17",
+  "request_id": "chat-2026-09-21-import-2026-09-20-strength-v1",
+  "date": "2026-09-20",
   "preview": false,
   "action": "import_history",
   "sets": [
-    {
-      "type": "WARMUP",
-      "exercise": "Pendulum squat",
-      "setNo": 1,
-      "actualKg": 10,
-      "actualReps": 8
-    },
-    {
-      "type": "WARMUP",
-      "exercise": "Pendulum squat",
-      "setNo": 2,
-      "actualKg": 15,
-      "actualReps": 5
-    },
-    {
-      "type": "WARMUP",
-      "exercise": "Pendulum squat",
-      "setNo": 3,
-      "actualKg": 20,
-      "actualReps": 3
-    },
-    {
-      "type": "WORK",
-      "exercise": "Pendulum squat",
-      "setNo": 1,
-      "actualKg": 35,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Pendulum squat",
-      "setNo": 2,
-      "actualKg": 35,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Pendulum squat",
-      "setNo": 3,
-      "actualKg": 35,
-      "actualReps": 10
-    },
-    {
-      "type": "WARMUP",
-      "exercise": "Lat pulldown",
-      "setNo": 1,
-      "actualKg": 25,
-      "actualReps": 8
-    },
-    {
-      "type": "WORK",
-      "exercise": "Lat pulldown",
-      "setNo": 1,
-      "actualKg": 45,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Lat pulldown",
-      "setNo": 2,
-      "actualKg": 40,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Lat pulldown",
-      "setNo": 3,
-      "actualKg": 40,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg extensions",
-      "setNo": 1,
-      "actualKg": 40,
-      "actualReps": 8,
-      "note": "Single leg"
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg extensions",
-      "setNo": 2,
-      "actualKg": 50,
-      "actualReps": 8,
-      "note": "Single leg"
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg Curl",
-      "setNo": 1,
-      "actualKg": 35,
-      "actualReps": 15
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg Curl",
-      "setNo": 2,
-      "actualKg": 45,
-      "actualReps": 7
-    },
-    {
-      "type": "WORK",
-      "exercise": "Stahovani triceps",
-      "setNo": 1,
-      "actualKg": 25,
-      "actualReps": 12
-    },
-    {
-      "type": "WORK",
-      "exercise": "Stahovani triceps",
-      "setNo": 2,
-      "actualKg": 30,
-      "actualReps": 12
-    },
-    {
-      "type": "WORK",
-      "exercise": "Cable triceps pushdown",
-      "setNo": 1,
-      "actualKg": 20,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Cable triceps pushdown",
-      "setNo": 2,
-      "actualKg": 20,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Cable triceps pushdown",
-      "setNo": 3,
-      "actualKg": 20,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Standing rowing machine",
-      "setNo": 1,
-      "actualKg": 40,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Standing rowing machine",
-      "setNo": 2,
-      "actualKg": 40,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Standing rowing machine",
-      "setNo": 3,
-      "actualKg": 40,
-      "actualReps": 10
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg press",
-      "setNo": 1,
-      "actualKg": 120,
-      "actualReps": 8
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg press",
-      "setNo": 2,
-      "actualKg": 160,
-      "actualReps": 8
-    },
-    {
-      "type": "WORK",
-      "exercise": "Leg press",
-      "setNo": 3,
-      "actualKg": 185,
-      "actualReps": 8
-    }
+    {"type":"WORK","exercise":"Low row","setNo":1,"actualKg":40,"actualReps":10},
+    {"type":"WORK","exercise":"Low row","setNo":2,"actualKg":40,"actualReps":10},
+    {"type":"WORK","exercise":"Low row","setNo":3,"actualKg":40,"actualReps":10},
+    {"type":"WARMUP","exercise":"Trap bar deadlift","setNo":1,"actualKg":40,"actualReps":6},
+    {"type":"WARMUP","exercise":"Trap bar deadlift","setNo":2,"actualKg":60,"actualReps":6},
+    {"type":"WORK","exercise":"Trap bar deadlift","setNo":1,"actualKg":80,"actualReps":6},
+    {"type":"WORK","exercise":"Trap bar deadlift","setNo":2,"actualKg":80,"actualReps":6},
+    {"type":"WORK","exercise":"Ab crunch","setNo":1,"actualKg":50,"actualReps":20},
+    {"type":"WORK","exercise":"Ab crunch","setNo":2,"actualKg":50,"actualReps":20},
+    {"type":"WORK","exercise":"Close-grip bench press (triceps)","setNo":1,"actualKg":30,"actualReps":10},
+    {"type":"WORK","exercise":"Close-grip bench press (triceps)","setNo":2,"actualKg":30,"actualReps":10},
+    {"type":"WORK","exercise":"Adduction machine","setNo":1,"actualKg":60,"actualReps":20},
+    {"type":"WORK","exercise":"Abduction machine","setNo":1,"actualKg":60,"actualReps":20},
+    {"type":"WORK","exercise":"Cable curl","setNo":1,"actualKg":36,"actualReps":12},
+    {"type":"WORK","exercise":"Cable curl","setNo":2,"actualKg":36,"actualReps":12},
+    {"type":"WORK","exercise":"Seated Smith Machine Shoulder Press","setNo":1,"actualKg":20,"actualReps":10},
+    {"type":"WORK","exercise":"Seated Smith Machine Shoulder Press","setNo":2,"actualKg":20,"actualReps":10},
+    {"type":"WORK","exercise":"Ab rotation with band","setNo":1,"actualReps":10,"note":"each side"},
+    {"type":"WORK","exercise":"Ab rotation with band","setNo":2,"actualReps":10,"note":"each side"},
+    {"type":"WARMUP","exercise":"Prime flat chest press","setNo":1,"actualKg":10,"actualReps":8},
+    {"type":"WORK","exercise":"Prime flat chest press","setNo":1,"actualKg":40,"actualReps":10},
+    {"type":"WORK","exercise":"Prime flat chest press","setNo":2,"actualKg":40,"actualReps":10},
+    {"type":"WORK","exercise":"Prime flat chest press","setNo":3,"actualKg":40,"actualReps":10}
   ]
 }
