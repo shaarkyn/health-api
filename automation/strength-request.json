@@ -1,171 +1,66 @@
 {
-  "request_id": "chat-2026-09-21-repair-v3",
-  "date": "2026-09-20",
+  "request_id": "chat-2026-09-21-restore-history-v4",
+  "date": "2026-09-08",
   "preview": false,
   "action": "sheet_maintenance",
   "historyImport": {
-    "date": "2026-09-20",
+    "date": "2026-09-08",
     "sets": [
       {
         "type": "WORK",
-        "exercise": "Low row",
+        "exercise": "Pivot leg press",
         "setNo": 1,
-        "actualKg": 40,
-        "actualReps": 10
+        "actualKg": 140,
+        "actualReps": 6,
+        "rpe": 7
       },
       {
         "type": "WORK",
-        "exercise": "Low row",
+        "exercise": "Pivot leg press",
         "setNo": 2,
-        "actualKg": 40,
-        "actualReps": 10
+        "actualKg": 140,
+        "actualReps": 6,
+        "rpe": 7
       },
       {
         "type": "WORK",
-        "exercise": "Low row",
+        "exercise": "Pivot leg press",
         "setNo": 3,
-        "actualKg": 40,
-        "actualReps": 10
-      },
-      {
-        "type": "WARMUP",
-        "exercise": "Trap bar deadlift",
-        "setNo": 1,
-        "actualKg": 40,
-        "actualReps": 6
-      },
-      {
-        "type": "WARMUP",
-        "exercise": "Trap bar deadlift",
-        "setNo": 2,
-        "actualKg": 60,
-        "actualReps": 6
+        "actualKg": 140,
+        "actualReps": 6,
+        "rpe": 7
       },
       {
         "type": "WORK",
-        "exercise": "Trap bar deadlift",
-        "setNo": 1,
-        "actualKg": 80,
-        "actualReps": 6
+        "exercise": "Pivot leg press",
+        "setNo": 4,
+        "actualKg": 140,
+        "actualReps": 6,
+        "rpe": 7
       },
       {
         "type": "WORK",
-        "exercise": "Trap bar deadlift",
-        "setNo": 2,
-        "actualKg": 80,
-        "actualReps": 6
-      },
-      {
-        "type": "WORK",
-        "exercise": "Ab crunch",
-        "setNo": 1,
-        "actualKg": 50,
-        "actualReps": 20
-      },
-      {
-        "type": "WORK",
-        "exercise": "Ab crunch",
-        "setNo": 2,
-        "actualKg": 50,
-        "actualReps": 20
-      },
-      {
-        "type": "WORK",
-        "exercise": "Close-grip bench press (triceps)",
-        "setNo": 1,
-        "actualKg": 30,
-        "actualReps": 10
-      },
-      {
-        "type": "WORK",
-        "exercise": "Close-grip bench press (triceps)",
-        "setNo": 2,
-        "actualKg": 30,
-        "actualReps": 10
-      },
-      {
-        "type": "WORK",
-        "exercise": "Adduction machine",
+        "exercise": "Barbell bench press",
         "setNo": 1,
         "actualKg": 60,
-        "actualReps": 20
+        "actualReps": 8,
+        "rpe": 7
       },
       {
         "type": "WORK",
-        "exercise": "Abduction machine",
-        "setNo": 1,
+        "exercise": "Barbell bench press",
+        "setNo": 2,
         "actualKg": 60,
-        "actualReps": 20
+        "actualReps": 8,
+        "rpe": 8
       },
       {
         "type": "WORK",
-        "exercise": "Cable curl",
-        "setNo": 1,
-        "actualKg": 36,
-        "actualReps": 12
-      },
-      {
-        "type": "WORK",
-        "exercise": "Cable curl",
-        "setNo": 2,
-        "actualKg": 36,
-        "actualReps": 12
-      },
-      {
-        "type": "WORK",
-        "exercise": "Seated Smith Machine Shoulder Press",
-        "setNo": 1,
-        "actualKg": 20,
-        "actualReps": 10
-      },
-      {
-        "type": "WORK",
-        "exercise": "Seated Smith Machine Shoulder Press",
-        "setNo": 2,
-        "actualKg": 20,
-        "actualReps": 10
-      },
-      {
-        "type": "WORK",
-        "exercise": "Ab rotation with band",
-        "setNo": 1,
-        "actualReps": 10,
-        "note": "each side"
-      },
-      {
-        "type": "WORK",
-        "exercise": "Ab rotation with band",
-        "setNo": 2,
-        "actualReps": 10,
-        "note": "each side"
-      },
-      {
-        "type": "WARMUP",
-        "exercise": "Prime flat chest press",
-        "setNo": 1,
-        "actualKg": 10,
-        "actualReps": 8
-      },
-      {
-        "type": "WORK",
-        "exercise": "Prime flat chest press",
-        "setNo": 1,
-        "actualKg": 40,
-        "actualReps": 10
-      },
-      {
-        "type": "WORK",
-        "exercise": "Prime flat chest press",
-        "setNo": 2,
-        "actualKg": 40,
-        "actualReps": 10
-      },
-      {
-        "type": "WORK",
-        "exercise": "Prime flat chest press",
+        "exercise": "Barbell bench press",
         "setNo": 3,
-        "actualKg": 40,
-        "actualReps": 10
+        "actualKg": 57.5,
+        "actualReps": 7,
+        "rpe": 9
       }
     ]
   }
