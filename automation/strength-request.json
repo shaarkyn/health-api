@@ -1,7 +1,6 @@
 {
-  "request_id": "chat-2026-09-21-gym-catalog-restructure-v1",
+  "request_id": "chat-2026-09-21-generate-today-v1",
   "date": "2026-09-21",
   "preview": false,
-  "action": "sheet_maintenance",
-  "historyImport": null
+  "action": "generate"
 }
