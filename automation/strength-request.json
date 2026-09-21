@@ -1,34 +1,172 @@
 {
-  "request_id": "chat-2026-09-21-finalize-v2",
+  "request_id": "chat-2026-09-21-repair-v3",
   "date": "2026-09-20",
   "preview": false,
   "action": "sheet_maintenance",
   "historyImport": {
     "date": "2026-09-20",
     "sets": [
-      {"type":"WORK","exercise":"Low row","setNo":1,"actualKg":40,"actualReps":10},
-      {"type":"WORK","exercise":"Low row","setNo":2,"actualKg":40,"actualReps":10},
-      {"type":"WORK","exercise":"Low row","setNo":3,"actualKg":40,"actualReps":10},
-      {"type":"WARMUP","exercise":"Trap bar deadlift","setNo":1,"actualKg":40,"actualReps":6},
-      {"type":"WARMUP","exercise":"Trap bar deadlift","setNo":2,"actualKg":60,"actualReps":6},
-      {"type":"WORK","exercise":"Trap bar deadlift","setNo":1,"actualKg":80,"actualReps":6},
-      {"type":"WORK","exercise":"Trap bar deadlift","setNo":2,"actualKg":80,"actualReps":6},
-      {"type":"WORK","exercise":"Ab crunch","setNo":1,"actualKg":50,"actualReps":20},
-      {"type":"WORK","exercise":"Ab crunch","setNo":2,"actualKg":50,"actualReps":20},
-      {"type":"WORK","exercise":"Close-grip bench press (triceps)","setNo":1,"actualKg":30,"actualReps":10},
-      {"type":"WORK","exercise":"Close-grip bench press (triceps)","setNo":2,"actualKg":30,"actualReps":10},
-      {"type":"WORK","exercise":"Adduction machine","setNo":1,"actualKg":60,"actualReps":20},
-      {"type":"WORK","exercise":"Abduction machine","setNo":1,"actualKg":60,"actualReps":20},
-      {"type":"WORK","exercise":"Cable curl","setNo":1,"actualKg":36,"actualReps":12},
-      {"type":"WORK","exercise":"Cable curl","setNo":2,"actualKg":36,"actualReps":12},
-      {"type":"WORK","exercise":"Seated Smith Machine Shoulder Press","setNo":1,"actualKg":20,"actualReps":10},
-      {"type":"WORK","exercise":"Seated Smith Machine Shoulder Press","setNo":2,"actualKg":20,"actualReps":10},
-      {"type":"WORK","exercise":"Ab rotation with band","setNo":1,"actualReps":10,"note":"each side"},
-      {"type":"WORK","exercise":"Ab rotation with band","setNo":2,"actualReps":10,"note":"each side"},
-      {"type":"WARMUP","exercise":"Prime flat chest press","setNo":1,"actualKg":10,"actualReps":8},
-      {"type":"WORK","exercise":"Prime flat chest press","setNo":1,"actualKg":40,"actualReps":10},
-      {"type":"WORK","exercise":"Prime flat chest press","setNo":2,"actualKg":40,"actualReps":10},
-      {"type":"WORK","exercise":"Prime flat chest press","setNo":3,"actualKg":40,"actualReps":10}
+      {
+        "type": "WORK",
+        "exercise": "Low row",
+        "setNo": 1,
+        "actualKg": 40,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Low row",
+        "setNo": 2,
+        "actualKg": 40,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Low row",
+        "setNo": 3,
+        "actualKg": 40,
+        "actualReps": 10
+      },
+      {
+        "type": "WARMUP",
+        "exercise": "Trap bar deadlift",
+        "setNo": 1,
+        "actualKg": 40,
+        "actualReps": 6
+      },
+      {
+        "type": "WARMUP",
+        "exercise": "Trap bar deadlift",
+        "setNo": 2,
+        "actualKg": 60,
+        "actualReps": 6
+      },
+      {
+        "type": "WORK",
+        "exercise": "Trap bar deadlift",
+        "setNo": 1,
+        "actualKg": 80,
+        "actualReps": 6
+      },
+      {
+        "type": "WORK",
+        "exercise": "Trap bar deadlift",
+        "setNo": 2,
+        "actualKg": 80,
+        "actualReps": 6
+      },
+      {
+        "type": "WORK",
+        "exercise": "Ab crunch",
+        "setNo": 1,
+        "actualKg": 50,
+        "actualReps": 20
+      },
+      {
+        "type": "WORK",
+        "exercise": "Ab crunch",
+        "setNo": 2,
+        "actualKg": 50,
+        "actualReps": 20
+      },
+      {
+        "type": "WORK",
+        "exercise": "Close-grip bench press (triceps)",
+        "setNo": 1,
+        "actualKg": 30,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Close-grip bench press (triceps)",
+        "setNo": 2,
+        "actualKg": 30,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Adduction machine",
+        "setNo": 1,
+        "actualKg": 60,
+        "actualReps": 20
+      },
+      {
+        "type": "WORK",
+        "exercise": "Abduction machine",
+        "setNo": 1,
+        "actualKg": 60,
+        "actualReps": 20
+      },
+      {
+        "type": "WORK",
+        "exercise": "Cable curl",
+        "setNo": 1,
+        "actualKg": 36,
+        "actualReps": 12
+      },
+      {
+        "type": "WORK",
+        "exercise": "Cable curl",
+        "setNo": 2,
+        "actualKg": 36,
+        "actualReps": 12
+      },
+      {
+        "type": "WORK",
+        "exercise": "Seated Smith Machine Shoulder Press",
+        "setNo": 1,
+        "actualKg": 20,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Seated Smith Machine Shoulder Press",
+        "setNo": 2,
+        "actualKg": 20,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Ab rotation with band",
+        "setNo": 1,
+        "actualReps": 10,
+        "note": "each side"
+      },
+      {
+        "type": "WORK",
+        "exercise": "Ab rotation with band",
+        "setNo": 2,
+        "actualReps": 10,
+        "note": "each side"
+      },
+      {
+        "type": "WARMUP",
+        "exercise": "Prime flat chest press",
+        "setNo": 1,
+        "actualKg": 10,
+        "actualReps": 8
+      },
+      {
+        "type": "WORK",
+        "exercise": "Prime flat chest press",
+        "setNo": 1,
+        "actualKg": 40,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Prime flat chest press",
+        "setNo": 2,
+        "actualKg": 40,
+        "actualReps": 10
+      },
+      {
+        "type": "WORK",
+        "exercise": "Prime flat chest press",
+        "setNo": 3,
+        "actualKg": 40,
+        "actualReps": 10
+      }
     ]
   }
 }
