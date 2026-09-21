@@ -1,67 +1,7 @@
 {
-  "request_id": "chat-2026-09-21-workbook-audit-v6",
-  "date": "2026-09-08",
+  "request_id": "chat-2026-09-21-gym-catalog-restructure-v1",
+  "date": "2026-09-21",
   "preview": false,
   "action": "sheet_maintenance",
-  "historyImport": {
-    "date": "2026-09-08",
-    "sets": [
-      {
-        "type": "WORK",
-        "exercise": "Pivot leg press",
-        "setNo": 1,
-        "actualKg": 140,
-        "actualReps": 6,
-        "rpe": 7
-      },
-      {
-        "type": "WORK",
-        "exercise": "Pivot leg press",
-        "setNo": 2,
-        "actualKg": 140,
-        "actualReps": 6,
-        "rpe": 7
-      },
-      {
-        "type": "WORK",
-        "exercise": "Pivot leg press",
-        "setNo": 3,
-        "actualKg": 140,
-        "actualReps": 6,
-        "rpe": 7
-      },
-      {
-        "type": "WORK",
-        "exercise": "Pivot leg press",
-        "setNo": 4,
-        "actualKg": 140,
-        "actualReps": 6,
-        "rpe": 7
-      },
-      {
-        "type": "WORK",
-        "exercise": "Barbell bench press",
-        "setNo": 1,
-        "actualKg": 60,
-        "actualReps": 8,
-        "rpe": 7
-      },
-      {
-        "type": "WORK",
-        "exercise": "Barbell bench press",
-        "setNo": 2,
-        "actualKg": 60,
-        "actualReps": 8,
-        "rpe": 8
-      },
-      {
-        "type": "WORK",
-        "exercise": "Barbell bench press",
-        "setNo": 3,
-        "actualKg": 57.5,
-        "actualReps": 7,
-        "rpe": 9
-      }
-    ]
-  }
+  "historyImport": null
 }
