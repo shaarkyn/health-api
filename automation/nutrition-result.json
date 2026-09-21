@@ -1,1 +1,1 @@
-{"status":"error","step":"github_actions_auth","message":"Invalid GitHub Actions workflow"}
+{"status":"ok","plan":{"date":"2026-09-21","dayType":"long","calorieTarget":1800,"maintenanceReference":1993,"macros":{"proteinGrams":176,"carbsGrams":440,"fatGrams":62,"caloriesFromMacros":3022},"fueling":{"plannedRide":{"name":"Weekly","durationHours":24,"intensity":false,"carbsDuringRideGrams":1440,"carbsPerHourGrams":60,"preRideCarbsGrams":88,"fluidMl":16800}},"context":{"recentCyclingCaloriesLast3":4622,"recentRideHours":13.18,"recentRideTss":1001}}}
