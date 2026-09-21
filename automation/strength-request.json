@@ -1,6 +1,6 @@
 {
-  "request_id": "chat-2026-09-21-generate-today-v1",
+  "request_id": "chat-2026-09-21-regenerate-today-v2",
   "date": "2026-09-21",
   "preview": false,
-  "action": "generate"
+  "action": "regenerate"
 }
