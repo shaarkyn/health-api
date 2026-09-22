@@ -1,6 +1,6 @@
 {
-  "request_id": "chat-2026-09-22-strength-regenerate",
-  "date": "2026-09-22",
-  "preview": false,
-  "action": "regenerate"
+  "request_id": "idle",
+  "date": null,
+  "preview": true,
+  "action": "none"
 }
