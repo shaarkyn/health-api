@@ -1,6 +1,6 @@
 {
-  "request_id": "thursday-2026-09-24-final",
-  "date": "2026-09-24",
-  "preview": false,
-  "action": "generate"
+  "request_id": "idle",
+  "date": null,
+  "preview": true,
+  "action": "none"
 }
