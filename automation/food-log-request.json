@@ -1,0 +1,54 @@
+{
+  "entries": [
+    {
+      "date": "2026-09-24",
+      "consumed_at": "2026-09-24T07:00:00+02:00",
+      "name": "Proteinové šulance · str. 456",
+      "mealType": "BREAKFAST",
+      "kcal": 349,
+      "protein_g": 19,
+      "carbs_g": 56,
+      "fat_g": 6,
+      "fiber_g": 3,
+      "source": "assistant"
+    },
+    {
+      "date": "2026-09-24",
+      "consumed_at": "2026-09-24T11:30:00+02:00",
+      "name": "Marry Me Chicken + 100 g čočkových těstovin",
+      "mealType": "LUNCH",
+      "kcal": 570,
+      "protein_g": 56.6,
+      "carbs_g": 64.8,
+      "fat_g": 6.6,
+      "fiber_g": 0,
+      "source": "assistant"
+    },
+    {
+      "date": "2026-09-24",
+      "consumed_at": "2026-09-24T13:00:00+02:00",
+      "name": "Fazolové brownies 1.0 · 1/6 porce",
+      "mealType": "SNACK",
+      "kcal": 131.7,
+      "protein_g": 5.3,
+      "carbs_g": 15.7,
+      "fat_g": 4.7,
+      "fiber_g": 3.3,
+      "source": "assistant",
+      "note": "Odhad 1/6 celého plechu."
+    },
+    {
+      "date": "2026-09-24",
+      "consumed_at": "2026-09-24T13:00:00+02:00",
+      "name": "Milbona High Protein Pudding Chocolate · 200 g",
+      "mealType": "SNACK",
+      "kcal": 152,
+      "protein_g": 20,
+      "carbs_g": 10.4,
+      "fat_g": 3,
+      "fiber_g": 0,
+      "source": "assistant",
+      "note": "Hodnoty dle běžné varianty 76 kcal/100 g."
+    }
+  ]
+}
