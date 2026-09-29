@@ -6,6 +6,8 @@ import {
   defaultCapabilities,
   calculateCapabilityUpdate,
   buildIntervalsEvent,
+  parseWorkoutSearchFilters,
+  scheduleWorkoutInIntervals,
   buildTrainerDayQuery,
   normalizeTrainerDayWorkout
 } from "../src/workout-library.js";
@@ -26,6 +28,19 @@ test("red readiness strongly penalizes hard sessions",()=>{
   assert.ok(green.suitability>red.suitability);
 });
 
+test("duration tolerance and maximum difficulty are hard filters",()=>{
+  const rows=rankWorkoutCandidates(CURATED_WORKOUTS,{system:"vo2max",durationMinutes:90,durationTolerance:5,maxDifficulty:6},{readiness:"green"});
+  assert.ok(rows.length>0);
+  assert.ok(rows.every(w=>Math.abs(w.duration_minutes-90)<=5&&w.difficulty<=6));
+});
+
+test("empty optional search fields do not become zero",()=>{
+  const filters=parseWorkoutSearchFilters(new URLSearchParams("system=vo2max&load=&maxDifficulty=&duration="));
+  assert.equal(filters.targetLoad,undefined);
+  assert.equal(filters.maxDifficulty,undefined);
+  assert.equal(filters.durationMinutes,undefined);
+});
+
 test("successful feedback progresses capability and failed execution reduces it",()=>{
   const w=CURATED_WORKOUTS.find(x=>x.primary_system==="threshold"&&x.difficulty>5);
   const current={level:5,confidence:.4,attempts:4,successes:3};
@@ -34,6 +49,13 @@ test("successful feedback progresses capability and failed execution reduces it"
   assert.ok(success.level>current.level);
   assert.ok(failed.level<current.level);
   assert.equal(success.attempts,5);
+});
+
+test("automatic activity matching does not claim interval completion",()=>{
+  const current={level:5,confidence:.4,attempts:4,successes:3};
+  const result=calculateCapabilityUpdate(current,{difficulty:6},{completedPercent:100,survey:"auto_completed"});
+  assert.equal(result.level,5);
+  assert.equal(result.attempts,4);
 });
 
 test("Intervals event is deterministic and carries structured workout",()=>{
@@ -63,4 +85,26 @@ test("TrainerDay segment arrays normalize into our common schema",()=>{
   assert.equal(w.primary_system,"vo2max");
   assert.equal(w.source_kind,"trainerday_public_api");
   assert.match(w.intervals_description,/115%/);
+});
+
+test("repeated scheduling does not create a second Intervals event",async()=>{
+  const workout=CURATED_WORKOUTS.find(w=>w.id==="pfd-vo2-5x4-90"),links=new Map();
+  const db={prepare(sql){let args=[];return {
+    bind(...values){args=values;return this},
+    async first(){
+      if(sql.includes("FROM workout_library_meta"))return {value:"2026-09-29-v1"};
+      if(sql.includes("FROM workout_library WHERE id="))return args[0]===workout.id?workout:null;
+      if(sql.includes("FROM workout_schedule_links WHERE intervals_external_id="))return links.get(args[0])||null;
+      return null;
+    },
+    async run(){if(sql.includes("INSERT INTO workout_schedule_links"))links.set(args[2],{intervals_event_id:args[3],status:args[4]});return {success:true}}
+  }}};
+  const original=globalThis.fetch;let calls=0;
+  globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify([{id:123,category:"WORKOUT",type:"Ride"}]),{status:200,headers:{"Content-Type":"application/json"}})};
+  try{
+    const env={INTERVALS_API_KEY:"test-key"},args={workoutId:workout.id,date:"2026-10-03",confirm:true};
+    assert.equal((await scheduleWorkoutInIntervals(env,db,args)).status,"ok");
+    assert.equal((await scheduleWorkoutInIntervals(env,db,args)).status,"already_scheduled");
+    assert.equal(calls,1);
+  }finally{globalThis.fetch=original}
 });

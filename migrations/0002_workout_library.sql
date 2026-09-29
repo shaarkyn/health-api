@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS workout_feedback (
 CREATE INDEX IF NOT EXISTS idx_workout_feedback_workout
   ON workout_feedback(workout_id, created_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workout_feedback_manual_once
+  ON workout_feedback(workout_id, scheduled_date)
+  WHERE scheduled_date IS NOT NULL AND survey <> 'auto_completed';
+
 CREATE TABLE IF NOT EXISTS workout_schedule_links (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workout_id TEXT NOT NULL,
@@ -75,5 +79,10 @@ CREATE TABLE IF NOT EXISTS workout_schedule_links (
 
 CREATE INDEX IF NOT EXISTS idx_workout_schedule_date
   ON workout_schedule_links(scheduled_date DESC);
+
+CREATE TABLE IF NOT EXISTS workout_library_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 
 PRAGMA optimize;

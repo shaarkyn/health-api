@@ -99,3 +99,15 @@ test("VO2 recommendation uses persisted vo2max capability key",()=>{
   assert.equal(result.recommendation.progression.system,"vo2max");
   assert.equal(result.recommendation.progression.capabilityLevel,5.8);
 });
+
+test("missing recovery signals cannot appear green",()=>{
+  const result=buildCyclingCoachV2({date:"2026-09-29",week:{days:[]},fitness:{wellness:[]},health:{},gym:{history:[]},goal:{phase:"build"}});
+  assert.notEqual(result.readiness.status,"green");
+  assert.notEqual(result.recommendation.session.kind,"vo2");
+});
+
+test("stale sleep and future wellness are not used as today's readiness",()=>{
+  const result=buildCyclingCoachV2({date:"2026-09-29",week:{days:[]},fitness:{wellness:[{id:"2026-10-01",ctl:60,atl:45}]},health:{sleep:[{type:"sleep",durationMin:480,endTime:"2026-09-25T06:00:00"}]},gym:{history:[]}});
+  assert.equal(result.readiness.sleepMinutes,null);
+  assert.equal(result.readiness.tsb,null);
+});

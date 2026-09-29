@@ -23,11 +23,11 @@ function allWeekActivities(week){
   }
   return out;
 }
-function latestWellness(fitness){
+function latestWellness(fitness,date){
   const rows=Array.isArray(fitness?.wellness)?fitness.wellness:[];
-  return rows.length?rows[rows.length-1]:{};
+  return rows.filter(row=>{const age=diffDays(date,row.id);return age!=null&&age>=0&&age<=2}).at(-1)||{};
 }
-function latestSleepMinutes(health){
+function latestSleepMinutes(health,date){
   const candidates=[];
   const walk=v=>{
     if(!v) return;
@@ -40,7 +40,8 @@ function latestSleepMinutes(health){
   };
   walk(health);
   candidates.sort((a,b)=>b.time.localeCompare(a.time));
-  return candidates[0]?.minutes??null;
+  const recent=candidates.find(row=>{const age=diffDays(date,row.time);return age!=null&&age>=0&&age<=1});
+  return recent?.minutes??null;
 }
 function recentLowerGym(gym,date,lookbackDays=2){
   const rows=Array.isArray(gym?.history)?gym.history:[];
@@ -87,9 +88,9 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   const completedAll=weekActivities.filter(a=>a.completed&&isRide(a));
   const completed=completedAll.filter(a=>{const d=diffDays(targetDate,a.date);return d!=null&&d>=0&&d<=6;});
   const planned=weekActivities.filter(a=>{if(!a.planned||!isRide(a))return false;const d=diffDays(a.date,targetDate);return d!=null&&d>=0&&d<=14;});
-  const wellness=latestWellness(fitness);
+  const wellness=latestWellness(fitness,targetDate);
   const ctl=n(wellness.ctl),atl=n(wellness.atl),tsb=n(wellness.tsb,ctl!=null&&atl!=null?ctl-atl:null),ramp=n(wellness.rampRate??wellness.ramp_rate);
-  const sleepMinutes=latestSleepMinutes(health);
+  const sleepMinutes=latestSleepMinutes(health,targetDate);
   const lowerGym=recentLowerGym(gym,targetDate,2);
   const todayCompleted=completed.filter(a=>isoDate(a.date)===targetDate);
   const hard7=completed.filter(isHard).length;
@@ -118,6 +119,9 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
     score=Math.round(score*0.65+m*0.35);
     readinessReasons.push("zohledněn ruční readiness check-in");
   }
+  if(tsb==null){score=Math.min(score,74);readinessReasons.push("chybí aktuální ukazatel tréninkové únavy");}
+  if(sleepMinutes==null){score=Math.min(score,74);readinessReasons.push("chybí aktuální spánek");}
+  if(tsb==null&&sleepMinutes==null&&manualReadiness==null)score=Math.min(score,54);
   score=Math.round(clamp(score,0,100));
   const readiness=score<55?"red":score<75?"yellow":"green";
 

@@ -10,8 +10,8 @@ Status: **feature branch / pre-deployment**
 4. Review source, structure, estimated load, difficulty, capability gap and ranking reasons.
 5. Click **Přidat na vybraný den**.
 6. Confirm the browser prompt.
-7. The app upserts a structured workout into Intervals.icu using a deterministic external ID.
-8. After Intervals.icu pairs the planned workout with a completed activity, the app conservatively updates the capability of that energy system.
+7. The app sends a structured workout to Intervals.icu using a deterministic external ID and checks its own schedule record before a retry.
+8. After the ride, enter completion and RPE under **Naplánované workouty** to update capability. Automatic activity matching only marks the session as completed; ride duration alone does not prove interval adherence.
 
 ## Ranking
 
@@ -44,7 +44,7 @@ Each system keeps a 1–10 capability level plus confidence:
 - anaerobic
 - sprint
 
-Completion and RPE update the level using a small bounded step. Automatic completion reconciliation uses a conservative update when RPE is unavailable. This is intentionally simpler and more transparent than proprietary ML scores.
+Completion and RPE update the level using a small bounded step. Automatic completion reconciliation does not change capability without verified interval execution or explicit athlete feedback. This is intentionally simpler and more transparent than proprietary ML scores.
 
 ## Sources and provenance
 
@@ -79,7 +79,7 @@ Proprietary workout libraries are **not scraped**.
 Prepared adapter:
 
 - endpoint: `https://api.trainerday.com/api/v1/workouts/find`
-- API key header: `x-api-key`
+- API key header: `Authorization: Bearer <key>`
 - filters: `dominantZone`, `fromMinutes`, `toMinutes`, `workoutName`, `pageIndex`
 - server secret: `TRAINERDAY_PUBLIC_API_KEY`
 - bounded import: max 20 pages/request to stay comfortably below the documented API rate limit.
@@ -98,7 +98,7 @@ Example external ID:
 
 `pfd-library:pfd-vo2-5x4-90:2026-10-03`
 
-This makes retries idempotent for workouts created by this integration.
+The local schedule link prevents duplicate writes on normal retries. With a personal API key, Intervals.icu does not guarantee `upsert=true` matching by `external_id`; if its write succeeds but saving the local link fails, retry only after checking the Intervals calendar.
 
 ## Current seed size
 

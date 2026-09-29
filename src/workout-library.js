@@ -1,5 +1,6 @@
 const SYSTEMS=["recovery","endurance","tempo","sweet_spot","threshold","vo2max","anaerobic","sprint"];
 const HARD_SYSTEMS=new Set(["sweet_spot","threshold","vo2max","anaerobic","sprint"]);
+const BASE_SEED_VERSION="2026-09-29-v1";
 const now=()=>new Date().toISOString();
 const n=(v,d=null)=>v===null||v===undefined||v===""?d:Number.isFinite(Number(v))?Number(v):d;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -144,10 +145,26 @@ export const BASE_WORKOUT_LIBRARY=[...CURATED_WORKOUTS,...GENERATED_WORKOUTS];
 
 export function defaultCapabilities(){return Object.fromEntries(SYSTEMS.map(system=>[system,{system,level:3,confidence:.2,attempts:0,successes:0}]))}
 
+export function parseWorkoutSearchFilters(params){
+  const number=(key,fallback)=>{const value=params.get(key);return value!==null&&value!==""&&Number.isFinite(Number(value))?Number(value):fallback};
+  const system=String(params.get("system")||"").toLowerCase();
+  return {
+    system:SYSTEMS.includes(system)?system:undefined,
+    durationMinutes:number("duration",undefined),
+    durationTolerance:clamp(number("durationTolerance",15),0,90),
+    targetLoad:number("load",undefined),
+    loadTolerance:clamp(number("loadTolerance",35),0,250),
+    maxDifficulty:number("maxDifficulty",undefined),
+    limit:clamp(number("limit",40),1,100)
+  };
+}
+
 export function rankWorkoutCandidates(workouts,filters={},context={},capabilities=defaultCapabilities()){
   const system=String(filters.system||"").toLowerCase(),duration=n(filters.durationMinutes),durationTolerance=n(filters.durationTolerance,15),targetLoad=n(filters.targetLoad),loadTolerance=n(filters.loadTolerance,35),maxDifficulty=n(filters.maxDifficulty);
   const readiness=String(context.readiness||context?.readiness?.status||"green").toLowerCase(),hardDays=n(context.hardBikeDaysRolling7d??context?.load?.hardBikeDaysRolling7d,0),phase=String(context.phase||context?.constraints?.phase||"").toLowerCase();
-  return workouts.map(w=>{
+  return workouts.filter(w=>(!system||w.primary_system===system||w.secondary_system===system)
+    &&(duration==null||Math.abs(n(w.duration_minutes,0)-duration)<=durationTolerance)
+    &&(maxDifficulty==null||n(w.difficulty,99)<=maxDifficulty)).map(w=>{
     let score=25;const reasons=[];
     if(system){
       if(w.primary_system===system){score+=25;reasons.push("přesný tréninkový systém");}
@@ -162,7 +179,6 @@ export function rankWorkoutCandidates(workouts,filters={},context={},capabilitie
     if(targetLoad!=null){
       const diff=Math.abs(n(w.target_load,0)-targetLoad),fit=clamp(1-diff/Math.max(loadTolerance,1),0,1);score+=12*fit;if(diff<=10)reasons.push("zátěž blízko cíli");
     }
-    if(maxDifficulty!=null&&n(w.difficulty,99)>maxDifficulty)score-=25;
     const capability=capabilities[w.primary_system]||{level:3,confidence:.1};
     const readinessOffset=readiness==="green"?.45:readiness==="yellow"?-.25:-1;
     const phaseOffset=phase==="build"?.25:phase==="recovery"?-.8:phase==="taper"?-.3:0;
@@ -176,13 +192,15 @@ export function rankWorkoutCandidates(workouts,filters={},context={},capabilitie
     if(n(w.verified,0))score+=3;
     score+=Math.min(3,Math.log10(1+n(w.popularity,0))*1.5);
     return {...w,suitability:Math.round(clamp(score,0,100)),capability_level:n(capability.level,3),challenge_gap:Math.round((n(w.difficulty,5)-n(capability.level,3))*10)/10,reasons};
-  }).filter(w=>!system||w.primary_system===system||w.secondary_system===system).sort((a,b)=>b.suitability-a.suitability||Math.abs((duration??a.duration_minutes)-a.duration_minutes)-Math.abs((duration??b.duration_minutes)-b.duration_minutes)||a.difficulty-b.difficulty);
+  }).sort((a,b)=>b.suitability-a.suitability||Math.abs((duration??a.duration_minutes)-a.duration_minutes)-Math.abs((duration??b.duration_minutes)-b.duration_minutes)||a.difficulty-b.difficulty);
 }
 
 export function calculateCapabilityUpdate(current,workout,feedback={}){
   const level=n(current?.level,3),difficulty=n(workout?.difficulty,level),completed=clamp(n(feedback.completedPercent,100)/100,0,1),rpe=n(feedback.rpe),survey=String(feedback.survey||"").toLowerCase();
   let delta=0;let success=false;
-  if(completed>=.9&&survey!=="failed"){
+  if(survey==="auto_completed"){
+    // A paired activity and its duration do not prove that the work intervals were completed.
+  } else if(completed>=.9&&survey!=="failed"){
     success=true;
     if(rpe!=null&&rpe<=6.5)delta=.30;
     else if(rpe!=null&&rpe<=8.5)delta=.18;
@@ -191,7 +209,7 @@ export function calculateCapabilityUpdate(current,workout,feedback={}){
   } else if(completed>=.75){delta=-.08}
   else delta=-.22;
   if(rpe!=null&&rpe>=9.5&&completed<.95)delta-=.08;
-  const next=clamp(level+delta,1,10),attempts=n(current?.attempts,0)+1,successes=n(current?.successes,0)+(success?1:0),confidence=clamp(n(current?.confidence,.2)+.04,0,1);
+  const next=clamp(level+delta,1,10),attempts=n(current?.attempts,0)+(survey==="auto_completed"?0:1),successes=n(current?.successes,0)+(success?1:0),confidence=clamp(n(current?.confidence,.2)+(survey==="auto_completed"?0:.04),0,1);
   return {level:Math.round(next*100)/100,confidence:Math.round(confidence*100)/100,attempts,successes,delta:Math.round(delta*100)/100,success};
 }
 
@@ -200,10 +218,15 @@ export async function ensureWorkoutLibrary(db){
     `CREATE TABLE IF NOT EXISTS workout_library (id TEXT PRIMARY KEY,name TEXT NOT NULL,source_name TEXT NOT NULL,source_kind TEXT NOT NULL,source_url TEXT,license_note TEXT,attribution TEXT,external_id TEXT,primary_system TEXT NOT NULL,secondary_system TEXT,duration_minutes INTEGER NOT NULL,work_minutes REAL NOT NULL DEFAULT 0,difficulty REAL NOT NULL DEFAULT 1,intensity_factor REAL,target_load REAL,cadence TEXT,description TEXT,intervals_description TEXT NOT NULL,tags_json TEXT NOT NULL DEFAULT '[]',structure_json TEXT NOT NULL DEFAULT '[]',verified INTEGER NOT NULL DEFAULT 0,popularity REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS cycling_capabilities (system TEXT PRIMARY KEY,level REAL NOT NULL DEFAULT 3.0,confidence REAL NOT NULL DEFAULT 0.20,attempts INTEGER NOT NULL DEFAULT 0,successes INTEGER NOT NULL DEFAULT 0,last_workout_id TEXT,last_rpe REAL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS workout_feedback (id INTEGER PRIMARY KEY AUTOINCREMENT,workout_id TEXT NOT NULL,scheduled_date TEXT,completed_percent REAL,rpe REAL,survey TEXT,notes TEXT,capability_before REAL,capability_after REAL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-    `CREATE TABLE IF NOT EXISTS workout_schedule_links (id INTEGER PRIMARY KEY AUTOINCREMENT,workout_id TEXT NOT NULL,scheduled_date TEXT NOT NULL,intervals_external_id TEXT NOT NULL UNIQUE,intervals_event_id TEXT,status TEXT NOT NULL DEFAULT 'scheduled',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`
+    `CREATE TABLE IF NOT EXISTS workout_schedule_links (id INTEGER PRIMARY KEY AUTOINCREMENT,workout_id TEXT NOT NULL,scheduled_date TEXT NOT NULL,intervals_external_id TEXT NOT NULL UNIQUE,intervals_event_id TEXT,status TEXT NOT NULL DEFAULT 'scheduled',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE TABLE IF NOT EXISTS workout_library_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)`
   ];
   for(const sql of statements)await db.prepare(sql).run();
-  await seedWorkoutLibrary(db);
+  const seed=await db.prepare("SELECT value FROM workout_library_meta WHERE key='base_seed_version'").first();
+  if(seed?.value!==BASE_SEED_VERSION){
+    await seedWorkoutLibrary(db);
+    await db.prepare("INSERT INTO workout_library_meta(key,value) VALUES('base_seed_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(BASE_SEED_VERSION).run();
+  }
   for(const system of SYSTEMS)await db.prepare("INSERT OR IGNORE INTO cycling_capabilities(system,level,confidence,attempts,successes) VALUES(?,3.0,0.20,0,0)").bind(system).run();
 }
 export async function seedWorkoutLibrary(db){
@@ -226,7 +249,14 @@ async function getCapabilitiesNoEnsure(db){const rows=await db.prepare("SELECT *
 export async function getWorkout(db,id){await ensureWorkoutLibrary(db);return db.prepare("SELECT * FROM workout_library WHERE id=?").bind(id).first()}
 
 export async function recordWorkoutFeedback(db,{workoutId,scheduledDate=null,completedPercent=100,rpe=null,survey="completed",notes=null}){
-  await ensureWorkoutLibrary(db);const w=await getWorkout(db,workoutId);if(!w)throw new Error("Workout nebyl nalezen.");
+  if(!Number.isFinite(Number(completedPercent))||Number(completedPercent)<0||Number(completedPercent)>150)throw new Error("Dokončení musí být 0–150 %.");
+  if(rpe!=null&&(!Number.isFinite(Number(rpe))||Number(rpe)<1||Number(rpe)>10))throw new Error("RPE musí být 1–10.");
+  if(scheduledDate&&!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate))throw new Error("Neplatné datum tréninku.");
+  await ensureWorkoutLibrary(db);const w=await db.prepare("SELECT * FROM workout_library WHERE id=?").bind(workoutId).first();if(!w)throw new Error("Workout nebyl nalezen.");
+  if(scheduledDate&&survey!=="auto_completed"){
+    const previous=await db.prepare("SELECT id FROM workout_feedback WHERE workout_id=? AND scheduled_date=? AND survey<>'auto_completed' LIMIT 1").bind(workoutId,scheduledDate).first();
+    if(previous)throw new Error("Tento workout už má uložené hodnocení.");
+  }
   const current=(await db.prepare("SELECT * FROM cycling_capabilities WHERE system=?").bind(w.primary_system).first())||{system:w.primary_system,level:3,confidence:.2,attempts:0,successes:0};
   const next=calculateCapabilityUpdate(current,w,{completedPercent,rpe,survey});
   await db.prepare(`INSERT INTO cycling_capabilities(system,level,confidence,attempts,successes,last_workout_id,last_rpe,updated_at) VALUES(?,?,?,?,?,?,?,?)
@@ -234,7 +264,16 @@ export async function recordWorkoutFeedback(db,{workoutId,scheduledDate=null,com
     .bind(w.primary_system,next.level,next.confidence,next.attempts,next.successes,w.id,rpe,now()).run();
   await db.prepare("INSERT INTO workout_feedback(workout_id,scheduled_date,completed_percent,rpe,survey,notes,capability_before,capability_after) VALUES(?,?,?,?,?,?,?,?)")
     .bind(w.id,scheduledDate,n(completedPercent,100),rpe,survey,notes,n(current.level,3),next.level).run();
+  if(scheduledDate&&survey!=="auto_completed")await db.prepare("UPDATE workout_schedule_links SET status='completed' WHERE workout_id=? AND scheduled_date=?").bind(w.id,scheduledDate).run();
   return {status:"ok",system:w.primary_system,before:n(current.level,3),after:next.level,delta:next.delta,confidence:next.confidence};
+}
+
+export async function getScheduledWorkouts(db,limit=20){
+  await ensureWorkoutLibrary(db);
+  const rows=await db.prepare(`SELECT l.workout_id,l.scheduled_date,l.intervals_event_id,l.status,w.name,w.primary_system,w.duration_minutes,
+    (SELECT f.id FROM workout_feedback f WHERE f.workout_id=l.workout_id AND f.scheduled_date=l.scheduled_date AND f.survey<>'auto_completed' ORDER BY f.id DESC LIMIT 1) AS feedback_id
+    FROM workout_schedule_links l JOIN workout_library w ON w.id=l.workout_id ORDER BY l.scheduled_date DESC LIMIT ?`).bind(clamp(n(limit,20),1,50)).all();
+  return rows.results||[];
 }
 
 export function buildIntervalsEvent(workout,date){
@@ -245,13 +284,17 @@ export function buildIntervalsEvent(workout,date){
 }
 export async function scheduleWorkoutInIntervals(env,db,{workoutId,date,confirm=false}){
   if(confirm!==true)throw new Error("Zápis do Intervals.icu vyžaduje potvrzení.");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||""))||new Date(date+"T12:00:00Z").toISOString().slice(0,10)!==date)throw new Error("Neplatné datum.");
   const workout=await getWorkout(db,workoutId);if(!workout)throw new Error("Workout nebyl nalezen.");
   if(!env.INTERVALS_API_KEY)throw new Error("Intervals.icu není připojeno.");
   const event=buildIntervalsEvent(workout,date),auth="Basic "+btoa("API_KEY:"+String(env.INTERVALS_API_KEY));
+  const existing=await db.prepare("SELECT intervals_event_id,status FROM workout_schedule_links WHERE intervals_external_id=?").bind(event.external_id).first();
+  if(existing)return {status:"already_scheduled",workout:{id:workout.id,name:workout.name},date,externalId:event.external_id,intervalsEventId:existing.intervals_event_id||null};
   const response=await fetch("https://intervals.icu/api/v1/athlete/0/events/bulk?upsert=true",{method:"POST",headers:{Authorization:auth,Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify([event])});
   const data=await response.json().catch(()=>null);
   if(!response.ok)throw new Error("Intervals.icu HTTP "+response.status);
   const first=Array.isArray(data)?data[0]:data;
+  if(!first?.id||first.category!=="WORKOUT")throw new Error("Intervals.icu nepotvrdilo vytvoření workoutu.");
   await db.prepare(`INSERT INTO workout_schedule_links(workout_id,scheduled_date,intervals_external_id,intervals_event_id,status) VALUES(?,?,?,?,?)
     ON CONFLICT(intervals_external_id) DO UPDATE SET intervals_event_id=excluded.intervals_event_id,status=excluded.status`)
     .bind(workout.id,date,event.external_id,String(first?.id||first?.event?.id||""),"scheduled").run();
@@ -282,13 +325,13 @@ export function normalizeTrainerDayWorkout(item){
 }
 export async function importTrainerDayPublicWorkouts(env,db,query={}){
   if(!env.TRAINERDAY_PUBLIC_API_KEY) return {status:"unavailable",message:"Chybí TRAINERDAY_PUBLIC_API_KEY. Veřejný TrainerDay API klíč je potřeba vyžádat/správně nastavit před importem.",imported:0};
-  const headers={Accept:"application/json","x-api-key":String(env.TRAINERDAY_PUBLIC_API_KEY)},maxPages=clamp(n(query.maxPages,1),1,20);
+  const headers={Accept:"application/json",Authorization:"Bearer "+String(env.TRAINERDAY_PUBLIC_API_KEY)},maxPages=clamp(n(query.maxPages,1),1,20);
   await ensureWorkoutLibrary(db);let imported=0,received=0,pages=0,lastUrl=null;
   for(let page=0;page<maxPages;page++){
     const url=buildTrainerDayQuery({...query,pageIndex:n(query.pageIndex,0)+page});lastUrl=url;
     const response=await fetch(url,{headers}),data=await response.json().catch(()=>null);
     if(!response.ok)throw new Error("TrainerDay API HTTP "+response.status);
-    const list=Array.isArray(data)?data:Array.isArray(data?.workouts)?data.workouts:[];
+    const list=Array.isArray(data)?data:Array.isArray(data?.workouts)?data.workouts:Array.isArray(data?.items)?data.items:[];
     received+=list.length;pages++;
     for(const item of list){const w=normalizeTrainerDayWorkout(item);if(!w)continue;await upsertWorkout(db,w);imported++}
     if(!list.length||list.length<25)break;
