@@ -337,8 +337,50 @@ async function generateFocusedGym(){
 }
 window.addEventListener("error",e=>{try{toast("Chyba aplikace: "+(e.error?.message||e.message||"neznámá chyba"))}catch{}});
 window.addEventListener("unhandledrejection",e=>{try{toast("Chyba aplikace: "+(e.reason?.message||String(e.reason||"Promise rejected")))}catch{}});
-async function load(){ $("topStatus").textContent="Načítám…"; const end=dateShift(weekStart,6); const jobs=[["daily","/app/api/daily?date="+selectedHistoryDate],["coaches","/app/api/coaches"],["fitness","/app/api/fitness?days=90"],["week","/app/api/week?start="+weekStart],["weight","/app/api/weight"],["activities","/app/api/activities"],["nutrition","/app/api/nutrition?start=2026-01-01&end="+dateShift(pragueToday(),1)],["sleep","/app/api/sleep?start="+dateShift(pragueToday(),-365)+"&end="+dateShift(pragueToday(),1)],["gym","/app/api/gym"]]; const results=await Promise.allSettled(jobs.map(([,url])=>jsonFetch(url))); state={...state}; let failed=0; results.forEach((r,i)=>{const key=jobs[i][0]; if(r.status==="fulfilled") state[key]=r.value; else {failed++; state[key]={status:"error",message:r.reason?.message||"Načtení selhalo"};}}); try{renderOverview();}catch{} try{renderCoachCouncil();}catch{} try{renderTraining();}catch{} try{renderNutrition();}catch{} try{renderRecovery();}catch{} try{renderHealth();}catch{} try{renderGym();}catch{} loadInbox(); $("topStatus").textContent=failed===0?"Live · "+new Date().toLocaleTimeString("cs-CZ"):(failed<jobs.length?"Částečně načteno":"Data unavailable"); $("topStatus").className=failed===0?"status-label small":failed<jobs.length?"status-label small status-partial":"status-label small status-error"; if(failed) toast("Některá datová služba není dostupná.");}
-document.querySelectorAll(".navbtn").forEach(b=>b.onclick=()=>activate(b.dataset.view));
+function capabilityLabel(system){return ({recovery:"Recovery",endurance:"Endurance",tempo:"Tempo",sweet_spot:"Sweet Spot",threshold:"Threshold",vo2max:"VO₂max",anaerobic:"Anaerobic",sprint:"Sprint"}[system]||system)}
+function renderWorkoutCapabilities(capabilities={}){
+  const el=$("workoutCapabilities");if(!el)return;
+  const order=["endurance","tempo","sweet_spot","threshold","vo2max","anaerobic","sprint","recovery"];
+  el.innerHTML=order.map(k=>{const x=capabilities[k]||{level:3,confidence:.2,attempts:0};return '<div class="capability-card"><span class="label">'+esc(capabilityLabel(k))+'</span><strong>'+fmt(x.level,2)+'</strong><div class="small">confidence '+Math.round(num(x.confidence,.2)*100)+'% · '+num(x.attempts)+' pokusů</div></div>'}).join("");
+}
+function renderWorkoutLibrary(result){
+  renderWorkoutCapabilities(result.capabilities||{});
+  const ctx=result.rankingContext||{},context=$("workoutRankingContext");
+  if(context)context.innerHTML='<strong>Kontext pořadí:</strong> readiness '+esc(ctx.readiness||"—")+(Number.isFinite(Number(ctx.tsb))?' · TSB '+fmt(ctx.tsb,1):'')+' · hard days 7d '+num(ctx.hardBikeDaysRolling7d)+' · nalezeno '+num(result.total)+' workoutů.';
+  const el=$("workoutResults"),rows=result.workouts||[];
+  if(!rows.length){el.innerHTML='<div class="notice">Pro tuto kombinaci filtrů jsem nenašel vhodný workout. Zvětši toleranci délky nebo zruš limit obtížnosti.</div>';return}
+  el.innerHTML=rows.map((w,i)=>{
+    const source=w.source_url?'<a href="'+esc(w.source_url)+'" target="_blank" rel="noopener">'+esc(w.source_name||w.source_kind)+'</a>':esc(w.source_name||w.source_kind||"Zdroj");
+    const reason=(w.reasons||[]).slice(0,4).join(" · ");
+    return '<article class="workout-result" data-workout-id="'+esc(w.id)+'"><div><div class="workout-result-head"><div><div class="eyebrow">#'+(i+1)+' · '+esc(capabilityLabel(w.primary_system))+'</div><h3 style="margin:3px 0">'+esc(w.name)+'</h3></div><div><div class="workout-score">'+num(w.suitability)+'%</div><div class="small">vhodnost</div></div></div><div class="workout-meta"><span class="pill">'+num(w.duration_minutes)+' min</span><span class="pill">load '+Math.round(num(w.target_load))+'</span><span class="pill">IF '+fmt(w.intensity_factor,2)+'</span><span class="pill">obtížnost '+fmt(w.difficulty,1)+'</span><span class="pill">capability '+fmt(w.capability_level,1)+'</span><span class="pill">'+esc(w.cadence||"kadence dle bloku")+'</span></div><p>'+esc(w.description||"")+'</p><div class="reason">'+esc(reason||"Seřazeno podle cíle, capability a aktuálního kontextu.")+'</div><div class="workout-source">Zdroj: '+source+(w.attribution?' · '+esc(w.attribution):'')+'</div></div><div><div class="workout-structure">'+esc(w.intervals_description||"")+'</div><button class="btn primary schedule-workout" data-id="'+esc(w.id)+'" style="width:100%;margin-top:10px">Přidat na vybraný den</button></div></article>'
+  }).join("");
+}
+async function loadWorkoutLibrary(){
+  const date=$("workoutScheduleDate");if(date&&!date.value)date.value=pragueToday();if(date)date.min=pragueToday();
+  const p=new URLSearchParams(),system=$("workoutSystem")?.value,duration=$("workoutDuration")?.value,tol=$("workoutDurationTolerance")?.value,load=$("workoutLoad")?.value,difficulty=$("workoutDifficulty")?.value,phase=$("workoutPhase")?.value;
+  if(system)p.set("system",system);if(duration)p.set("duration",duration);if(tol)p.set("durationTolerance",tol);if(load)p.set("load",load);if(difficulty)p.set("maxDifficulty",difficulty);if(phase)p.set("phase",phase);if(date?.value)p.set("date",date.value);p.set("limit","40");
+  $("workoutResults").innerHTML='<div class="small">Počítám vhodnost workoutů…</div>';
+  try{const r=await jsonFetch("/app/api/workouts/search?"+p.toString());state.workoutLibrary=r;renderWorkoutLibrary(r);$("workoutSourceNote").textContent=r.sourcePolicy||"Veřejné reference mají zdroj; proprietární knihovny se nekopírují."}
+  catch(e){$("workoutResults").innerHTML='<div class="notice status-error">'+esc(e.message)+'</div>'}
+}
+async function syncTrainerDayLibrary(){
+  const b=$("syncTrainerDay");b.disabled=true;b.textContent="Načítám…";
+  try{const body={system:$("workoutSystem").value||undefined,durationMinutes:Number($("workoutDuration").value)||undefined,durationTolerance:Number($("workoutDurationTolerance").value)||5};const r=await jsonFetch("/app/api/workouts/import/trainerday",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});toast(r.status==="unavailable"?r.message:"TrainerDay: importováno "+num(r.imported)+" workoutů");await loadWorkoutLibrary()}
+  catch(e){toast("TrainerDay import: "+e.message)}finally{b.disabled=false;b.textContent="Načíst TrainerDay"}
+}
+async function scheduleLibraryWorkout(id){
+  const date=$("workoutScheduleDate")?.value;if(!date){toast("Vyber datum.");return}
+  const row=(state.workoutLibrary?.workouts||[]).find(x=>x.id===id),name=row?.name||id;
+  if(!window.confirm('Přidat „'+name+'“ na '+date+' do Intervals.icu?'))return;
+  try{const r=await jsonFetch("/app/api/workouts/schedule",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({workoutId:id,date,confirm:true})});toast("✓ "+r.workout.name+" přidán do Intervals.icu na "+r.date)}
+  catch(e){toast("Zápis do Intervals.icu selhal: "+e.message)}
+}
+\nasync function load(){ $("topStatus").textContent="Načítám…"; const end=dateShift(weekStart,6); const jobs=[["daily","/app/api/daily?date="+selectedHistoryDate],["coaches","/app/api/coaches"],["fitness","/app/api/fitness?days=90"],["week","/app/api/week?start="+weekStart],["weight","/app/api/weight"],["activities","/app/api/activities"],["nutrition","/app/api/nutrition?start=2026-01-01&end="+dateShift(pragueToday(),1)],["sleep","/app/api/sleep?start="+dateShift(pragueToday(),-365)+"&end="+dateShift(pragueToday(),1)],["gym","/app/api/gym"]]; const results=await Promise.allSettled(jobs.map(([,url])=>jsonFetch(url))); state={...state}; let failed=0; results.forEach((r,i)=>{const key=jobs[i][0]; if(r.status==="fulfilled") state[key]=r.value; else {failed++; state[key]={status:"error",message:r.reason?.message||"Načtení selhalo"};}}); try{renderOverview();}catch{} try{renderCoachCouncil();}catch{} try{renderTraining();}catch{} try{renderNutrition();}catch{} try{renderRecovery();}catch{} try{renderHealth();}catch{} try{renderGym();}catch{} loadInbox(); $("topStatus").textContent=failed===0?"Live · "+new Date().toLocaleTimeString("cs-CZ"):(failed<jobs.length?"Částečně načteno":"Data unavailable"); $("topStatus").className=failed===0?"status-label small":failed<jobs.length?"status-label small status-partial":"status-label small status-error"; if(failed) toast("Některá datová služba není dostupná.");}
+document.querySelectorAll(".navbtn").forEach(b=>b.onclick=()=>{activate(b.dataset.view);if(b.dataset.view==="workouts")loadWorkoutLibrary();});
+$("searchWorkouts").onclick=loadWorkoutLibrary;
+$("syncTrainerDay").onclick=syncTrainerDayLibrary;
+$("workoutResults").addEventListener("click",e=>{const b=e.target.closest(".schedule-workout");if(b)scheduleLibraryWorkout(b.dataset.id);});
+["workoutSystem","workoutDurationTolerance","workoutDifficulty","workoutPhase","workoutScheduleDate"].forEach(id=>{const el=$(id);if(el)el.onchange=()=>{if(document.getElementById("workouts").classList.contains("active"))loadWorkoutLibrary()}});
 $("refresh").onclick=async()=>{const b=$("refresh");b.disabled=true;b.textContent="Syncing…";try{const r=await jsonFetch("/app/api/sync",{method:"POST"});toast(r.status==="accepted"?"Synchronizace běží na pozadí. Kontroluji nová data…":"Data synchronized");let n=0;const poll=()=>{n++;b.textContent=n<4?"Syncing…":"Refreshing…";load();if(n<4)setTimeout(poll,4500);else{b.disabled=false;b.textContent="Refresh"}};setTimeout(poll,3000)}catch(e){toast("Sync selhal: "+e.message);b.disabled=false;b.textContent="Refresh"}};
 $("prevWeek").onclick=()=>{weekStart=dateShift(weekStart,-7);selectedHistoryDate=weekStart;load()};
 $("nextWeek").onclick=()=>{weekStart=dateShift(weekStart,7);selectedHistoryDate=weekStart;load()};
