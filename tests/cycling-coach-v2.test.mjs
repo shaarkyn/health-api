@@ -85,3 +85,17 @@ test("missing availability falls back to planned duration instead of 30 minutes"
   });
   assert.equal(result.constraints.availableMinutes,90);
 });
+
+
+test("VO2 recommendation uses persisted vo2max capability key",()=>{
+  const result=buildCyclingCoachV2({
+    date:"2026-09-29",
+    week:{days:[day("2026-09-29",{planned:[ride("2026-09-29","VO2 5x4",100,1.5)]})]},
+    fitness:{wellness:[{id:"2026-09-29",ctl:60,atl:55,tsb:5}]},
+    health:{sleep:[{type:"sleep",durationMin:450,endTime:"2026-09-29T06:30:00"}]},
+    gym:{history:[]},availabilityMinutes:90,
+    capabilities:{vo2max:{level:5.8,confidence:.7}}
+  });
+  assert.equal(result.recommendation.progression.system,"vo2max");
+  assert.equal(result.recommendation.progression.capabilityLevel,5.8);
+});
