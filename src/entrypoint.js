@@ -332,7 +332,7 @@ async function handleDashboardApi(request, env, ctx, url) {
       await reconcileWorkoutLibraryCompletions(env,ctx,internalAuth);
       const capabilities=await getCapabilities(env.DB);
       const coachCtx=coachContext({date,daily,week:mergedWeek,fitness,health,gym,availabilityMinutes,manualReadiness,goal,preferences,capabilities});
-      const rec=coachCtx.cyclingCoachV2?.recommendation?.session||{},kind=rec.kind==="long_endurance"?"endurance":rec.kind;
+      const rec=coachCtx.cyclingCoachV2?.recommendation?.session||{},kind=rec.kind==="long_endurance"?"endurance":rec.kind==="vo2"?"vo2max":rec.kind;
       const library=await searchWorkoutLibrary(env.DB,{system:kind,durationMinutes:rec.durationMinutes||availabilityMinutes||90,durationTolerance:20,limit:8},{
         readiness:coachCtx.cyclingCoachV2?.readiness?.status,
         hardBikeDaysRolling7d:coachCtx.cyclingCoachV2?.load?.hardBikeDaysRolling7d,
