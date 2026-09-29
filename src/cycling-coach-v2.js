@@ -81,7 +81,7 @@ export const CYCLING_COACH_V2_META={
   note:"Independent implementation. It does not reproduce TrainerRoad, JOIN, Xert, or any team\'s proprietary algorithms."
 };
 
-export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferences={},availabilityMinutes=null,goal=null,manualReadiness=null}={}){
+export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferences={},availabilityMinutes=null,goal=null,manualReadiness=null,capabilities={}}={}){
   const targetDate=isoDate(date)||new Date().toISOString().slice(0,10);
   const weekActivities=allWeekActivities(week);
   const completedAll=weekActivities.filter(a=>a.completed&&isRide(a));
@@ -154,6 +154,12 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   if(requestedMinutes<50&&["threshold","sweet_spot"].includes(kind)){kind="tempo";adaptations.push("krátké časové okno");}
 
   const session=workoutTemplate(kind,requestedMinutes,cadence);
+  const capabilitySystem=kind==="long_endurance"?"endurance":kind;
+  const capability=capabilities?.[capabilitySystem]||null;
+  const capabilityLevel=n(capability?.level,3);
+  const progressionOffset=readiness==="green"?.45:readiness==="yellow"?-.25:-1;
+  const targetDifficulty=Math.round(clamp(capabilityLevel+progressionOffset+(phase==="build"?.2:phase==="recovery"?-.6:0),1,10)*10)/10;
+  const progressionAction=readiness==="red"?"deload":targetDifficulty>capabilityLevel+.1?"progress":targetDifficulty<capabilityLevel-.1?"regress":"maintain";
   const alternatives=[];
   if(kind!=="endurance") alternatives.push(workoutTemplate("endurance",Math.min(requestedMinutes,90),cadence));
   if(readiness!=="red"&&kind!=="recovery") alternatives.push(workoutTemplate("recovery",Math.min(requestedMinutes,60),cadence));
@@ -173,7 +179,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
     readiness:{score,status:readiness,reasons:readinessReasons,sleepMinutes,ctl,atl,tsb,rampRate:ramp,manualReadiness:manualReadiness??null},
     load:{bikeTssRolling7d:Math.round(tss7),hardBikeDaysRolling7d:hard7,domainLoadRolling7d:domains,lowerBodyGymSignals48h:lowerGym.length},
     constraints:{availableMinutes:requestedMinutes,plannedToday:plannedToday?{name:plannedToday.name,type:plannedToday.type,durationHours:plannedToday.durationHours,tss:plannedToday.tss}:null,cadence,phase:phase||"auto"},
-    recommendation:{session,adaptations,decisionRule:readiness==="red"?"recover":readiness==="yellow"?"maintain_quality_guardrails":"progress_if_context_allows"},
+    recommendation:{session,adaptations,decisionRule:readiness==="red"?"recover":readiness==="yellow"?"maintain_quality_guardrails":"progress_if_context_allows",progression:{system:capabilitySystem,capabilityLevel,targetDifficulty,action:progressionAction,confidence:n(capability?.confidence,.2)}},
     alternatives,
     missingData:missing,
     confidence:missing.length>=4?"low":missing.length>=2?"medium":"high"
