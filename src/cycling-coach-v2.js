@@ -1,4 +1,4 @@
-const n=(v,d=null)=>Number.isFinite(Number(v))?Number(v):d;
+const n=(v,d=null)=>v===null||v===undefined||v===""?d:Number.isFinite(Number(v))?Number(v):d;
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 const txt=v=>String(v??"").toLowerCase();
 
