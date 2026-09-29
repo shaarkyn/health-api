@@ -39,7 +39,7 @@ U gymu uveď cviky, série, opakování, RPE/RIR, pauzy a vztah k cyklistice. U 
 
 Návrh nikdy sám neukládej ani neodesílej do Intervals.icu. Uživatel musí mít možnost návrh zkontrolovat před zápisem.`;
 
-export function coachContext({date, daily, week, fitness, health, gym, preferences={}, availabilityMinutes=null, goal=null, manualReadiness=null}) {
+export function coachContext({date, daily, week, fitness, health, gym, preferences={}, availabilityMinutes=null, goal=null, manualReadiness=null, capabilities={}}) {
   const days = week?.days?.map(row => ({
     date: row.date,
     planned: row.daily?.training?.planned?.map(a => ({name:a.name, type:a.type, durationHours:a.durationHours, tss:a.tss, tags:a.tags})),
@@ -52,7 +52,7 @@ export function coachContext({date, daily, week, fitness, health, gym, preferenc
   const cyclingCoachV2 = buildCyclingCoachV2({
     date, daily, week, fitness, health, gym,
     preferences:{cadence:"85–95 rpm",...preferences},
-    availabilityMinutes, goal, manualReadiness
+    availabilityMinutes, goal, manualReadiness, capabilities
   });
   return {
     date,
@@ -62,6 +62,7 @@ export function coachContext({date, daily, week, fitness, health, gym, preferenc
     fitness:fitness?.wellness?.slice(-14),
     health:health?.wellness?.slice(-31) || health,
     gym:gym?.history?.slice(-12),
+    capabilities,
     cyclingCoachV2,
     methodology:CYCLING_COACH_V2_META
   };
