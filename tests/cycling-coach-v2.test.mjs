@@ -71,3 +71,17 @@ test("coach context embeds v2 engine and keeps explicit non-affiliation",()=>{
   assert.match(coachInstructions,/Nejsi zaměstnanec týmu UAE/);
   assert.match(coachInstructions,/TrainerRoad, JOIN nebo Xert/);
 });
+
+
+test("missing availability falls back to planned duration instead of 30 minutes",()=>{
+  const planned=ride("2026-09-29","Endurance",70,1.5);
+  const result=buildCyclingCoachV2({
+    date:"2026-09-29",
+    daily:{training:{planned:[planned],completed:[]}},
+    week:{days:[day("2026-09-29",{planned:[planned]})]},
+    fitness:{wellness:[{id:"2026-09-29",ctl:60,atl:55,tsb:5}]},
+    health:{sleep:[{type:"sleep",durationMin:450,endTime:"2026-09-29T06:30:00"}]},
+    gym:{history:[]}
+  });
+  assert.equal(result.constraints.availableMinutes,90);
+});
