@@ -232,15 +232,28 @@ async function handleDashboardApi(request, env, ctx, url) {
     const body=await request.json().catch(()=>({})),message=String(body.message||'').trim();
     if(!message||message.length>4000)return Response.json({message:'Zadej požadavek do 4000 znaků.'},{status:400});
     const date=pragueToday(),start=pragueWeekStart();
-    const [dailyResponse,fitnessResponse,weekResponse,health,gymResponse]=await Promise.all([
+    const shiftWeek=(iso,days)=>{const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);};
+    const prevStart=shiftWeek(start,-7),nextStart=shiftWeek(start,7);
+    const [dailyResponse,fitnessResponse,prevWeekResponse,weekResponse,nextWeekResponse,health,gymResponse]=await Promise.all([
       app.fetch(new Request('https://internal/analysis/daily?date='+date,{headers:internalAuth}),env,ctx),
       handleDashboardApi(new Request('https://internal/app/api/fitness?days=90'),env,ctx,new URL('https://internal/app/api/fitness?days=90')),
+      handleDashboardApi(new Request('https://internal/app/api/week?start='+prevStart),env,ctx,new URL('https://internal/app/api/week?start='+prevStart)),
       handleDashboardApi(new Request('https://internal/app/api/week?start='+start),env,ctx,new URL('https://internal/app/api/week?start='+start)),
+      handleDashboardApi(new Request('https://internal/app/api/week?start='+nextStart),env,ctx,new URL('https://internal/app/api/week?start='+nextStart)),
       googleDashboard(env.DB,date),
       handleDashboardApi(new Request('https://internal/app/api/gym'),env,ctx,new URL('https://internal/app/api/gym'))
     ]);
-    const [daily,fitness,week,gym]=await Promise.all([dailyResponse.json().catch(()=>({})),fitnessResponse.json().catch(()=>({})),weekResponse.json().catch(()=>({})),gymResponse.json().catch(()=>({}))]);
-    try{return Response.json(await askCoach(env,message,coachContext({date,daily,week,fitness,health,gym})),{headers:{'Cache-Control':'no-store'}});}
+    const [daily,fitness,prevWeek,week,nextWeek,gym]=await Promise.all([
+      dailyResponse.json().catch(()=>({})),fitnessResponse.json().catch(()=>({})),
+      prevWeekResponse.json().catch(()=>({})),weekResponse.json().catch(()=>({})),nextWeekResponse.json().catch(()=>({})),
+      gymResponse.json().catch(()=>({}))
+    ]);
+    const mergedWeek={status:'ok',days:[...(prevWeek.days||[]),...(week.days||[]),...(nextWeek.days||[])]};
+    const availabilityMinutes=Number.isFinite(Number(body.availabilityMinutes))?Number(body.availabilityMinutes):null;
+    const manualReadiness=Number.isFinite(Number(body.manualReadiness))?Number(body.manualReadiness):null;
+    const goal=body.goal&&typeof body.goal==='object'?body.goal:null;
+    const preferences=body.preferences&&typeof body.preferences==='object'?body.preferences:{};
+    try{return Response.json(await askCoach(env,message,coachContext({date,daily,week:mergedWeek,fitness,health,gym,availabilityMinutes,manualReadiness,goal,preferences})),{headers:{'Cache-Control':'no-store'}});}
     catch(error){console.error('Assistant request failed',error);return Response.json({message:'AI odpověď se nepodařilo připravit.'},{status:502});}
   }
   if(url.pathname==='/app/api/food/personal'&&request.method==='POST'){try{return Response.json({status:'ok',product:await savePersonalFood(env.DB,await request.json())});}catch(e){return Response.json({message:e.message},{status:400});}}
