@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CURATED_WORKOUTS,
+  BASE_WORKOUT_LIBRARY,
   rankWorkoutCandidates,
   defaultCapabilities,
   calculateCapabilityUpdate,
@@ -19,6 +20,17 @@ test("90 minute VO2 search ranks a close duration and capability match first",()
   assert.equal(rows[0].primary_system,"vo2max");
   assert.ok(Math.abs(rows[0].duration_minutes-90)<=15);
   assert.ok(rows[0].suitability>=rows[1].suitability);
+});
+
+test("240 minute searches include structured long rides across training systems",()=>{
+  for(const system of ["endurance","tempo","sweet_spot","threshold","vo2max","anaerobic","sprint"]){
+    const rows=rankWorkoutCandidates(BASE_WORKOUT_LIBRARY,{system,durationMinutes:240,durationTolerance:15});
+    assert.ok(rows.length>0,system);
+    assert.equal(rows[0].duration_minutes,240,system);
+    const structure=JSON.parse(rows[0].structure_json);
+    assert.ok(structure.length>=3,system);
+    assert.ok(rows[0].target_load>0&&rows[0].target_load<300,system);
+  }
 });
 
 test("red readiness strongly penalizes hard sessions",()=>{

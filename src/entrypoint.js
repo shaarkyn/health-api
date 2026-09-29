@@ -25,6 +25,7 @@ import { handleGoogleOAuth } from "./google-oauth.js";
 import { importStrengthHistory, getStrengthHistory } from "./strength-history.js";
 import { searchCookbookRecipes, logFood } from "./food-log.js";
 import { searchWorkoutLibrary, parseWorkoutSearchFilters, getCapabilities, getScheduledWorkouts, recordWorkoutFeedback, scheduleWorkoutInIntervals, importTrainerDayPublicWorkouts } from "./workout-library.js";
+import {updateFoodEntry,copyFoodEntry,deleteFoodEntry} from './food-entry-management.js';
 import legacyHealthApi from "./index.js";
 
 const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/openapi.json";
@@ -350,6 +351,15 @@ async function handleDashboardApi(request, env, ctx, url) {
     catch(error){console.error('Assistant request failed',error);return Response.json({message:'AI odpověď se nepodařilo připravit.'},{status:502});}
   }
   if(url.pathname==='/app/api/food/personal'&&request.method==='POST'){try{return Response.json({status:'ok',product:await savePersonalFood(env.DB,await request.json())});}catch(e){return Response.json({message:e.message},{status:400});}}
+
+  if(url.pathname==='/app/api/food/entry'&&['PATCH','POST','DELETE'].includes(request.method)){
+    if(!(await verifyDashboardSession(request,env.STRENGTH_API_KEY)))return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
+    try{
+      const body=await request.json(),id=body.id;
+      const result=request.method==='PATCH'?await updateFoodEntry(env.DB,id,body):request.method==='POST'?await copyFoodEntry(env.DB,id,body.targetDate):await deleteFoodEntry(env.DB,id);
+      return Response.json(result,{headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({message:error.message},{status:400})}
+  }
 
   if(url.pathname==='/app/api/food/day'&&request.method==='GET'){
     const target=new URL('/food/log',request.url);target.searchParams.set('date',url.searchParams.get('date')||pragueToday());

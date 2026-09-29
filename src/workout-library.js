@@ -1,6 +1,6 @@
 const SYSTEMS=["recovery","endurance","tempo","sweet_spot","threshold","vo2max","anaerobic","sprint"];
 const HARD_SYSTEMS=new Set(["sweet_spot","threshold","vo2max","anaerobic","sprint"]);
-const BASE_SEED_VERSION="2026-09-29-v1";
+const BASE_SEED_VERSION="2026-09-29-v2";
 const now=()=>new Date().toISOString();
 const n=(v,d=null)=>v===null||v===undefined||v===""?d:Number.isFinite(Number(v))?Number(v):d;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -75,12 +75,18 @@ function generatedDifficulty(system,workMinutes,durationMinutes){
 function generatedIf(system){
   return {recovery:.52,endurance:.68,tempo:.76,sweet_spot:.83,threshold:.88,vo2max:.90,anaerobic:.87,sprint:.73}[system]||.7;
 }
+function longRideIf(structure){
+  let minutes=0,power=0;
+  const add=(s,repeats=1)=>{const duration=n(s.durationMinutes,0)*repeats,p=n(s.power,60)/100;minutes+=duration;power+=duration*p**4};
+  for(const block of structure){if(block.steps){for(const step of block.steps)add(step,block.repeats||1)}else add(block)}
+  return Math.round(clamp((power/Math.max(minutes,1))**.25,.45,1.2)*100)/100;
+}
 function intervalCore(repeats,workMin,power,recoveryMin,cadence){
   return rep(repeats,[step(workMin,power,cadence),step(recoveryMin,52,"90")]);
 }
 function buildGeneratedWorkoutLibrary(){
   const out=[];
-  const durationTargets=[45,60,75,90,105,120];
+  const durationTargets=[45,60,75,90,105,120,150,180,210,240,270,300,330,360];
   const families=[
     {key:"tempo-2x10",label:"Tempo 2×10",system:"tempo",core:intervalCore(2,10,83,5,"88-94"),work:20},
     {key:"tempo-2x15",label:"Tempo 2×15",system:"tempo",core:intervalCore(2,15,84,5,"88-94"),work:30},
@@ -117,8 +123,11 @@ function buildGeneratedWorkoutLibrary(){
       const warmup=family.system==="sprint"||family.system==="anaerobic"?15:12;
       const cooldown=10,coreMinutes=totalMinutes([family.core]),fill=Math.round((target-warmup-coreMinutes-cooldown)*10)/10;
       if(fill<0)continue;
-      const structure=[step(warmup,56,"90","progressive"),family.core];
-      if(fill>0)structure.push(step(fill,family.system==="tempo"?68:65,"88-94","aerobic fill"));
+      const longRide=target>=150,earlyFill=longRide?Math.round(fill*.5):0;
+      const structure=[step(warmup,56,"90","progressive")];
+      if(earlyFill>0)structure.push(step(earlyFill,67,"85-95","aerobic base"));
+      structure.push(family.core);
+      if(fill-earlyFill>0)structure.push(step(fill-earlyFill,family.system==="tempo"?68:65,"88-94","aerobic fill"));
       structure.push(step(cooldown,50,"90","easy"));
       out.push(workout({
         id:"pfd-gen-"+family.key+"-"+target,
@@ -126,10 +135,10 @@ function buildGeneratedWorkoutLibrary(){
         primarySystem:family.system,
         secondarySystem:family.system==="sweet_spot"?"threshold":family.system==="anaerobic"?"vo2max":null,
         difficulty:generatedDifficulty(family.system,family.work,target),
-        ifactor:generatedIf(family.system),
+        ifactor:longRide?longRideIf(structure):generatedIf(family.system),
         structure,
         tags:["pfd-original","generated",family.system,String(target)+"min"],
-        description:"Originální PFD varianta: "+family.label+" zasazená do "+target+"min jednotky. Filler je lehká aerobní práce, takže se nemění hlavní intervalový stimul.",
+        description:"Originální PFD varianta: "+family.label+" zasazená do "+target+"min jednotky. "+(longRide?"Kvalita je mezi dvěma aerobními bloky; dlouhou verzi volte jen při dostatečném čase, palivu a připravenosti.":"Zbytek tvoří lehká aerobní práce, takže se nemění hlavní intervalový stimul."),
         cadence:family.system==="vo2max"?"95–105 rpm":family.system==="anaerobic"?"98–110 rpm":family.system==="sprint"?"110–125 rpm":"88–95 rpm",
         popularity:0,
         verified:1

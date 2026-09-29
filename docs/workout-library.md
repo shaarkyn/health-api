@@ -7,7 +7,7 @@ Status: **feature branch / pre-deployment**
 1. Open **Workouty** in Petr Fitness Data.
 2. Choose training system (e.g. VO2max), target duration, load, difficulty and target date.
 3. Search results are ranked by suitability.
-4. Review source, structure, estimated load, difficulty, capability gap and ranking reasons.
+4. Review the power-over-time preview, source, structure, estimated load, difficulty, capability gap and ranking reasons.
 5. Click **Přidat na vybraný den**.
 6. Confirm the browser prompt.
 7. The app sends a structured workout to Intervals.icu using a deterministic external ID and checks its own schedule record before a retry.
@@ -102,11 +102,11 @@ The local schedule link prevents duplicate writes on normal retries. With a pers
 
 ## Current seed size
 
-The pre-deployment seed now contains **164 workouts**:
+The pre-deployment seed now contains **396 workouts**:
 - 29 curated/original/public-reference workouts,
-- 135 parameterically generated original PFD variants.
+- 367 parametrically generated original PFD variants.
 
-It covers recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic and sprint work, including exact-duration families at 45/60/75/90/105/120 minutes plus longer endurance variants. TrainerDay public API ingestion expands this further; it is no longer a dependency for having a useful library on day one.
+It covers recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic and sprint work. The seven non-recovery systems include exact-duration variants through 240 minutes and up to 360 minutes. Long structured rides place the quality work between aerobic blocks and estimate load from their full power profile. Recovery rides remain short by design. TrainerDay public API ingestion expands the catalog further; it is no longer a dependency for having a useful library on day one.
 
 ## ChatGPT / Health & Strength MCP
 
