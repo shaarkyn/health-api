@@ -65,6 +65,83 @@ export const CURATED_WORKOUTS=[
  workout({id:"public-pro-langvad-vo2-80",name:"Pro-inspired · Langvad VO₂ 7×3",sourceName:"TrainingPeaks public Pro MTB sample",sourceKind:"public_reference",sourceUrl:"https://www.trainingpeaks.com/training-plans/cycling/mountain-biking/tp-620030/train-like-the-pros-7-mtb-pro-cyclist-training-sessions",licenseNote:"Publicly visible sample workout. Stored with attribution; not claimed to be the athlete's private training file.",attribution:"TrainingPeaks labels the public sample as inspired by Annika Langvad.",primarySystem:"vo2max",difficulty:7.3,ifactor:.87,structure:[rampStep(7,40,75),step(.5,109),step(3,50),step(.5,109),step(8,50),rep(7,[step(3,115,"95-105"),step(5,50)]),rampStep(5,50,45)],tags:["pro-inspired","langvad","vo2max","3min"],description:"High-volume 3-minute VO₂ session from a publicly visible pro-inspired sample.",cadence:"95–105 rpm"})
 ];
 
+
+function generatedDifficulty(system,workMinutes,durationMinutes){
+  const base={recovery:1,endurance:1.8,tempo:2.7,sweet_spot:3.5,threshold:4.1,vo2max:4.4,anaerobic:4.8,sprint:3.6}[system]||3;
+  const divisor={tempo:24,sweet_spot:20,threshold:17,vo2max:10,anaerobic:7,sprint:4}[system]||60;
+  return Math.round(clamp(base+workMinutes/divisor+Math.max(0,durationMinutes-60)/180,1,9.5)*10)/10;
+}
+function generatedIf(system){
+  return {recovery:.52,endurance:.68,tempo:.76,sweet_spot:.83,threshold:.88,vo2max:.90,anaerobic:.87,sprint:.73}[system]||.7;
+}
+function intervalCore(repeats,workMin,power,recoveryMin,cadence){
+  return rep(repeats,[step(workMin,power,cadence),step(recoveryMin,52,"90")]);
+}
+function buildGeneratedWorkoutLibrary(){
+  const out=[];
+  const durationTargets=[45,60,75,90,105,120];
+  const families=[
+    {key:"tempo-2x10",label:"Tempo 2×10",system:"tempo",core:intervalCore(2,10,83,5,"88-94"),work:20},
+    {key:"tempo-2x15",label:"Tempo 2×15",system:"tempo",core:intervalCore(2,15,84,5,"88-94"),work:30},
+    {key:"tempo-2x20",label:"Tempo 2×20",system:"tempo",core:intervalCore(2,20,84,5,"88-94"),work:40},
+    {key:"tempo-3x15",label:"Tempo 3×15",system:"tempo",core:intervalCore(3,15,85,5,"88-94"),work:45},
+    {key:"ss-3x8",label:"Sweet Spot 3×8",system:"sweet_spot",core:intervalCore(3,8,90,4,"88-94"),work:24},
+    {key:"ss-3x10",label:"Sweet Spot 3×10",system:"sweet_spot",core:intervalCore(3,10,90,5,"88-94"),work:30},
+    {key:"ss-3x12",label:"Sweet Spot 3×12",system:"sweet_spot",core:intervalCore(3,12,91,5,"88-94"),work:36},
+    {key:"ss-2x20",label:"Sweet Spot 2×20",system:"sweet_spot",core:intervalCore(2,20,91,6,"88-94"),work:40},
+    {key:"ss-3x15",label:"Sweet Spot 3×15",system:"sweet_spot",core:intervalCore(3,15,92,5,"88-94"),work:45},
+    {key:"thr-4x6",label:"Threshold 4×6",system:"threshold",core:intervalCore(4,6,99,4,"90-96"),work:24},
+    {key:"thr-3x8",label:"Threshold 3×8",system:"threshold",core:intervalCore(3,8,99,4,"90-96"),work:24},
+    {key:"thr-3x10",label:"Threshold 3×10",system:"threshold",core:intervalCore(3,10,98,5,"90-95"),work:30},
+    {key:"thr-4x8",label:"Threshold 4×8",system:"threshold",core:intervalCore(4,8,98,4,"90-95"),work:32},
+    {key:"thr-3x12",label:"Threshold 3×12",system:"threshold",core:intervalCore(3,12,98,5,"90-95"),work:36},
+    {key:"thr-2x20",label:"Threshold 2×20",system:"threshold",core:intervalCore(2,20,98,8,"90-95"),work:40},
+    {key:"thr-3x15",label:"Threshold 3×15",system:"threshold",core:intervalCore(3,15,98,6,"90-95"),work:45},
+    {key:"vo2-8x2",label:"VO₂ 8×2",system:"vo2max",core:intervalCore(8,2,118,2,"98-108"),work:16},
+    {key:"vo2-6x3",label:"VO₂ 6×3",system:"vo2max",core:intervalCore(6,3,115,3,"95-105"),work:18},
+    {key:"vo2-5x4",label:"VO₂ 5×4",system:"vo2max",core:intervalCore(5,4,112,4,"95-105"),work:20},
+    {key:"vo2-4x5",label:"VO₂ 4×5",system:"vo2max",core:intervalCore(4,5,110,5,"95-105"),work:20},
+    {key:"vo2-5x5",label:"VO₂ 5×5",system:"vo2max",core:intervalCore(5,5,108,5,"95-102"),work:25},
+    {key:"vo2-3x6",label:"VO₂ 3×6",system:"vo2max",core:intervalCore(3,6,108,6,"94-102"),work:18},
+    {key:"ana-8x1",label:"Anaerobic 8×1",system:"anaerobic",core:intervalCore(8,1,140,3,"100-115"),work:8},
+    {key:"ana-6x90",label:"Anaerobic 6×90 s",system:"anaerobic",core:intervalCore(6,1.5,135,4,"98-110"),work:9},
+    {key:"ana-5x2",label:"Anaerobic 5×2",system:"anaerobic",core:intervalCore(5,2,130,5,"98-110"),work:10},
+    {key:"ana-4x3",label:"Anaerobic 4×3",system:"anaerobic",core:intervalCore(4,3,122,6,"95-108"),work:12},
+    {key:"sprint-6x10",label:"Sprint 6×10 s",system:"sprint",core:intervalCore(6,.1667,180,4.8333,"110-125"),work:1},
+    {key:"sprint-8x10",label:"Sprint 8×10 s",system:"sprint",core:intervalCore(8,.1667,180,4.8333,"110-125"),work:1.33},
+    {key:"sprint-10x10",label:"Sprint 10×10 s",system:"sprint",core:intervalCore(10,.1667,180,4.8333,"110-125"),work:1.67}
+  ];
+  for(const family of families){
+    for(const target of durationTargets){
+      const warmup=family.system==="sprint"||family.system==="anaerobic"?15:12;
+      const cooldown=10,coreMinutes=totalMinutes([family.core]),fill=Math.round((target-warmup-coreMinutes-cooldown)*10)/10;
+      if(fill<0)continue;
+      const structure=[step(warmup,56,"90","progressive"),family.core];
+      if(fill>0)structure.push(step(fill,family.system==="tempo"?68:65,"88-94","aerobic fill"));
+      structure.push(step(cooldown,50,"90","easy"));
+      out.push(workout({
+        id:"pfd-gen-"+family.key+"-"+target,
+        name:family.label+" · "+target+" min",
+        primarySystem:family.system,
+        secondarySystem:family.system==="sweet_spot"?"threshold":family.system==="anaerobic"?"vo2max":null,
+        difficulty:generatedDifficulty(family.system,family.work,target),
+        ifactor:generatedIf(family.system),
+        structure,
+        tags:["pfd-original","generated",family.system,String(target)+"min"],
+        description:"Originální PFD varianta: "+family.label+" zasazená do "+target+"min jednotky. Filler je lehká aerobní práce, takže se nemění hlavní intervalový stimul.",
+        cadence:family.system==="vo2max"?"95–105 rpm":family.system==="anaerobic"?"98–110 rpm":family.system==="sprint"?"110–125 rpm":"88–95 rpm",
+        popularity:0,
+        verified:1
+      }));
+    }
+  }
+  for(const target of [30,45,60])out.push(workout({id:"pfd-gen-recovery-"+target,name:"Recovery · "+target+" min",primarySystem:"recovery",difficulty:1+target/120,ifactor:.52,structure:[step(5,48),step(Math.max(15,target-10),53,"85-95"),step(5,48)],tags:["pfd-original","generated","recovery",String(target)+"min"],description:"Originální PFD recovery varianta."}));
+  for(const target of [45,60,75,90,105,120,150,180,210,240])out.push(workout({id:"pfd-gen-endurance-"+target,name:"Endurance · "+target+" min",primarySystem:"endurance",difficulty:Math.round((1.5+target/100)*10)/10,ifactor:.68,structure:[step(Math.min(12,Math.max(5,target*.12)),55,"90"),step(Math.max(10,target-Math.min(12,Math.max(5,target*.12))-10),69,"85-95"),step(10,50,"90")],tags:["pfd-original","generated","endurance",String(target)+"min"],description:"Originální PFD Z2 varianta pro přesné časové okno."}));
+  return out;
+}
+export const GENERATED_WORKOUTS=buildGeneratedWorkoutLibrary();
+export const BASE_WORKOUT_LIBRARY=[...CURATED_WORKOUTS,...GENERATED_WORKOUTS];
+
 export function defaultCapabilities(){return Object.fromEntries(SYSTEMS.map(system=>[system,{system,level:3,confidence:.2,attempts:0,successes:0}]))}
 
 export function rankWorkoutCandidates(workouts,filters={},context={},capabilities=defaultCapabilities()){
@@ -133,7 +210,7 @@ export async function seedWorkoutLibrary(db){
   const sql=`INSERT INTO workout_library(id,name,source_name,source_kind,source_url,license_note,attribution,external_id,primary_system,secondary_system,duration_minutes,work_minutes,difficulty,intensity_factor,target_load,cadence,description,intervals_description,tags_json,structure_json,verified,popularity,updated_at)
   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   ON CONFLICT(id) DO UPDATE SET name=excluded.name,source_name=excluded.source_name,source_kind=excluded.source_kind,source_url=excluded.source_url,license_note=excluded.license_note,attribution=excluded.attribution,primary_system=excluded.primary_system,secondary_system=excluded.secondary_system,duration_minutes=excluded.duration_minutes,work_minutes=excluded.work_minutes,difficulty=excluded.difficulty,intensity_factor=excluded.intensity_factor,target_load=excluded.target_load,cadence=excluded.cadence,description=excluded.description,intervals_description=excluded.intervals_description,tags_json=excluded.tags_json,structure_json=excluded.structure_json,verified=excluded.verified,popularity=excluded.popularity,updated_at=excluded.updated_at`;
-  for(const w of CURATED_WORKOUTS)await db.prepare(sql).bind(w.id,w.name,w.source_name,w.source_kind,w.source_url,w.license_note,w.attribution,w.external_id,w.primary_system,w.secondary_system,w.duration_minutes,w.work_minutes,w.difficulty,w.intensity_factor,w.target_load,w.cadence,w.description,w.intervals_description,w.tags_json,w.structure_json,w.verified,w.popularity,now()).run();
+  for(const w of BASE_WORKOUT_LIBRARY)await db.prepare(sql).bind(w.id,w.name,w.source_name,w.source_kind,w.source_url,w.license_note,w.attribution,w.external_id,w.primary_system,w.secondary_system,w.duration_minutes,w.work_minutes,w.difficulty,w.intensity_factor,w.target_load,w.cadence,w.description,w.intervals_description,w.tags_json,w.structure_json,w.verified,w.popularity,now()).run();
 }
 export async function getCapabilities(db){
   await ensureWorkoutLibrary(db);const rows=await db.prepare("SELECT * FROM cycling_capabilities").all();return Object.fromEntries((rows.results||[]).map(x=>[x.system,x]));
