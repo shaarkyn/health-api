@@ -307,7 +307,18 @@ async function handleDashboardApi(request, env, ctx, url) {
     const manualReadiness=Number.isFinite(Number(body.manualReadiness))?Number(body.manualReadiness):null;
     const goal=body.goal&&typeof body.goal==='object'?body.goal:null;
     const preferences=body.preferences&&typeof body.preferences==='object'?body.preferences:{};
-    try{return Response.json(await askCoach(env,message,coachContext({date,daily,week:mergedWeek,fitness,health,gym,availabilityMinutes,manualReadiness,goal,preferences})),{headers:{'Cache-Control':'no-store'}});}
+    try{
+      const capabilities=await getCapabilities(env.DB);
+      const coachCtx=coachContext({date,daily,week:mergedWeek,fitness,health,gym,availabilityMinutes,manualReadiness,goal,preferences,capabilities});
+      const rec=coachCtx.cyclingCoachV2?.recommendation?.session||{},kind=rec.kind==="long_endurance"?"endurance":rec.kind;
+      const library=await searchWorkoutLibrary(env.DB,{system:kind,durationMinutes:rec.durationMinutes||availabilityMinutes||90,durationTolerance:20,limit:8},{
+        readiness:coachCtx.cyclingCoachV2?.readiness?.status,
+        hardBikeDaysRolling7d:coachCtx.cyclingCoachV2?.load?.hardBikeDaysRolling7d,
+        phase:coachCtx.cyclingCoachV2?.constraints?.phase
+      });
+      coachCtx.workoutLibraryRecommendations=(library.workouts||[]).map(w=>({id:w.id,name:w.name,source:w.source_name,sourceKind:w.source_kind,system:w.primary_system,durationMinutes:w.duration_minutes,targetLoad:w.target_load,difficulty:w.difficulty,suitability:w.suitability,challengeGap:w.challenge_gap,structure:w.intervals_description,reasons:w.reasons}));
+      return Response.json(await askCoach(env,message,coachCtx),{headers:{'Cache-Control':'no-store'}});
+    }
     catch(error){console.error('Assistant request failed',error);return Response.json({message:'AI odpověď se nepodařilo připravit.'},{status:502});}
   }
   if(url.pathname==='/app/api/food/personal'&&request.method==='POST'){try{return Response.json({status:'ok',product:await savePersonalFood(env.DB,await request.json())});}catch(e){return Response.json({message:e.message},{status:400});}}
