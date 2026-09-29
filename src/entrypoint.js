@@ -276,7 +276,7 @@ async function handleDashboardApi(request, env, ctx, url) {
     if(!(await verifyDashboardSession(request,env.STRENGTH_API_KEY)))return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
     try{
       const body=await request.json().catch(()=>({}));
-      return Response.json(await importTrainerDayPublicWorkouts(env,env.DB,{system:body.system,durationMinutes:body.durationMinutes,durationTolerance:body.durationTolerance??5,name:body.name,pageIndex:body.pageIndex??0}),{headers:{'Cache-Control':'no-store'}});
+      return Response.json(await importTrainerDayPublicWorkouts(env,env.DB,{system:body.system,durationMinutes:body.durationMinutes,durationTolerance:body.durationTolerance??5,name:body.name,pageIndex:body.pageIndex??0,maxPages:body.maxPages??4}),{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({status:'error',message:error.message},{status:502})}
   }
 
