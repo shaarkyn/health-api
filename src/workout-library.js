@@ -8,11 +8,12 @@ const slug=s=>String(s||"workout").normalize("NFD").replace(/[\u0300-\u036f]/g,"
 function hash(text){let h=2166136261;for(const ch of String(text)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(36)}
 function tss(durationMinutes,ifactor){return Math.round((durationMinutes/60)*ifactor*ifactor*100)}
 function step(durationMinutes,power,cadence=null,note=null){return {durationMinutes,power,cadence,note}}
+function rampStep(durationMinutes,powerStart,powerEnd,cadence=null,note=null){return {durationMinutes,power:(powerStart+powerEnd)/2,powerStart,powerEnd,ramp:true,cadence,note}}
 function rep(repeats,steps){return {repeats,steps}}
 function totalMinutes(structure=[]){return structure.reduce((sum,b)=>sum+(n(b.durationMinutes,0)||0)+(n(b.repeats,1)||1)*(b.steps||[]).reduce((s,x)=>s+n(x.durationMinutes,0),0),0)}
 function workingMinutes(structure=[],threshold=88){let out=0;for(const b of structure){if(b.durationMinutes&&n(b.power,0)>=threshold)out+=n(b.durationMinutes,0);for(let r=0;r<(n(b.repeats,1)||1);r++)for(const s of b.steps||[])if(n(s.power,0)>=threshold)out+=n(s.durationMinutes,0)}return Math.round(out*10)/10}
 function intervalsDescription(structure=[]){
-  const target=s=>{const p=n(s.power);if(p==null)return "55%";return Math.round(p)+"%"};
+  const target=s=>{if(s.ramp&&n(s.powerStart)!=null&&n(s.powerEnd)!=null)return "ramp "+Math.round(n(s.powerStart))+"%-"+Math.round(n(s.powerEnd))+"%";const p=n(s.power);if(p==null)return "55%";return Math.round(p)+"%"};
   const line=s=>"- "+(n(s.durationMinutes,0)*60%60===0?Math.round(n(s.durationMinutes)*1)+"m":Math.round(n(s.durationMinutes)*60)+"s")+" "+target(s)+(s.cadence?" "+String(s.cadence).replace(/[^0-9-]/g,"")+"rpm":"")+(s.note?" "+s.note:"");
   const parts=[];let single=0;
   for(const b of structure){
@@ -195,7 +196,7 @@ function inferSystem(item){
 }
 export function normalizeTrainerDayWorkout(item){
   const segments=Array.isArray(item?.segments)?item.segments.filter(x=>Array.isArray(x)&&n(x[0])>0):[];if(!segments.length)return null;
-  const structure=segments.map(s=>step(n(s[0]),Math.round((n(s[1],n(s[2],60))+n(s[2],n(s[1],60)))/2),null));
+  const structure=segments.map(s=>{const a=n(s[1],n(s[2],60)),b=n(s[2],a);return Math.abs(a-b)>.5?rampStep(n(s[0]),a,b,null):step(n(s[0]),Math.round((a+b)/2),null)});
   const duration=Math.round(totalMinutes(structure)),avg=Math.sqrt(structure.reduce((sum,s)=>sum+n(s.durationMinutes,0)*Math.pow(n(s.power,60)/100,2),0)/Math.max(duration,1)),system=inferSystem(item);
   const title=String(item.title||item.workoutName||item.name||"TrainerDay workout").trim(),key=String(item.id||item.workoutId||item.workout_id||hash(JSON.stringify(segments)));
   return workout({id:"trainerday-"+slug(key),name:title,sourceName:"TrainerDay public API",sourceKind:"trainerday_public_api",sourceUrl:item.url||item.shareUrl||"https://trainerday.com",licenseNote:"Imported through TrainerDay public workout API for approved applications.",attribution:"TrainerDay public community workout",primarySystem:system,difficulty:clamp(2+workingMinutes(structure)/(system==="vo2max"?8:system==="threshold"?15:30)+(avg-.7)*4,1,10),ifactor:clamp(avg,.45,1.2),structure,tags:["trainerday","public",system],description:String(item.description||"TrainerDay public workout"),popularity:n(item.popularity,0),verified:1});
