@@ -154,7 +154,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   if(requestedMinutes<50&&["threshold","sweet_spot"].includes(kind)){kind="tempo";adaptations.push("krátké časové okno");}
 
   const session=workoutTemplate(kind,requestedMinutes,cadence);
-  const capabilitySystem=kind==="long_endurance"?"endurance":kind;
+  const capabilitySystem=kind==="long_endurance"?"endurance":kind==="vo2"?"vo2max":kind;
   const capability=capabilities?.[capabilitySystem]||null;
   const capabilityLevel=n(capability?.level,3);
   const progressionOffset=readiness==="green"?.45:readiness==="yellow"?-.25:-1;
