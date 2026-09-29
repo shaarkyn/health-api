@@ -84,8 +84,9 @@ export const CYCLING_COACH_V2_META={
 export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferences={},availabilityMinutes=null,goal=null,manualReadiness=null}={}){
   const targetDate=isoDate(date)||new Date().toISOString().slice(0,10);
   const weekActivities=allWeekActivities(week);
-  const completed=weekActivities.filter(a=>a.completed&&isRide(a));
-  const planned=weekActivities.filter(a=>a.planned&&isRide(a));
+  const completedAll=weekActivities.filter(a=>a.completed&&isRide(a));
+  const completed=completedAll.filter(a=>{const d=diffDays(targetDate,a.date);return d!=null&&d>=0&&d<=6;});
+  const planned=weekActivities.filter(a=>{if(!a.planned||!isRide(a))return false;const d=diffDays(a.date,targetDate);return d!=null&&d>=0&&d<=14;});
   const wellness=latestWellness(fitness);
   const ctl=n(wellness.ctl),atl=n(wellness.atl),tsb=n(wellness.tsb,ctl!=null&&atl!=null?ctl-atl:null),ramp=n(wellness.rampRate??wellness.ramp_rate);
   const sleepMinutes=latestSleepMinutes(health);
@@ -170,7 +171,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
     ...CYCLING_COACH_V2_META,
     date:targetDate,
     readiness:{score,status:readiness,reasons:readinessReasons,sleepMinutes,ctl,atl,tsb,rampRate:ramp,manualReadiness:manualReadiness??null},
-    load:{bikeTssThisWeek:Math.round(tss7),hardBikeDaysThisWeek:hard7,domainLoad:domains,lowerBodyGymSignals48h:lowerGym.length},
+    load:{bikeTssRolling7d:Math.round(tss7),hardBikeDaysRolling7d:hard7,domainLoadRolling7d:domains,lowerBodyGymSignals48h:lowerGym.length},
     constraints:{availableMinutes:requestedMinutes,plannedToday:plannedToday?{name:plannedToday.name,type:plannedToday.type,durationHours:plannedToday.durationHours,tss:plannedToday.tss}:null,cadence,phase:phase||"auto"},
     recommendation:{session,adaptations,decisionRule:readiness==="red"?"recover":readiness==="yellow"?"maintain_quality_guardrails":"progress_if_context_allows"},
     alternatives,
