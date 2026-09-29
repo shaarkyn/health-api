@@ -13,7 +13,7 @@ function totalMinutes(structure=[]){return structure.reduce((sum,b)=>sum+(n(b.du
 function workingMinutes(structure=[],threshold=88){let out=0;for(const b of structure){if(b.durationMinutes&&n(b.power,0)>=threshold)out+=n(b.durationMinutes,0);for(let r=0;r<(n(b.repeats,1)||1);r++)for(const s of b.steps||[])if(n(s.power,0)>=threshold)out+=n(s.durationMinutes,0)}return Math.round(out*10)/10}
 function intervalsDescription(structure=[]){
   const target=s=>{const p=n(s.power);if(p==null)return "55%";return Math.round(p)+"%"};
-  const line=s=>"- "+(n(s.durationMinutes,0)*60%60===0?Math.round(n(s.durationMinutes)*1)+"m":Math.round(n(s.durationMinutes)*60)+"s")+" "+target(s)+(s.cadence?" cadence="+String(s.cadence).replace(/[^0-9-]/g,"")+"rpm":"")+" intensity="+(n(s.power,0)<=60?"recovery":"interval")+(s.note?" "+s.note:"");
+  const line=s=>"- "+(n(s.durationMinutes,0)*60%60===0?Math.round(n(s.durationMinutes)*1)+"m":Math.round(n(s.durationMinutes)*60)+"s")+" "+target(s)+(s.cadence?" "+String(s.cadence).replace(/[^0-9-]/g,"")+"rpm":"")+(s.note?" "+s.note:"");
   const parts=[];let single=0;
   for(const b of structure){
     if(b.steps?.length){parts.push("Main Set "+(b.repeats||1)+"x\n"+b.steps.map(line).join("\n"))}
