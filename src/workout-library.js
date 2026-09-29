@@ -202,14 +202,18 @@ export function normalizeTrainerDayWorkout(item){
 }
 export async function importTrainerDayPublicWorkouts(env,db,query={}){
   if(!env.TRAINERDAY_PUBLIC_API_KEY) return {status:"unavailable",message:"Chybí TRAINERDAY_PUBLIC_API_KEY. Veřejný TrainerDay API klíč je potřeba vyžádat/správně nastavit před importem.",imported:0};
-  const url=buildTrainerDayQuery(query),headers={Accept:"application/json"};
-  headers["x-api-key"]=String(env.TRAINERDAY_PUBLIC_API_KEY);
-  const response=await fetch(url,{headers});const data=await response.json().catch(()=>null);
-  if(!response.ok)throw new Error("TrainerDay API HTTP "+response.status);
-  const list=Array.isArray(data)?data:Array.isArray(data?.workouts)?data.workouts:[];
-  await ensureWorkoutLibrary(db);let imported=0;
-  for(const item of list){const w=normalizeTrainerDayWorkout(item);if(!w)continue;await upsertWorkout(db,w);imported++}
-  return {status:"ok",imported,received:list.length,query,url};
+  const headers={Accept:"application/json","x-api-key":String(env.TRAINERDAY_PUBLIC_API_KEY)},maxPages=clamp(n(query.maxPages,1),1,20);
+  await ensureWorkoutLibrary(db);let imported=0,received=0,pages=0,lastUrl=null;
+  for(let page=0;page<maxPages;page++){
+    const url=buildTrainerDayQuery({...query,pageIndex:n(query.pageIndex,0)+page});lastUrl=url;
+    const response=await fetch(url,{headers}),data=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error("TrainerDay API HTTP "+response.status);
+    const list=Array.isArray(data)?data:Array.isArray(data?.workouts)?data.workouts:[];
+    received+=list.length;pages++;
+    for(const item of list){const w=normalizeTrainerDayWorkout(item);if(!w)continue;await upsertWorkout(db,w);imported++}
+    if(!list.length||list.length<25)break;
+  }
+  return {status:"ok",imported,received,pages,query,lastUrl,rateLimitNote:"Import je omezen na maximálně 20 stran na jeden požadavek, aby respektoval veřejný TrainerDay API limit."};
 }
 async function upsertWorkout(db,w){
   const sql=`INSERT INTO workout_library(id,name,source_name,source_kind,source_url,license_note,attribution,external_id,primary_system,secondary_system,duration_minutes,work_minutes,difficulty,intensity_factor,target_load,cadence,description,intervals_description,tags_json,structure_json,verified,popularity,updated_at)
