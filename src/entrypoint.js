@@ -227,7 +227,8 @@ async function reconcileWorkoutLibraryCompletions(env,ctx,internalAuth){
       const actual=completed.find(a=>String(a.id||'')===String(match.actualId||''))||completed.find(a=>String(a.pairedEventId||a.plannedEventId||'')===String(link.intervals_event_id||''));
       if(!actual)continue;
       const actualMinutes=Number(actual.durationHours)>0?Number(actual.durationHours)*60:null,completedPercent=actualMinutes?Math.max(0,Math.min(120,actualMinutes/Math.max(1,Number(link.duration_minutes))*100)):100;
-      await recordWorkoutFeedback(env.DB,{workoutId:link.workout_id,scheduledDate:link.scheduled_date,completedPercent,rpe:null,survey:"auto_completed",notes:"Automaticky spárováno s dokončenou aktivitou v Intervals.icu"});
+      const rawRpe=actual.rpe??actual.payload?.rpe??actual.payload?.feel??actual.feel,rpe=Number.isFinite(Number(rawRpe))?Number(rawRpe):null;
+      await recordWorkoutFeedback(env.DB,{workoutId:link.workout_id,scheduledDate:link.scheduled_date,completedPercent,rpe,survey:"auto_completed",notes:"Automaticky spárováno s dokončenou aktivitou v Intervals.icu"});
       await env.DB.prepare("UPDATE workout_schedule_links SET status='completed' WHERE id=?").bind(link.id).run();
     }
   }catch(error){console.error("Workout capability reconciliation failed",error)}
