@@ -102,7 +102,21 @@ This makes retries idempotent for workouts created by this integration.
 
 ## Current seed size
 
-The built-in seed covers recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic and sprint work across multiple durations and difficulties. It is a bootstrap catalog; TrainerDay API ingestion is the scale source.
+The pre-deployment seed now contains **164 workouts**:
+- 29 curated/original/public-reference workouts,
+- 135 parameterically generated original PFD variants.
+
+It covers recovery, endurance, tempo, sweet spot, threshold, VO2max, anaerobic and sprint work, including exact-duration families at 45/60/75/90/105/120 minutes plus longer endurance variants. TrainerDay public API ingestion expands this further; it is no longer a dependency for having a useful library on day one.
+
+## ChatGPT / Health & Strength MCP
+
+The same library is exposed through MCP tools:
+- `searchCyclingWorkouts`
+- `getCyclingCapabilities`
+- `scheduleCyclingWorkout`
+- `recordCyclingWorkoutFeedback`
+
+This allows the chat workflow and the dashboard to use the same ranking engine. Scheduling still requires the exact workout, exact date and an explicit `confirm=true` after user approval.
 
 ## Pre-deployment requirements
 
