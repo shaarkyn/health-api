@@ -216,6 +216,23 @@ async function handleCoachInbox(request, env, ctx, internalAuth) {
   } catch(error) { return Response.json({status:"error",message:error.message},{status:500}); }
 }
 
+async function reconcileWorkoutLibraryCompletions(env,ctx,internalAuth){
+  try{
+    const pending=await env.DB.prepare("SELECT l.id,l.workout_id,l.scheduled_date,l.intervals_event_id,w.name,w.duration_minutes FROM workout_schedule_links l JOIN workout_library w ON w.id=l.workout_id WHERE l.status='scheduled' AND l.scheduled_date<=? ORDER BY l.scheduled_date DESC LIMIT 12").bind(pragueToday()).all();
+    for(const link of pending.results||[]){
+      const response=await app.fetch(new Request('https://internal/analysis/daily?date='+link.scheduled_date,{headers:internalAuth}),env,ctx);
+      if(!response.ok)continue;const daily=await response.json().catch(()=>({})),matched=daily.training?.matched||[],completed=daily.training?.completed||[];
+      const match=matched.find(m=>String(m.planned?.id||'')===String(link.intervals_event_id||'')||String(m.planned?.name||'').trim().toLowerCase()===String(link.name||'').trim().toLowerCase());
+      if(!match)continue;
+      const actual=completed.find(a=>String(a.id||'')===String(match.actualId||''))||completed.find(a=>String(a.pairedEventId||a.plannedEventId||'')===String(link.intervals_event_id||''));
+      if(!actual)continue;
+      const actualMinutes=Number(actual.durationHours)>0?Number(actual.durationHours)*60:null,completedPercent=actualMinutes?Math.max(0,Math.min(120,actualMinutes/Math.max(1,Number(link.duration_minutes))*100)):100;
+      await recordWorkoutFeedback(env.DB,{workoutId:link.workout_id,scheduledDate:link.scheduled_date,completedPercent,rpe:null,survey:"auto_completed",notes:"Automaticky spárováno s dokončenou aktivitou v Intervals.icu"});
+      await env.DB.prepare("UPDATE workout_schedule_links SET status='completed' WHERE id=?").bind(link.id).run();
+    }
+  }catch(error){console.error("Workout capability reconciliation failed",error)}
+}
+
 async function handleDashboardApi(request, env, ctx, url) {
   const internalAuth = { "Authorization": "Bearer " + String(env.STRENGTH_API_KEY || "") };
   if(url.pathname==='/app/api/gym/exercises'&&request.method==='GET')return Response.json({status:'ok',exercises:gymExerciseCatalog()},{headers:{'Cache-Control':'no-store'}});
@@ -232,6 +249,8 @@ async function handleDashboardApi(request, env, ctx, url) {
   }
   if(url.pathname==='/app/api/workouts/search'&&request.method==='GET'){
     try{
+      await getCapabilities(env.DB);
+      await reconcileWorkoutLibraryCompletions(env,ctx,internalAuth);
       const targetDate=/^\\d{4}-\\d{2}-\\d{2}$/.test(url.searchParams.get('date')||'')?url.searchParams.get('date'):pragueToday();
       const monday=(date)=>{const d=new Date(date+'T12:00:00Z'),wd=(d.getUTCDay()+6)%7;return shiftDate(date,-wd)};
       const start=monday(targetDate),prev=shiftDate(start,-7);
@@ -308,6 +327,8 @@ async function handleDashboardApi(request, env, ctx, url) {
     const goal=body.goal&&typeof body.goal==='object'?body.goal:null;
     const preferences=body.preferences&&typeof body.preferences==='object'?body.preferences:{};
     try{
+      await getCapabilities(env.DB);
+      await reconcileWorkoutLibraryCompletions(env,ctx,internalAuth);
       const capabilities=await getCapabilities(env.DB);
       const coachCtx=coachContext({date,daily,week:mergedWeek,fitness,health,gym,availabilityMinutes,manualReadiness,goal,preferences,capabilities});
       const rec=coachCtx.cyclingCoachV2?.recommendation?.session||{},kind=rec.kind==="long_endurance"?"endurance":rec.kind;
