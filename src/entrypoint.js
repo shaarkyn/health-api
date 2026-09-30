@@ -25,6 +25,7 @@ import { importStrengthHistory, getStrengthHistory } from "./strength-history.js
 import { searchCookbookRecipes, logFood } from "./food-log.js";
 import { searchWorkoutLibrary, parseWorkoutSearchFilters, getCapabilities, getScheduledWorkouts, recordWorkoutFeedback, scheduleWorkoutInIntervals, generateWorkout, pendingScheduledWorkouts, hasFeedback, markScheduleCompleted } from "./workout-library.js";
 import { buildCyclingCoachV2 } from "./cycling-coach-v2.js";
+import { athleteThresholds } from "./intervals-athlete.js";
 import {updateFoodEntry,copyFoodEntry,deleteFoodEntry} from './food-entry-management.js';
 import legacyHealthApi from "./index.js";
 import { handleGoogleLogin } from "./google-login.js";
@@ -632,8 +633,8 @@ async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
       const date=validDate(url.searchParams.get('date'))?url.searchParams.get('date'):pragueToday();
       const coach=buildCyclingCoachV2({...await loadCoachInputs(env,ctx,internalAuth,date),capabilities:await getCapabilities(env.DB,sport)});
       const context={readiness:coach.readiness.status,hardBikeDaysRolling7d:coach.load.hardBikeDaysRolling7d,phase:String(url.searchParams.get('phase')||'')};
-      const result=await searchWorkoutLibrary(env.DB,parseWorkoutSearchFilters(url.searchParams),context);
-      return Response.json({...result,date,rankingContext:{...context,tsb:coach.readiness.tsb,readinessScore:coach.readiness.score},sourcePolicy:'Vlastní PFD workouty, publikované výzkumné protokoly a veřejně popsané tréninky profi s uvedením zdroje. Proprietární knihovny (TrainerRoad, Xert, JOIN, Zwift, TrainerDay) se nekopírují.'},{headers:{'Cache-Control':'no-store'}});
+      const [result,thresholds]=await Promise.all([searchWorkoutLibrary(env.DB,parseWorkoutSearchFilters(url.searchParams),context),athleteThresholds(env)]);
+      return Response.json({...result,date,athlete:{ftp:thresholds.ftp,indoorFtp:thresholds.indoorFtp,source:thresholds.source},rankingContext:{...context,tsb:coach.readiness.tsb,readinessScore:coach.readiness.score},sourcePolicy:'Vlastní PFD workouty, publikované výzkumné protokoly a veřejně popsané tréninky profi s uvedením zdroje. Proprietární knihovny (TrainerRoad, Xert, JOIN, Zwift, TrainerDay) se nekopírují.'},{headers:{'Cache-Control':'no-store'}});
     }
     if(url.pathname==='/app/api/workouts/generate'&&request.method==='POST'){
       const body=await request.json().catch(()=>({}));
@@ -641,7 +642,8 @@ async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
       if(date<pragueToday())return Response.json({status:'error',message:'Vyber dnešní nebo budoucí datum.'},{status:400});
       const availabilityMinutes=Number.isFinite(Number(body.availabilityMinutes))&&Number(body.availabilityMinutes)>0?Number(body.availabilityMinutes):null;
       const coach=buildCyclingCoachV2({...await loadCoachInputs(env,ctx,internalAuth,date),availabilityMinutes,capabilities:await getCapabilities(env.DB,'ride'),goal:body.phase?{phase:String(body.phase)}:null});
-      return Response.json(await generateWorkout(env.DB,{sport:'ride',environment:body.environment,date,coach,availabilityMinutes,variant:body.variant}),{headers:{'Cache-Control':'no-store'}});
+      const thresholds=await athleteThresholds(env);
+      return Response.json(await generateWorkout(env.DB,{sport:'ride',environment:body.environment,date,coach,availabilityMinutes,variant:body.variant,thresholds}),{headers:{'Cache-Control':'no-store'}});
     }
     if(url.pathname==='/app/api/workouts/feedback'&&request.method==='POST')return Response.json(await recordWorkoutFeedback(env.DB,await request.json()),{headers:{'Cache-Control':'no-store'}});
     if(url.pathname==='/app/api/workouts/schedule'&&request.method==='POST'){

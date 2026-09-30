@@ -375,7 +375,7 @@ function renderWorkoutLibrary(result){
   el.innerHTML=rows.map((w,i)=>{
     const source=w.source_url?'<a href="'+esc(w.source_url)+'" target="_blank" rel="noopener">'+esc(w.source_name||w.source_kind)+'</a>':esc(w.source_name||w.source_kind||"Zdroj");
     const reason=(w.reasons||[]).slice(0,4).join(" · ");
-    return '<article class="workout-result" data-workout-id="'+esc(w.id)+'"><div><div class="workout-result-head"><div><div class="eyebrow">#'+(i+1)+' · '+esc(capabilityLabel(w.primary_system))+'</div><h3 style="margin:3px 0">'+esc(w.name)+'</h3></div><div><div class="workout-score">'+num(w.suitability)+'%</div><div class="small">vhodnost</div></div></div><div class="workout-meta"><span class="pill">'+num(w.duration_minutes)+' min</span><span class="pill">load '+Math.round(num(w.target_load))+'</span><span class="pill">IF '+fmt(w.intensity_factor,2)+'</span><span class="pill">obtížnost '+fmt(w.difficulty,1)+'</span><span class="pill">capability '+fmt(w.capability_level,1)+'</span><span class="pill">'+esc(w.cadence||"kadence dle bloku")+'</span></div>'+workoutProfile(w)+'<p>'+esc(w.description||"")+'</p><div class="reason">'+esc(reason||"Seřazeno podle cíle, capability a aktuálního kontextu.")+'</div><div class="workout-source">Zdroj: '+source+(w.attribution?' · '+esc(w.attribution):'')+'</div></div><div><details class="workout-details"><summary>Intervalový předpis</summary><div class="workout-structure">'+esc(w.intervals_description||"")+'</div></details><button class="btn primary schedule-workout" data-id="'+esc(w.id)+'" style="width:100%;margin-top:10px">Přidat na vybraný den</button></div></article>'
+    return '<article class="workout-result" data-workout-id="'+esc(w.id)+'"><div><div class="workout-result-head"><div><div class="eyebrow">#'+(i+1)+' · '+esc(capabilityLabel(w.primary_system))+'</div><h3 style="margin:3px 0">'+esc(w.name)+'</h3></div><div><div class="workout-score">'+num(w.suitability)+'%</div><div class="small">vhodnost</div></div></div><div class="workout-meta"><span class="pill">'+num(w.duration_minutes)+' min</span><span class="pill">load '+Math.round(num(w.target_load))+'</span><span class="pill">IF '+fmt(w.intensity_factor,2)+'</span><span class="pill">obtížnost '+fmt(w.difficulty,1)+'</span><span class="pill">capability '+fmt(w.capability_level,1)+'</span><span class="pill">'+esc(w.cadence||"kadence dle bloku")+'</span></div>'+workoutProfile(w)+'<details class="explain-block"><summary>Rozpis kroků</summary>'+(()=>{let st=[];try{st=JSON.parse(w.structure_json||'[]')}catch{}const ftp=result.athlete?.[w.environment==='indoor'&&result.athlete?.indoorFtp?'indoorFtp':'ftp']||null;return stepTableHtml(stepRowsFromStructure(st,ftp,w.environment),ftp)})()+'</details><p>'+esc(w.description||"")+'</p><div class="reason">'+esc(reason||"Seřazeno podle cíle, capability a aktuálního kontextu.")+'</div><div class="workout-source">Zdroj: '+source+(w.attribution?' · '+esc(w.attribution):'')+'</div></div><div><details class="workout-details"><summary>Intervalový předpis</summary><div class="workout-structure">'+esc(w.intervals_description||"")+'</div></details><button class="btn primary schedule-workout" data-id="'+esc(w.id)+'" style="width:100%;margin-top:10px">Přidat na vybraný den</button></div></article>'
   }).join("");
 }
 function renderScheduledWorkouts(rows){
@@ -417,17 +417,34 @@ async function saveWorkoutFeedback(form){
 
 // "Vygenerovat trénink": one recommended workout for the chosen day.
 function environmentLabel(env){return env==="outdoor"?"Outdoor":"Indoor"}
+function fmtStepTime(sec){sec=Math.round(sec);if(sec<60)return sec+' s';const m=Math.floor(sec/60),r=sec%60;return m>=60?Math.floor(m/60)+' h '+(m%60?m%60+' min':''):m+(r?' min '+r+' s':' min')}
+// Step table from server rows ({repeats, steps:[{durationSeconds, percentLow/High, wattsLow/High, free, ramp, cadence, note}]}).
+function stepTableHtml(rows,ftp){
+  const target=s=>s.free?'naplno':s.ramp?s.percentLow+' → '+s.percentHigh+' %':s.percentLow===s.percentHigh?s.percentLow+' %':s.percentLow+'–'+s.percentHigh+' %';
+  const watts=s=>s.free||s.wattsLow==null?'—':s.ramp?s.wattsLow+' → '+s.wattsHigh+' W':s.wattsLow===s.wattsHigh?s.wattsLow+' W':s.wattsLow+'–'+s.wattsHigh+' W';
+  const line=s=>'<tr><td>'+esc(fmtStepTime(s.durationSeconds))+'</td><td>'+esc(target(s))+'</td><td><strong>'+esc(watts(s))+'</strong></td><td>'+esc(s.cadence?String(s.cadence).replace(/rpm/i,'')+' rpm':'')+'</td><td class="small">'+esc(s.note||'')+'</td></tr>';
+  return '<div class="step-table-wrap"><table class="step-table"><thead><tr><th>Čas</th><th>% FTP</th><th>Výkon'+(ftp?' (FTP '+esc(ftp)+' W)':'')+'</th><th>Kadence</th><th>Poznámka</th></tr></thead><tbody>'+
+    rows.map(g=>g.repeats>1?'<tr class="step-repeat"><td colspan="5">'+g.repeats+'× opakuj'+(g.note?' · '+esc(g.note):'')+'</td></tr>'+g.steps.map(line).join('')+'<tr class="step-repeat-end"><td colspan="5"></td></tr>':g.steps.map(line).join('')).join('')+'</tbody></table></div>';
+}
+// Same rows computed in the browser for library cards.
+function stepRowsFromStructure(structure,ftp,env){
+  const width=p=>env==='outdoor'?(p>=106?4:p>=76?3:5):0,w=p=>ftp?Math.round(ftp*p/100):null;
+  const Z={Z1:[40,55],Z2:[56,75],Z3:[76,90],Z4:[91,105],Z5:[106,120],Z6:[121,150],Z7:[151,200]};const row=s=>{const z=Z[String(s.note||'').toUpperCase()];const lo=z?z[0]:s.ramp?num(s.powerStart):num(s.power)-width(num(s.power)),hi=z?z[1]:s.ramp?num(s.powerEnd):num(s.power)+width(num(s.power));return {durationSeconds:num(s.durationMinutes)*60,percentLow:Math.round(lo),percentHigh:Math.round(hi),wattsLow:s.free?null:w(lo),wattsHigh:s.free?null:w(hi),free:!!s.free,ramp:!!s.ramp,cadence:s.cadence,note:s.note}};
+  return (structure||[]).map(b=>b.steps?{repeats:num(b.repeats)||1,note:b.note,steps:b.steps.map(row)}:{repeats:1,steps:[row(b)]});
+}
+function explainList(title,items){return items&&items.length?'<div class="explain-block"><h4>'+esc(title)+'</h4><ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>':''}
 function renderGeneratedWorkout(r){
   const el=$("generatedWorkout");if(!el)return;
   if(r.status!=="ok"){el.innerHTML='<div class="notice">'+esc(r.message||"Trénink se nepodařilo vygenerovat.")+'</div>';return}
-  const w=r.workout,readiness=r.readiness||{},prog=r.progression||{};
-  const why=[readiness.status?'připravenost '+esc(readiness.status)+(Number.isFinite(Number(readiness.score))?' ('+num(readiness.score)+')':''):'',prog.targetDifficulty?'cílová obtížnost '+fmt(prog.targetDifficulty,1)+' při úrovni '+fmt(prog.capabilityLevel,1):'',...(r.adaptations||[]).map(esc)].filter(Boolean).join(' · ');
-  const source=w.source_url?'<a href="'+esc(w.source_url)+'" target="_blank" rel="noopener">'+esc(w.source_name)+'</a>':esc(w.source_name||"");
-  el.innerHTML='<article class="workout-result generated"><div><div class="workout-result-head"><div><div class="eyebrow">'+esc(longDate(r.date))+' · '+esc(capabilityLabel(w.primary_system))+' · '+environmentLabel(r.environment)+'</div><h3 style="margin:3px 0">'+esc(w.name)+'</h3></div><div><div class="workout-score">'+num(w.suitability)+'%</div><div class="small">vhodnost</div></div></div>'+
-    '<div class="workout-meta"><span class="pill">'+num(w.duration_minutes)+' min</span><span class="pill">load '+Math.round(num(w.target_load))+'</span><span class="pill">IF '+fmt(w.intensity_factor,2)+'</span><span class="pill">obtížnost '+fmt(w.difficulty,1)+'</span></div>'+workoutProfile(w)+
-    '<p>'+esc(w.description||"")+'</p>'+(w.citation?'<p class="small">Zdroj: '+esc(w.citation)+'</p>':'<p class="small">Zdroj: '+source+'</p>')+
-    '<ul class="small">'+(w.environment_notes||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'+
-    '<div class="reason">'+(why||esc((w.reasons||[]).slice(0,3).join(' · ')))+'</div>'+
+  const w=r.workout,x=r.explanation||{};
+  const source=w.citation?esc(w.citation):w.source_url?'<a href="'+esc(w.source_url)+'" target="_blank" rel="noopener">'+esc(w.source_name)+'</a>':esc(w.source_name||"");
+  const planned=x.planned?'<details class="explain-block" open><summary><strong>Tvůj plán v Intervals.icu:</strong> '+esc(x.planned.name||'trénink')+(x.planned.minutes?' · '+x.planned.minutes+' min':'')+(x.planned.intensityFactor?' · IF '+fmt(x.planned.intensityFactor,2):'')+'</summary>'+(x.planned.steps?.length?stepTableHtml(x.planned.steps,x.ftp):'<p class="small">Plán nemá strukturu kroků.</p>')+'<p class="small">Níže je odpovídající trénink z knihovny, pokud chceš strukturu podle PFD – jinak klidně jeď svůj plán.</p></details>':'';
+  el.innerHTML=planned+'<article class="workout-result generated"><div><div class="workout-result-head"><div><div class="eyebrow">'+esc(longDate(r.date))+' · '+esc(capabilityLabel(w.primary_system))+' · '+environmentLabel(r.environment)+'</div><h3 style="margin:3px 0">'+esc(w.name)+'</h3></div><div><div class="workout-score">'+num(w.suitability)+'%</div><div class="small">vhodnost</div></div></div>'+
+    '<div class="workout-meta"><span class="pill">'+num(w.duration_minutes)+' min</span><span class="pill">load '+Math.round(num(w.target_load))+'</span><span class="pill">IF '+fmt(w.intensity_factor,2)+'</span><span class="pill">obtížnost '+fmt(w.difficulty,1)+'</span>'+(x.ftp?'<span class="pill">FTP '+esc(x.ftp)+' W</span>':'')+'</div>'+
+    '<p>'+esc(w.description||"")+'</p>'+
+    '<div class="explain-grid">'+explainList('Proč tento trénink',x.why)+explainList('Jak ho jet',x.how)+explainList(r.environment==='outdoor'?'Venku':'Na trenažéru',x.environment)+explainList('Jídlo a pití',x.fueling)+'</div>'+
+    '<h4 style="margin:14px 0 6px">Rozpis</h4>'+stepTableHtml(x.steps||[],x.ftp)+workoutProfile(w)+
+    '<p class="small">Zdroj: '+source+'</p>'+
     '<div class="workout-filter-actions" style="margin-top:10px"><button class="btn primary" id="scheduleGenerated">Přidat do Intervals.icu</button>'+(r.variantCount>1?'<button class="btn" id="anotherGenerated">Jiný návrh</button>':'')+'</div></div></article>'+
     (r.alternatives?.length?'<div class="small" style="margin-top:8px">Další možnosti: '+r.alternatives.map(a=>esc(a.name)).join(' · ')+'</div>':'');
   $("scheduleGenerated").onclick=()=>scheduleLibraryWorkout(w.id,r.date,r.environment);
