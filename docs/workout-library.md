@@ -20,7 +20,7 @@ Every user has their own capability levels, feedback and Intervals.icu schedule.
    - outdoor as `Ride`
 
 ### Knihovna
-Filter by system, duration, load, maximum difficulty, phase, environment and source (PFD, research, public pro sessions, TrainerDay). Results are ranked by suitability with the reasons shown.
+Filter by system, duration, load, maximum difficulty, phase, environment and source (PFD, research, public pro sessions). Results are ranked by suitability with the reasons shown.
 
 ### Feedback
 After the ride, enter completion and RPE under **Naplánované workouty**. This updates the capability for that system. Automatic activity matching only marks the session as completed, because ride duration alone does not prove the intervals were done.
@@ -50,9 +50,8 @@ Built-in workouts are generated in code (`src/cycling-workouts.js`) and are not 
   - Tabata (indoor only)
   - Burgomaster 6×30 s
 - **8 publicly described pro sessions with source URL:** UAE Team Emirates-XRG, JOIN, TrainingPeaks samples.
-- **TrainerDay public API imports:** stored in the shared `workout_library` table. Only an admin can start an import.
 
-Proprietary libraries (TrainerRoad, Xert, JOIN, Zwift, …) are **not copied or scraped**. The families cover the same energy systems with independent structures.
+Proprietary libraries (TrainerRoad, Xert, JOIN, Zwift, TrainerDay, …) are **not copied or scraped**. The families cover the same energy systems with independent structures.
 
 Difficulty (1–10) is computed from the structure (`difficultyFromStructure` in `src/workout-model.js`):
 - time at or above the system's intensity
@@ -92,18 +91,12 @@ Ranking is independent and does not reproduce proprietary scores. Inputs:
 
 | Table | Scope | Key |
 |---|---|---|
-| `workout_library` | shared (imports) | `id` |
+| `workout_library` | shared (reserved for future catalog additions; built-ins live in code) | `id` |
 | `training_capabilities` | per user | `(user_id, sport, system)` |
 | `workout_feedback` | per user | `id`; one manual review per `(user_id, workout_id, scheduled_date)` |
 | `workout_schedule_links` | per user | `UNIQUE (user_id, intervals_external_id)` |
 
 All tables carry `sport` (`ride`, `run` next) so running reuses the same schema. They are created by `migrations/0002_training_library.sql` and `ensureTrainingTables()`.
-
-## TrainerDay
-
-- Endpoint: `https://api.trainerday.com/api/v1/workouts/find`, with filters `dominantZone`, `fromMinutes`, `toMinutes`, `workoutName` and `pageIndex`.
-- Secret: `TRAINERDAY_PUBLIC_API_KEY`. The key has to be requested from TrainerDay. Without it the import button reports that the key is missing.
-- An import reads at most 20 pages per request.
 
 ## MCP
 

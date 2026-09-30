@@ -1,8 +1,8 @@
-// Adaptive workout library: the shared catalog (built-in workouts plus
-// TrainerDay imports), per-user capability progression, ranking, "generate a
+// Adaptive workout library: the shared catalog (built-in workouts plus any
+// rows in workout_library), per-user capability progression, ranking, "generate a
 // workout for this day" and scheduling to the user's Intervals.icu calendar.
 // Every query on personal tables filters by db.userId (see tenancy.js).
-import { buildWorkout, renderForEnvironment, step, ramp, n, clamp } from "./workout-model.js";
+import { renderForEnvironment, n, clamp } from "./workout-model.js";
 import { CYCLING_WORKOUTS } from "./cycling-workouts.js";
 
 export const SYSTEMS = ["recovery", "endurance", "tempo", "sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"];
@@ -11,8 +11,6 @@ export { CYCLING_WORKOUTS };
 const BUILT_IN = { ride: CYCLING_WORKOUTS };
 const BUILT_IN_BY_ID = new Map(Object.values(BUILT_IN).flat().map(w => [w.id, w]));
 const now = () => new Date().toISOString();
-const slug = s => String(s || "workout").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
-function hash(text) { let h = 2166136261; for (const ch of String(text)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
 const sportOf = value => value === "run" ? "run" : "ride";
 const environmentOf = value => value === "outdoor" ? "outdoor" : "indoor";
 
@@ -251,58 +249,4 @@ export async function scheduleWorkoutInIntervals(env, db, { workoutId, date, con
     ON CONFLICT(user_id,intervals_external_id) DO UPDATE SET intervals_event_id=excluded.intervals_event_id,status=excluded.status`)
     .bind(db.userId, sportOf(workout.sport), workout.id, workout.family || null, date, event.tags.includes("outdoor") ? "outdoor" : "indoor", event.external_id, String(first.id), "scheduled").run();
   return { status: "ok", workout: { id: workout.id, name: workout.name }, date, environment: event.tags.includes("outdoor") ? "outdoor" : "indoor", externalId: event.external_id, intervalsEventId: first.id };
-}
-
-// ---- TrainerDay public API (shared catalog) ---------------------------------
-export function buildTrainerDayQuery({ system, durationMinutes, durationTolerance = 5, name, pageIndex = 0 } = {}) {
-  const url = new URL("https://api.trainerday.com/api/v1/workouts/find");
-  const map = { recovery: "recovery", endurance: "endurance", tempo: "Tempo", sweet_spot: "threshold", threshold: "threshold", vo2max: "vo2max", anaerobic: "anaerobic", sprint: "anaerobic" };
-  if (system && map[system]) url.searchParams.set("dominantZone", map[system]);
-  if (durationMinutes != null) { url.searchParams.set("fromMinutes", String(Math.max(0, Math.round(durationMinutes - durationTolerance)))); url.searchParams.set("toMinutes", String(Math.round(durationMinutes + durationTolerance))); }
-  if (name) url.searchParams.set("workoutName", String(name));
-  url.searchParams.set("pageIndex", String(Math.max(0, Math.round(pageIndex))));
-  return url.toString();
-}
-function inferSystem(item, structure) {
-  const z = String(item.dominantZone || item.dominant_zone || "").toLowerCase();
-  if (z.includes("vo2")) return "vo2max"; if (z.includes("anaer")) return "anaerobic"; if (z.includes("threshold")) return "threshold"; if (z.includes("tempo")) return "tempo"; if (z.includes("endurance")) return "endurance"; if (z.includes("recovery")) return "recovery";
-  const mx = Math.max(0, ...structure.map(s => Math.max(n(s.powerStart, 0), n(s.powerEnd, 0), n(s.power, 0))));
-  return mx >= 130 ? "anaerobic" : mx >= 108 ? "vo2max" : mx >= 95 ? "threshold" : mx >= 88 ? "sweet_spot" : mx >= 76 ? "tempo" : "endurance";
-}
-export function normalizeTrainerDayWorkout(item) {
-  const segments = Array.isArray(item?.segments) ? item.segments.filter(x => Array.isArray(x) && n(x[0]) > 0) : [];
-  if (!segments.length) return null;
-  const structure = segments.map(s => { const a = n(s[1], n(s[2], 60)), b = n(s[2], a); return Math.abs(a - b) > .5 ? ramp(n(s[0]), a, b) : step(n(s[0]), Math.round((a + b) / 2)); });
-  const key = String(item.id || item.workoutId || item.workout_id || hash(JSON.stringify(segments)));
-  const w = buildWorkout({
-    id: "trainerday-" + slug(key), name: String(item.title || item.workoutName || item.name || "TrainerDay workout").trim(), system: inferSystem(item, structure), structure, family: "trainerday",
-    sourceName: "TrainerDay public API", sourceKind: "trainerday_public_api", sourceUrl: item.url || item.shareUrl || "https://trainerday.com",
-    licenseNote: "Imported through the TrainerDay public workout API for approved applications.", attribution: "TrainerDay public community workout",
-    description: String(item.description || "").slice(0, 600), tags: ["trainerday"]
-  });
-  w.popularity = n(item.popularity, 0) || 0;
-  w.verified = 0;
-  return w;
-}
-export async function importTrainerDayPublicWorkouts(env, db, query = {}) {
-  if (!env.TRAINERDAY_PUBLIC_API_KEY) return { status: "unavailable", message: "Chybí TRAINERDAY_PUBLIC_API_KEY. API klíč TrainerDay je potřeba vyžádat u TrainerDay a nastavit jako secret Workeru.", imported: 0 };
-  const headers = { Accept: "application/json", Authorization: "Bearer " + String(env.TRAINERDAY_PUBLIC_API_KEY) }, maxPages = clamp(n(query.maxPages, 1), 1, 20);
-  await ensureTrainingTables(db);
-  let imported = 0, received = 0, pages = 0, lastUrl = null;
-  for (let page = 0; page < maxPages; page++) {
-    const url = buildTrainerDayQuery({ ...query, pageIndex: n(query.pageIndex, 0) + page }); lastUrl = url;
-    const response = await fetch(url, { headers }), data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error("TrainerDay API HTTP " + response.status + (response.status === 401 || response.status === 403 ? " – zkontroluj API klíč" : ""));
-    const list = Array.isArray(data) ? data : Array.isArray(data?.workouts) ? data.workouts : Array.isArray(data?.items) ? data.items : [];
-    received += list.length; pages++;
-    for (const item of list) { const w = normalizeTrainerDayWorkout(item); if (!w) continue; await upsertImported(db, w); imported++; }
-    if (!list.length || list.length < 25) break;
-  }
-  return { status: "ok", imported, received, pages, lastUrl };
-}
-const IMPORT_COLUMNS = ["id", "sport", "name", "family", "level", "source_name", "source_kind", "source_url", "license_note", "attribution", "citation", "external_id", "primary_system", "secondary_system", "duration_minutes", "work_minutes", "difficulty", "intensity_factor", "target_load", "cadence", "description", "indoor_only", "intervals_description", "tags_json", "structure_json", "zone_minutes_json", "verified", "popularity"];
-async function upsertImported(db, w) {
-  const updates = IMPORT_COLUMNS.filter(c => c !== "id").map(c => `${c}=excluded.${c}`).join(",");
-  await db.prepare(`INSERT INTO workout_library(${IMPORT_COLUMNS.join(",")},updated_at) VALUES(${IMPORT_COLUMNS.map(() => "?").join(",")},?) ON CONFLICT(id) DO UPDATE SET ${updates},updated_at=excluded.updated_at`)
-    .bind(...IMPORT_COLUMNS.map(c => w[c] ?? null), now()).run();
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CYCLING_WORKOUTS, SYSTEMS, rankWorkoutCandidates, defaultCapabilities, calculateCapabilityUpdate, buildIntervalsEvent,
-  parseWorkoutSearchFilters, scheduleWorkoutInIntervals, buildTrainerDayQuery, normalizeTrainerDayWorkout,
+  parseWorkoutSearchFilters, scheduleWorkoutInIntervals,
   searchWorkoutLibrary, generateWorkout, recordWorkoutFeedback, getCapabilities, getScheduledWorkouts
 } from "../src/workout-library.js";
 import { renderForEnvironment, intervalsText, step, rep, sec } from "../src/workout-model.js";
@@ -133,24 +133,6 @@ test("Intervals event is deterministic per environment", () => {
   assert.equal(outdoor.type, "Ride");
   assert.match(indoor.description, /5x/);
   assert.ok(indoor.load_target > 0);
-});
-
-test("TrainerDay query uses official public workout filters", () => {
-  const url = new URL(buildTrainerDayQuery({ system: "vo2max", durationMinutes: 90, durationTolerance: 10, pageIndex: 2 }));
-  assert.equal(url.origin, "https://api.trainerday.com");
-  assert.equal(url.pathname, "/api/v1/workouts/find");
-  assert.equal(url.searchParams.get("dominantZone"), "vo2max");
-  assert.equal(url.searchParams.get("fromMinutes"), "80");
-  assert.equal(url.searchParams.get("toMinutes"), "100");
-  assert.equal(url.searchParams.get("pageIndex"), "2");
-});
-
-test("TrainerDay segment arrays normalize into the common schema", () => {
-  const w = normalizeTrainerDayWorkout({ id: 123, title: "Public VO2", dominantZone: "vo2max", segments: [[10, 55, 55], [4, 115, 115], [4, 50, 50], [4, 115, 115], [10, 50, 50]], popularity: 20 });
-  assert.equal(w.id, "trainerday-123");
-  assert.equal(w.primary_system, "vo2max");
-  assert.equal(w.source_kind, "trainerday_public_api");
-  assert.match(w.intervals_description, /115%/);
 });
 
 // Real SQL through the user-scoped facade.

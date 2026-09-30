@@ -122,9 +122,9 @@ body{background:radial-gradient(circle at 78% -12%,#211938 0,transparent 28%),va
       <label><span class="small">Max. obtížnost</span><select id="workoutDifficulty"><option value="">Bez limitu</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option></select></label>
       <label><span class="small">Fáze</span><select id="workoutPhase"><option value="">Auto</option><option value="base">Base</option><option value="build">Build</option><option value="recovery">Recovery</option><option value="taper">Taper</option></select></label>
       <label><span class="small">Kde</span><select id="workoutEnvironment"><option value="indoor">Indoor · trenažér</option><option value="outdoor">Outdoor · venku</option></select></label>
-      <label><span class="small">Zdroj</span><select id="workoutSource"><option value="">Všechny</option><option value="original">PFD knihovna</option><option value="research">Výzkumné protokoly</option><option value="public_reference">Veřejné tréninky profi</option><option value="trainerday_public_api">TrainerDay</option></select></label>
+      <label><span class="small">Zdroj</span><select id="workoutSource"><option value="">Všechny</option><option value="original">PFD knihovna</option><option value="research">Výzkumné protokoly</option><option value="public_reference">Veřejné tréninky profi</option></select></label>
       <label><span class="small">Naplánovat na</span><input id="workoutScheduleDate" type="date"></label>
-      <div class="workout-filter-actions"><button class="btn primary" id="searchWorkouts">Najít workouty</button><button class="btn" id="syncTrainerDay" hidden title="Import do sdílené knihovny (jen správce)">Načíst TrainerDay</button></div>
+      <div class="workout-filter-actions"><button class="btn primary" id="searchWorkouts">Najít workouty</button></div>
     </div>
     <div id="workoutSourceNote" class="small" style="margin-top:12px">Vlastní PFD workouty, výzkumné protokoly a veřejně popsané tréninky profi s uvedením zdroje.</div>
   </div>

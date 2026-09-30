@@ -23,7 +23,7 @@ import dashboardClient from "./dashboard-client.js";
 import { handleGoogleOAuth } from "./google-oauth.js";
 import { importStrengthHistory, getStrengthHistory } from "./strength-history.js";
 import { searchCookbookRecipes, logFood } from "./food-log.js";
-import { searchWorkoutLibrary, parseWorkoutSearchFilters, getCapabilities, getScheduledWorkouts, recordWorkoutFeedback, scheduleWorkoutInIntervals, importTrainerDayPublicWorkouts, generateWorkout, pendingScheduledWorkouts, hasFeedback, markScheduleCompleted } from "./workout-library.js";
+import { searchWorkoutLibrary, parseWorkoutSearchFilters, getCapabilities, getScheduledWorkouts, recordWorkoutFeedback, scheduleWorkoutInIntervals, generateWorkout, pendingScheduledWorkouts, hasFeedback, markScheduleCompleted } from "./workout-library.js";
 import { buildCyclingCoachV2 } from "./cycling-coach-v2.js";
 import {updateFoodEntry,copyFoodEntry,deleteFoodEntry} from './food-entry-management.js';
 import legacyHealthApi from "./index.js";
@@ -619,7 +619,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   return new Response(response.body, { status: response.status, headers });
 }
 
-// Workout library: search, generate, schedule, feedback, capabilities, imports.
+// Workout library: search, generate, schedule, feedback, capabilities.
 async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
   if(!session.signedIn)return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
   const sport=url.searchParams.get('sport')==='run'?'run':'ride';
@@ -633,7 +633,7 @@ async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
       const coach=buildCyclingCoachV2({...await loadCoachInputs(env,ctx,internalAuth,date),capabilities:await getCapabilities(env.DB,sport)});
       const context={readiness:coach.readiness.status,hardBikeDaysRolling7d:coach.load.hardBikeDaysRolling7d,phase:String(url.searchParams.get('phase')||'')};
       const result=await searchWorkoutLibrary(env.DB,parseWorkoutSearchFilters(url.searchParams),context);
-      return Response.json({...result,date,rankingContext:{...context,tsb:coach.readiness.tsb,readinessScore:coach.readiness.score},sourcePolicy:'Vlastní PFD workouty, publikované výzkumné protokoly a veřejně popsané tréninky profi s uvedením zdroje. Proprietární knihovny (TrainerRoad, Xert, JOIN, Zwift) se nekopírují; TrainerDay se importuje přes jejich API.'},{headers:{'Cache-Control':'no-store'}});
+      return Response.json({...result,date,rankingContext:{...context,tsb:coach.readiness.tsb,readinessScore:coach.readiness.score},sourcePolicy:'Vlastní PFD workouty, publikované výzkumné protokoly a veřejně popsané tréninky profi s uvedením zdroje. Proprietární knihovny (TrainerRoad, Xert, JOIN, Zwift, TrainerDay) se nekopírují.'},{headers:{'Cache-Control':'no-store'}});
     }
     if(url.pathname==='/app/api/workouts/generate'&&request.method==='POST'){
       const body=await request.json().catch(()=>({}));
@@ -648,11 +648,6 @@ async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
       const body=await request.json().catch(()=>({})),date=String(body.date||'');
       if(!validDate(date)||date<pragueToday())return Response.json({status:'error',message:'Vyber dnešní nebo budoucí datum.'},{status:400});
       return Response.json(await scheduleWorkoutInIntervals(env,env.DB,{workoutId:String(body.workoutId||''),date,confirm:body.confirm===true,environment:body.environment}),{headers:{'Cache-Control':'no-store'}});
-    }
-    if(url.pathname==='/app/api/workouts/import/trainerday'&&request.method==='POST'){
-      if(!session.user?.isAdmin)return Response.json({status:'error',message:'Import do sdílené knihovny může spustit jen správce.'},{status:403});
-      const body=await request.json().catch(()=>({}));
-      return Response.json(await importTrainerDayPublicWorkouts(env,env.DB,{system:body.system,durationMinutes:body.durationMinutes,durationTolerance:body.durationTolerance??5,name:body.name,pageIndex:body.pageIndex??0,maxPages:body.maxPages??4}));
     }
   }catch(error){return Response.json({status:'error',message:error.message},{status:400})}
   return null;
