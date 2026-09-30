@@ -25,6 +25,7 @@ import { handleGoogleOAuth } from "./google-oauth.js";
 import { importStrengthHistory, getStrengthHistory } from "./strength-history.js";
 import { searchCookbookRecipes, logFood } from "./food-log.js";
 import legacyHealthApi from "./index.js";
+import { isPublicPath, isAuthorizedRequest, unauthorizedResponse, handleDashboardLogin, handleDashboardLogout, verifyDashboardSession } from "./dashboard-auth.js";
 
 const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/openapi.json";
 
@@ -39,6 +40,8 @@ export default {
     if(url.pathname==='/app/api/food/reference-data'&&request.method==='GET')return Response.json(foodReferenceDataset,{headers:{'Cache-Control':'public, max-age=3600','Content-Disposition':'attachment; filename="food-reference-cs.json"'}});
     // Static assets stay independent of provider storage availability.
     if (!['/app','/app/dashboard-client.js','/manifest.webmanifest','/logo.svg'].includes(url.pathname)) env = await connectionEnvironment(env);
+    // Deny by default: only allowlisted routes are reachable without a session or API key.
+    if (!isPublicPath(url.pathname) && !(await isAuthorizedRequest(request, env))) return unauthorizedResponse();
     // Legacy Google Health endpoints live in index.js. The deployed Worker
     // uses entrypoint.js, so expose these routes explicitly instead of letting
     // them fall through to the dashboard gateway.
@@ -81,61 +84,6 @@ export default {
     return app.fetch(request, env, ctx);
   }
 };
-
-async function handleDashboardLogin(request, env) {
-  const expected = String(env.STRENGTH_API_KEY || "");
-  if (!expected) return Response.json({status:"error",message:"Dashboard authentication is not configured."},{status:503});
-  const body = await request.json().catch(() => ({}));
-  const key = String(body?.key || "");
-  if (!key || key !== expected) return Response.json({status:"error",message:"Invalid dashboard access key."},{status:401});
-  const exp = Math.floor(Date.now()/1000) + 30*24*60*60;
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({exp})));
-  const signature = await dashboardHmac(payload, expected);
-  const cookie = "pfd_session="+payload+"."+signature+"; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax";
-  return Response.json({status:"ok",expiresAt:new Date(exp*1000).toISOString()},{headers:{"Set-Cookie":cookie,"Cache-Control":"no-store"}});
-}
-async function handleDashboardLogout() {
-  return new Response(JSON.stringify({status:"ok"}),{status:200,headers:{"content-type":"application/json; charset=utf-8","Set-Cookie":"pfd_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax","Cache-Control":"no-store"}});
-}
-async function verifyDashboardSession(request, secret) {
-  if (!secret) return false;
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.split(";").map(x=>x.trim()).find(x=>x.startsWith("pfd_session="));
-  if (!match) return false;
-  const token = match.slice("pfd_session=".length);
-  const dot = token.lastIndexOf(".");
-  if (dot <= 0) return false;
-  const payload = token.slice(0,dot), sig = token.slice(dot+1);
-  const expected = await dashboardHmac(payload, secret);
-  if (!timingSafeEqualString(sig, expected)) return false;
-  try {
-    const data = JSON.parse(new TextDecoder().decode(fromBase64url(payload)));
-    return Number(data?.exp) > Math.floor(Date.now()/1000);
-  } catch { return false; }
-}
-async function newDashboardSessionCookie(secret) {
-  const exp = Math.floor(Date.now()/1000) + 30*24*60*60;
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({exp})));
-  const signature = await dashboardHmac(payload, secret);
-  return "pfd_session="+payload+"."+signature+"; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax";
-}
-async function dashboardHmac(value, secret) {
-  const key = await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
-  const sig = await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(value));
-  return base64url(new Uint8Array(sig));
-}
-function timingSafeEqualString(a,b) {
-  if (a.length !== b.length) return false;
-  let x=0; for(let i=0;i<a.length;i++) x |= a.charCodeAt(i)^b.charCodeAt(i); return x===0;
-}
-function base64url(bytes) {
-  let s=""; for(const b of bytes) s+=String.fromCharCode(b);
-  return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-}
-function fromBase64url(s) {
-  s=s.replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4)s+="=";
-  const bin=atob(s); return Uint8Array.from(bin,c=>c.charCodeAt(0));
-}
 
 function pragueToday() {
   const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Prague",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
