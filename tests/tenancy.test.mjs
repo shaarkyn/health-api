@@ -169,3 +169,16 @@ test("a repeated chunk after an interrupted run does not duplicate rows", async 
   await ensureTenancy(db, env, { chunkRows: 2 });
   assert.equal((await db.prepare("SELECT COUNT(*) n, SUM(kcal) s FROM food_logs").first()).n, 3);
 });
+
+test("preview deployments cannot upgrade the shared production database", async () => {
+  _resetTenancyForTest();
+  const db = legacyDb();
+  const preview = new Request("https://040dc7e4-health-api.chelseafc-czsk.workers.dev/app/api/me");
+  await assert.rejects(ensureTenancy(db, env, { request: preview }), /previews cannot upgrade/);
+  assert.equal(await db.prepare("SELECT name FROM sqlite_master WHERE name='users'").first(), null);
+  await ensureTenancy(db, env, { request: new Request("https://petrfitnessdata.eu/app/api/me") });
+  assert.ok(await db.prepare("SELECT id FROM users").first());
+  // Once upgraded, previews simply use the new schema.
+  _resetTenancyForTest();
+  await ensureTenancy(db, env, { request: preview });
+});

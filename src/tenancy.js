@@ -73,7 +73,14 @@ export function userEnv(env, user) {
 const UPGRADE_BUDGET_MS = 20 * 1000;
 const COPY_CHUNK_ROWS = 5000;
 
-export async function ensureTenancy(db, env, { budgetMs = UPGRADE_BUDGET_MS, chunkRows = COPY_CHUNK_ROWS } = {}) {
+// Workers Builds preview versions share the production database, so only the
+// production hostnames (and cron runs, which previews never get) may upgrade it.
+const PRODUCTION_HOSTS = new Set(["petrfitnessdata.eu", "health-api.chelseafc-czsk.workers.dev"]);
+export function mayUpgradeFrom(request) {
+  return !request || PRODUCTION_HOSTS.has(new URL(request.url).hostname);
+}
+
+export async function ensureTenancy(db, env, { budgetMs = UPGRADE_BUDGET_MS, chunkRows = COPY_CHUNK_ROWS, request = null } = {}) {
   if (tenancyReady || !db) return;
   await db.prepare("CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
   const version = await db.prepare("SELECT value FROM schema_meta WHERE key='tenancy_version'").first();
@@ -81,6 +88,7 @@ export async function ensureTenancy(db, env, { budgetMs = UPGRADE_BUDGET_MS, chu
 
   const owner = ownerEmail(env);
   if (!owner) throw new Error("OWNER_EMAIL is not configured");
+  if (!mayUpgradeFrom(request)) throw new TenancyUpgradeInProgress("The database has not been upgraded yet; previews cannot upgrade it.");
   if (!(await acquireLock(db))) throw new TenancyUpgradeInProgress();
   const deadline = Date.now() + budgetMs;
   try {
@@ -114,7 +122,7 @@ export async function ensureTenancy(db, env, { budgetMs = UPGRADE_BUDGET_MS, chu
 }
 
 export class TenancyUpgradeInProgress extends Error {
-  constructor() { super("Database upgrade in progress, try again in a minute."); this.name = "TenancyUpgradeInProgress"; }
+  constructor(message = "Database upgrade in progress, try again in a minute.") { super(message); this.name = "TenancyUpgradeInProgress"; }
 }
 
 async function acquireLock(db) {

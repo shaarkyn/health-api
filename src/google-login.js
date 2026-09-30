@@ -62,7 +62,7 @@ async function finishLogin(request, env, fetchImpl = fetch) {
   try { claims = await verifyGoogleIdToken(data.id_token, env.GOOGLE_CLIENT_ID, nonce, fetchImpl); }
   catch (error) { console.error("Google ID token rejected", error.message); return page("Přihlášení selhalo", "Identitu Google účtu se nepodařilo ověřit.", 401); }
 
-  await ensureTenancy(env.DB, env);
+  await ensureTenancy(env.DB, env, { request });
   const user = await signInGoogleUser(env.DB, env, { sub: claims.sub, email: claims.email, name: claims.name });
   if (!user) {
     console.warn("Google login denied for an account without an invitation");

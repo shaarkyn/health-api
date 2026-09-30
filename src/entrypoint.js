@@ -59,7 +59,7 @@ export default {
     if(url.pathname==='/app/api/food/reference-data'&&request.method==='GET')return Response.json(foodReferenceDataset,{headers:{'Cache-Control':'public, max-age=3600','Content-Disposition':'attachment; filename="food-reference-cs.json"'}});
     // Static pages stay independent of storage availability.
     if (STATIC_PATHS.has(url.pathname) && request.method === 'GET') return staticRoute(url);
-    try { await ensureTenancy(env.DB, env); }
+    try { await ensureTenancy(env.DB, env, { request }); }
     catch (error) {
       if (error instanceof TenancyUpgradeInProgress) return Response.json({status:"error",message:error.message},{status:503,headers:{"Retry-After":"30","Cache-Control":"no-store"}});
       throw error;
