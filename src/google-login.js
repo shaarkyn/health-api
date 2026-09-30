@@ -1,4 +1,5 @@
 import { sessionCookie, SESSION_SECONDS } from "./dashboard-auth.js";
+import { ensureTenancy, signInGoogleUser } from "./tenancy.js";
 
 // "Sign in with Google" for the dashboard. Only identity scopes are requested;
 // health data access stays in the separate /oauth/google connector flow.
@@ -18,16 +19,13 @@ export async function handleGoogleLogin(request, env, pathname) {
   return null;
 }
 
-export function allowedGoogleEmails(env) {
-  return new Set(String(env.ALLOWED_GOOGLE_EMAILS || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean));
-}
-
 function configured(env) {
-  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.STRENGTH_API_KEY && allowedGoogleEmails(env).size);
+  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.STRENGTH_API_KEY && env.OWNER_EMAIL && env.DB);
 }
+const NOT_CONFIGURED = ["Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET nebo OWNER_EMAIL.", 503];
 
 async function startLogin(env) {
-  if (!configured(env)) return page("Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET nebo ALLOWED_GOOGLE_EMAILS.", 503);
+  if (!configured(env)) return page(...NOT_CONFIGURED);
   const state = randomToken(), nonce = randomToken(), verifier = randomToken() + randomToken();
   const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   u.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
@@ -44,7 +42,7 @@ async function startLogin(env) {
 }
 
 async function finishLogin(request, env, fetchImpl = fetch) {
-  if (!configured(env)) return page("Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET nebo ALLOWED_GOOGLE_EMAILS.", 503);
+  if (!configured(env)) return page(...NOT_CONFIGURED);
   const url = new URL(request.url);
   if (url.searchParams.get("error")) return page("Přihlášení zrušeno", "Google přihlášení nebylo dokončeno.", 400);
   const code = url.searchParams.get("code"), state = url.searchParams.get("state");
@@ -64,15 +62,16 @@ async function finishLogin(request, env, fetchImpl = fetch) {
   try { claims = await verifyGoogleIdToken(data.id_token, env.GOOGLE_CLIENT_ID, nonce, fetchImpl); }
   catch (error) { console.error("Google ID token rejected", error.message); return page("Přihlášení selhalo", "Identitu Google účtu se nepodařilo ověřit.", 401); }
 
-  const email = String(claims.email || "").toLowerCase();
-  if (!allowedGoogleEmails(env).has(email)) {
-    console.warn("Google login denied for account outside the allowlist");
-    return page("Přístup odepřen", "Tento Google účet nemá do aplikace přístup.", 403);
+  await ensureTenancy(env.DB, env);
+  const user = await signInGoogleUser(env.DB, env, { sub: claims.sub, email: claims.email, name: claims.name });
+  if (!user) {
+    console.warn("Google login denied for an account without an invitation");
+    return page("Přístup odepřen", "Tento Google účet nemá do aplikace pozvánku. Požádej správce o přístup.", 403);
   }
 
   const exp = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
   const headers = new Headers({ Location: "/app", "Cache-Control": "no-store" });
-  headers.append("Set-Cookie", await sessionCookie(exp, String(env.STRENGTH_API_KEY)));
+  headers.append("Set-Cookie", await sessionCookie(user.id, exp, String(env.STRENGTH_API_KEY)));
   headers.append("Set-Cookie", STATE_COOKIE + "=; Max-Age=0; Path=/auth/google; Secure; HttpOnly; SameSite=Lax");
   return new Response(null, { status: 302, headers });
 }
@@ -89,6 +88,7 @@ export async function verifyGoogleIdToken(token, clientId, nonce, fetchImpl = fe
   if (!Number.isFinite(claims.exp) || claims.exp <= now) throw new Error("Expired ID token");
   if (claims.nonce !== nonce) throw new Error("Invalid nonce");
   if (claims.email_verified !== true && claims.email_verified !== "true") throw new Error("Email is not verified");
+  if (!claims.sub) throw new Error("Missing subject");
 
   const jwks = await googleJwks(fetchImpl);
   const jwk = jwks.keys.find(key => key.kid === header.kid && key.kty === "RSA");

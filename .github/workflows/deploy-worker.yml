@@ -39,6 +39,19 @@ jobs:
           command: deploy
           workingDirectory: .
 
+      # The first requests after a deploy may finish a database upgrade in
+      # chunks; the API answers 503 until it is done.
+      - name: Wait for the database upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' "https://petrfitnessdata.eu/app/api/me" || true)"
+            if [ "$code" != "503" ] && [ "$code" != "000" ]; then echo "API ready (HTTP $code)"; exit 0; fi
+            echo "Database upgrade in progress (attempt $attempt)"; sleep 10
+          done
+          echo "Database upgrade did not finish in time"; exit 1
+
       - name: Request GitHub OIDC token for strength smoke test
         id: oidc_strength
         shell: bash

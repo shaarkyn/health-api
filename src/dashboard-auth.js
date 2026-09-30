@@ -2,8 +2,6 @@ import { verifyGitHubActionsToken } from "./github-oidc.js";
 
 const SESSION_COOKIE = "pfd_session";
 export const SESSION_SECONDS = 30 * 24 * 60 * 60;
-const LOGIN_WINDOW_SECONDS = 15 * 60;
-const LOGIN_MAX_FAILURES = 10;
 
 // Routes reachable without a dashboard session or API key. Everything else
 // requires authentication. Routes listed here either serve static/public
@@ -19,7 +17,6 @@ const PUBLIC_PATHS = new Set([
   "/openapi.json",
   "/app",
   "/app/dashboard-client.js",
-  "/app/login",
   "/app/logout",
   "/auth/google",
   "/auth/google/callback",
@@ -39,20 +36,25 @@ export function isPublicPath(pathname) {
   return PUBLIC_PATHS.has(pathname) || PUBLIC_PREFIXES.some(prefix => pathname.startsWith(prefix));
 }
 
-// Accepts a signed dashboard session cookie, the STRENGTH_API_KEY bearer
-// (API clients and the OAuth-issued access token) or a GitHub Actions OIDC
-// token from one of the allowed workflows.
-export async function isAuthorizedRequest(request, env, verifyOidc = verifyGitHubActionsToken) {
+// Identifies who is calling: a signed-in user (session cookie), the owner's
+// API key (MCP, API clients, internal hops) or a GitHub Actions workflow.
+// Returns null for anonymous or invalid credentials.
+export async function resolvePrincipal(request, env, verifyOidc = verifyGitHubActionsToken) {
   const secret = String(env.STRENGTH_API_KEY || "");
-  if (!secret) return false;
-  if (await verifyDashboardSession(request, secret)) return true;
+  if (!secret) return null;
+  const session = await verifyDashboardSession(request, secret);
+  if (session) return { kind: "user", userId: session.uid };
   const authorization = request.headers.get("Authorization") || "";
-  if (!authorization.startsWith("Bearer ")) return false;
+  if (!authorization.startsWith("Bearer ")) return null;
   const token = authorization.slice(7).trim();
-  if (!token) return false;
-  if (timingSafeEqualString(token, secret)) return true;
-  if (token.split(".").length !== 3) return false;
-  try { await verifyOidc(request); return true; } catch { return false; }
+  if (!token) return null;
+  if (timingSafeEqualString(token, secret)) return { kind: "owner" };
+  if (token.split(".").length !== 3) return null;
+  try { await verifyOidc(request); return { kind: "system" }; } catch { return null; }
+}
+
+export async function isAuthorizedRequest(request, env, verifyOidc = verifyGitHubActionsToken) {
+  return Boolean(await resolvePrincipal(request, env, verifyOidc));
 }
 
 export function unauthorizedResponse() {
@@ -62,66 +64,34 @@ export function unauthorizedResponse() {
   );
 }
 
-export async function handleDashboardLogin(request, env) {
-  const expected = String(env.STRENGTH_API_KEY || "");
-  if (!expected) return Response.json({status:"error",message:"Dashboard authentication is not configured."},{status:503});
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  if (await recentLoginFailures(env.DB, ip) >= LOGIN_MAX_FAILURES) {
-    return Response.json({status:"error",message:"Příliš mnoho pokusů. Zkus to znovu za 15 minut."},{status:429,headers:{"Retry-After":String(LOGIN_WINDOW_SECONDS),"Cache-Control":"no-store"}});
-  }
-  const body = await request.json().catch(() => ({}));
-  const key = String(body?.key || "");
-  if (!key || !timingSafeEqualString(key, expected)) {
-    await recordLoginFailure(env.DB, ip);
-    return Response.json({status:"error",message:"Neplatný přístupový klíč."},{status:401});
-  }
-  const exp = Math.floor(Date.now()/1000) + SESSION_SECONDS;
-  const cookie = await sessionCookie(exp, expected);
-  return Response.json({status:"ok",expiresAt:new Date(exp*1000).toISOString()},{headers:{"Set-Cookie":cookie,"Cache-Control":"no-store"}});
-}
-
 export function handleDashboardLogout() {
   return new Response(JSON.stringify({status:"ok"}),{status:200,headers:{"content-type":"application/json; charset=utf-8","Set-Cookie":SESSION_COOKIE+"=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax","Cache-Control":"no-store"}});
 }
 
+// Returns the session payload ({uid, exp}) or null.
 export async function verifyDashboardSession(request, secret) {
-  if (!secret) return false;
+  if (!secret) return null;
   const cookieHeader = request.headers.get("Cookie") || "";
   const match = cookieHeader.split(";").map(x=>x.trim()).find(x=>x.startsWith(SESSION_COOKIE+"="));
-  if (!match) return false;
+  if (!match) return null;
   const token = match.slice(SESSION_COOKIE.length+1);
   const dot = token.lastIndexOf(".");
-  if (dot <= 0) return false;
+  if (dot <= 0) return null;
   const payload = token.slice(0,dot), sig = token.slice(dot+1);
   const expected = await dashboardHmac(payload, secret);
-  if (!timingSafeEqualString(sig, expected)) return false;
+  if (!timingSafeEqualString(sig, expected)) return null;
   try {
     const data = JSON.parse(new TextDecoder().decode(fromBase64url(payload)));
-    return Number(data?.exp) > Math.floor(Date.now()/1000);
-  } catch { return false; }
+    const uid = Number(data?.uid);
+    if (!(Number(data?.exp) > Math.floor(Date.now()/1000)) || !Number.isInteger(uid) || uid <= 0) return null;
+    return { uid, exp: Number(data.exp) };
+  } catch { return null; }
 }
 
-export async function sessionCookie(exp, secret) {
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({exp})));
+export async function sessionCookie(uid, exp, secret) {
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({uid:Number(uid),exp})));
   const signature = await dashboardHmac(payload, secret);
   return SESSION_COOKIE+"="+payload+"."+signature+"; Path=/; Max-Age="+SESSION_SECONDS+"; HttpOnly; Secure; SameSite=Lax";
-}
-
-// Throttling fails open when D1 is unavailable so a storage outage never
-// locks the owner out; failures are still logged.
-async function recentLoginFailures(db, ip) {
-  try {
-    const since = Math.floor(Date.now()/1000) - LOGIN_WINDOW_SECONDS;
-    const row = await db.prepare("SELECT COUNT(*) AS n FROM dashboard_login_failures WHERE ip=? AND failed_at>?").bind(ip, since).first();
-    return Number(row?.n) || 0;
-  } catch (error) { console.error("Login throttle unavailable", error.message); return 0; }
-}
-async function recordLoginFailure(db, ip) {
-  try {
-    const now = Math.floor(Date.now()/1000);
-    await db.prepare("INSERT INTO dashboard_login_failures(ip,failed_at) VALUES(?,?)").bind(ip, now).run();
-    await db.prepare("DELETE FROM dashboard_login_failures WHERE failed_at<=?").bind(now - LOGIN_WINDOW_SECONDS).run();
-  } catch (error) { console.error("Login failure not recorded", error.message); }
 }
 
 async function dashboardHmac(value, secret) {
