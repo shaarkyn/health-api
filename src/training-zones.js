@@ -73,10 +73,14 @@ export function powerZones(profile = {}, ftp = null) {
   const custom = profile.powerZoneModel === "custom" && profile.powerZoneBounds;
   const model = custom ? null : POWER_ZONE_MODELS[profile.powerZoneModel] || POWER_ZONE_MODELS.coggan7;
   const bounds = custom ? profile.powerZoneBounds : model.bounds;
-  const names = model?.names || bounds.concat([null]).map((_, i) => "Z" + (i + 1));
+  // Custom bounds keep the names of the preset with the same number of zones.
+  const names = model?.names || Object.values(POWER_ZONE_MODELS).find(m => m.bounds.length === bounds.length && m !== POWER_ZONE_MODELS.sweetSpot)?.names || bounds.concat([null]).map((_, i) => "Z" + (i + 1));
   return names.slice(0, bounds.length + 1).map((name, i) => {
     const low = i === 0 ? 0 : bounds[i - 1] + 1, high = i < bounds.length ? bounds[i] : null;
-    return { zone: i + 1, name, percentLow: low, percentHigh: high, wattsLow: ftp ? round(ftp * low / 100) : null, wattsHigh: ftp && high != null ? round(ftp * high / 100) : null };
+    // Watt ranges follow on from the previous zone's top, so bounds typed in
+    // watts (stored as fractional %) come back as the same watts.
+    const wattsLow = !ftp ? null : i === 0 ? 0 : round(ftp * bounds[i - 1] / 100) + 1;
+    return { zone: i + 1, name, percentLow: low, percentHigh: high, wattsLow, wattsHigh: ftp && high != null ? round(ftp * high / 100) : null };
   });
 }
 
@@ -98,5 +102,5 @@ export function hrZones(profile = {}) {
 
 // Which power zone a % FTP value falls into.
 export function zoneForPercent(zones, percent) {
-  return zones.find(z => percent >= z.percentLow && (z.percentHigh == null || percent <= z.percentHigh)) || zones.at(-1);
+  return zones.find(z => z.percentHigh == null || percent <= z.percentHigh) || zones.at(-1);
 }

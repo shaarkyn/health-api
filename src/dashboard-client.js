@@ -960,6 +960,17 @@ async function loadTrainingProfile(){
   catch(e){card.innerHTML='<h3>FTP a zóny</h3><div class="notice">'+esc(e.message)+'</div>'}
 }
 function zoneBoundsEditor(id,bounds,unit){return '<div class="select-row" style="flex-wrap:wrap;gap:6px">'+bounds.map((b,i)=>'<label class="small">Z'+(i+1)+' do <input data-bound="'+id+'" type="number" value="'+esc(b)+'" style="'+inputStyle+';width:70px"> '+unit+'</label>').join('')+'</div>'}
+// Power zone bounds can be typed in % FTP or in watts; the two fields stay in sync.
+function powerBoundsEditor(bounds,ftp){
+  const pct=b=>Math.round(b*10)/10;
+  return '<p class="small" style="margin:8px 0 4px">Horní hranice zón – zadej v % FTP nebo ve wattech'+(ftp?' (z FTP '+esc(ftp)+' W; uloží se v %, takže se při změně FTP přepočítají)':' (watty jdou zadat po nastavení FTP)')+'.</p><div style="display:grid;gap:6px">'+bounds.map((b,i)=>'<div class="select-row" style="gap:6px;flex-wrap:wrap"><span class="small" style="min-width:34px">Z'+(i+1)+' do</span><input data-bound="power" data-index="'+i+'" type="number" step="0.1" value="'+esc(pct(b))+'" aria-label="Z'+(i+1)+' horní hranice v % FTP" style="'+inputStyle+';width:80px"><span class="small">%</span><input data-bound-watts="'+i+'" type="number" value="'+(ftp?Math.round(ftp*b/100):'')+'"'+(ftp?'':' disabled')+' aria-label="Z'+(i+1)+' horní hranice ve wattech" style="'+inputStyle+';width:80px"><span class="small">W</span></div>').join('')+'</div>';
+}
+function wirePowerBoundsEditor(ftp){
+  if(!ftp)return;
+  document.querySelectorAll('[data-bound-watts]').forEach(w=>{const p=document.querySelector('[data-bound="power"][data-index="'+w.dataset.boundWatts+'"]');
+    w.oninput=()=>{if(w.value)p.value=Math.round(Number(w.value)/ftp*1000)/10};
+    p.oninput=()=>{if(p.value)w.value=Math.round(ftp*Number(p.value)/100)}});
+}
 function renderTrainingProfile(d){
   const p=d.profile||{},r=d.resolved||{},card=$('trainingProfileCard');
   const src={manual:'nastaveno ručně','intervals-settings':'z nastavení Intervals.icu','latest-ride':'z poslední jízdy'}[r.ftpSource]||'nenastaveno';
@@ -971,17 +982,22 @@ function renderTrainingProfile(d){
     '<div class="select-row" style="gap:8px;flex-wrap:wrap"><label class="small">Ruční FTP <input id="tpFtp" type="number" min="50" max="600" value="'+esc(p.ftp||'')+'" placeholder="W" style="'+inputStyle+';width:90px"></label>'+(p.ftp?'<button class="btn" type="button" id="tpClearFtp">Použít FTP z Intervals</button>':'')+'</div>'+
     '<details class="explain-block"><summary>Spočítat FTP z testu</summary><div class="select-row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><select id="tpMethod" style="'+inputStyle+'">'+d.ftpMethods.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.label)+'</option>').join('')+'</select><span id="tpMethodInputs"></span><button class="btn" type="button" id="tpEstimate">Spočítat</button></div><div class="small" id="tpEstimateResult" aria-live="polite"></div></details>'+
     '<h4 style="margin:14px 0 6px">Výkonové zóny</h4><select id="tpPowerModel" style="'+inputStyle+'">'+d.powerZoneModels.map(m=>'<option value="'+esc(m.id)+'"'+(m.id===powerModel?' selected':'')+'>'+esc(m.label)+'</option>').join('')+'<option value="custom"'+(powerModel==='custom'?' selected':'')+'>Vlastní hranice</option></select>'+
-    (powerModel==='custom'?zoneBoundsEditor('power',powerBounds,'% FTP'):'')+
-    '<table class="step-table" style="margin-top:8px"><thead><tr><th>Zóna</th><th>% FTP</th><th>Watty</th></tr></thead><tbody>'+d.powerZones.map(z=>'<tr><td>'+esc(z.name)+'</td><td>'+z.percentLow+(z.percentHigh!=null?'–'+z.percentHigh:'+')+' %</td><td>'+(z.wattsLow!=null?z.wattsLow+(z.wattsHigh!=null?'–'+z.wattsHigh:'+')+' W':'—')+'</td></tr>').join('')+'</tbody></table>'+
+    (powerModel==='custom'?powerBoundsEditor(powerBounds,r.ftp):'<button class="btn" type="button" id="tpEditPower" style="margin-left:8px">Upravit hranice (% / W)</button>')+
+    '<table class="step-table" style="margin-top:8px"><thead><tr><th>Zóna</th><th>% FTP</th><th>Watty</th></tr></thead><tbody>'+d.powerZones.map(z=>'<tr><td>'+esc(z.name)+'</td><td>'+Math.round(z.percentLow)+(z.percentHigh!=null?'–'+Math.round(z.percentHigh):'+')+' %</td><td>'+(z.wattsLow!=null?z.wattsLow+(z.wattsHigh!=null?'–'+z.wattsHigh:'+')+' W':'—')+'</td></tr>').join('')+'</tbody></table>'+
     '<h4 style="margin:14px 0 6px">Tepové zóny</h4><div class="select-row" style="gap:8px;flex-wrap:wrap">'+[['tpLthr','LTHR',r.lthr],['tpMaxHr','Max. tep',r.maxHr],['tpRestHr','Klidový tep',r.restHr]].map(([id,l,v])=>'<label class="small">'+l+' <input id="'+id+'" type="number" value="'+esc(v||'')+'" placeholder="bpm" style="'+inputStyle+';width:80px"></label>').join('')+
     '<select id="tpHrModel" style="'+inputStyle+'">'+d.hrZoneModels.map(m=>'<option value="'+esc(m.id)+'"'+(m.id===hrModel?' selected':'')+'>'+esc(m.label)+'</option>').join('')+'<option value="custom"'+(hrModel==='custom'?' selected':'')+'>Vlastní hranice (bpm)</option></select></div>'+
-    (hrModel==='custom'?zoneBoundsEditor('hr',hrBounds.length?hrBounds:[130,145,155,165],'bpm'):'')+
+    (hrModel==='custom'?zoneBoundsEditor('hr',hrBounds.length?hrBounds:[130,145,155,165],'bpm'):'<button class="btn" type="button" id="tpEditHr" style="margin-left:8px">Upravit hranice (bpm)</button>')+
     '<table class="step-table" style="margin-top:8px"><thead><tr><th>Zóna</th><th>Tep</th></tr></thead><tbody>'+d.hrZones.map(z=>'<tr><td>'+esc(z.name)+'</td><td>'+(z.bpmLow==null&&z.bpmHigh==null?'—':z.bpmLow==null?'do '+z.bpmHigh+' bpm':z.bpmLow+(z.bpmHigh!=null?'–'+z.bpmHigh:'+')+' bpm')+'</td></tr>').join('')+'</tbody></table>'+
     (d.hrZones.every(z=>z.bpmHigh==null&&z.bpmLow==null)?'<p class="small">Pro výpočet tepových zón doplň LTHR, max. tep, nebo max. a klidový tep podle zvoleného modelu.</p>':'')+
     '<div class="workout-filter-actions" style="margin-top:12px"><button class="btn primary" type="button" id="tpSave">Uložit</button><span class="small" id="tpResult" aria-live="polite"></span></div>';
   const methodInputs=()=>{const m=d.ftpMethods.find(x=>x.id===$('tpMethod').value);$('tpMethodInputs').innerHTML=m.inputs.map(i=>'<label class="small">'+esc(i.label)+' <input data-ftp-input="'+esc(i.key)+'" type="number" step="0.1" style="'+inputStyle+';width:90px"></label>').join(' ')};
   $('tpMethod').onchange=methodInputs;methodInputs();
   $('tpEstimate').onclick=async()=>{const inputs={};document.querySelectorAll('[data-ftp-input]').forEach(i=>inputs[i.dataset.ftpInput]=i.value);try{const r2=await jsonFetch('/app/api/training-profile/estimate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:$('tpMethod').value,inputs})});$('tpEstimateResult').innerHTML='FTP ≈ <strong>'+r2.ftp+' W</strong> <button class="btn" type="button" id="tpUseEstimate">Použít</button>';$('tpUseEstimate').onclick=()=>{$('tpFtp').value=r2.ftp;state.tpFtpMethod=$('tpMethod').value;toast('FTP '+r2.ftp+' W – ulož nastavení.')}}catch(e){$('tpEstimateResult').textContent=e.message}};
+  // Switching to custom bounds starts from the zones shown now.
+  state.tpSeed={power:powerBounds,hr:hrBounds.length?hrBounds:[130,145,155,165]};
+  wirePowerBoundsEditor(r.ftp);
+  const editPower=$('tpEditPower');if(editPower)editPower.onclick=()=>{$('tpPowerModel').value='custom';saveTrainingProfileForm()};
+  const editHr=$('tpEditHr');if(editHr)editHr.onclick=()=>{$('tpHrModel').value='custom';saveTrainingProfileForm()};
   // Changing a model saves right away so the tables show the new zones.
   $('tpPowerModel').onchange=saveTrainingProfileForm;$('tpHrModel').onchange=saveTrainingProfileForm;
   const clear=$('tpClearFtp');if(clear)clear.onclick=()=>{$('tpFtp').value='';saveTrainingProfileForm()};
@@ -990,8 +1006,8 @@ function renderTrainingProfile(d){
 function collectTrainingProfile(){
   const v=id=>$(id)?.value?Number($(id).value):undefined,bounds=k=>[...document.querySelectorAll('[data-bound="'+k+'"]')].map(i=>Number(i.value));
   const out={ftp:v('tpFtp'),ftpMethod:state.tpFtpMethod,powerZoneModel:$('tpPowerModel').value,lthr:v('tpLthr'),maxHr:v('tpMaxHr'),restHr:v('tpRestHr'),hrZoneModel:$('tpHrModel').value};
-  if(out.powerZoneModel==='custom'){const b=bounds('power');out.powerZoneBounds=b.length?b:[55,75,90,105,120,150]}
-  if(out.hrZoneModel==='custom'){const b=bounds('hr');out.hrZoneBounds=b.length?b:[130,145,155,165]}
+  if(out.powerZoneModel==='custom'){const b=bounds('power');out.powerZoneBounds=b.length?b:(state.tpSeed?.power||[55,75,90,105,120,150])}
+  if(out.hrZoneModel==='custom'){const b=bounds('hr');out.hrZoneBounds=b.length?b:(state.tpSeed?.hr||[130,145,155,165])}
   return out;
 }
 async function saveTrainingProfileForm(){
