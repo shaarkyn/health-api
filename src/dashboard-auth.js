@@ -1,7 +1,7 @@
 import { verifyGitHubActionsToken } from "./github-oidc.js";
 
 const SESSION_COOKIE = "pfd_session";
-const SESSION_SECONDS = 30 * 24 * 60 * 60;
+export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 const LOGIN_WINDOW_SECONDS = 15 * 60;
 const LOGIN_MAX_FAILURES = 10;
 
@@ -21,6 +21,8 @@ const PUBLIC_PATHS = new Set([
   "/app/dashboard-client.js",
   "/app/login",
   "/app/logout",
+  "/auth/google",
+  "/auth/google/callback",
   "/app/api/food/reference-data",
   "/mcp",
   "/mcp/health",

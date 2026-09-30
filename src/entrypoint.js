@@ -25,6 +25,7 @@ import { handleGoogleOAuth } from "./google-oauth.js";
 import { importStrengthHistory, getStrengthHistory } from "./strength-history.js";
 import { searchCookbookRecipes, logFood } from "./food-log.js";
 import legacyHealthApi from "./index.js";
+import { handleGoogleLogin } from "./google-login.js";
 import { isPublicPath, isAuthorizedRequest, unauthorizedResponse, handleDashboardLogin, handleDashboardLogout, verifyDashboardSession } from "./dashboard-auth.js";
 
 const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/openapi.json";
@@ -68,6 +69,8 @@ export default {
     if (url.pathname === "/app/dashboard-client.js" && request.method === "GET") return new Response(dashboardClient, { status: 200, headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
     if (url.pathname === "/app/login" && request.method === "POST") return handleDashboardLogin(request, env);
     if (url.pathname === "/app/logout" && request.method === "POST") return handleDashboardLogout();
+    const googleLogin = await handleGoogleLogin(request, env, url.pathname);
+    if (googleLogin) return googleLogin;
     if (url.pathname.startsWith("/app/api/")) return handleDashboardApi(request, env, ctx, url);
     if (url.pathname === "/" && request.method === "GET") return homepagePage();
     if (url.pathname === "/privacy" && request.method === "GET") return privacyPage();
