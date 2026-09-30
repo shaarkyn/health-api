@@ -1,6 +1,7 @@
 // Human explanation of a recommended workout: why this one today, how to ride
 // it, fuelling, and the step list with % FTP and watts.
 import { n } from "./workout-model.js";
+import { zoneForPercent } from "./training-zones.js";
 
 const SYSTEM_LABEL = { recovery: "Recovery", endurance: "Endurance", tempo: "Tempo", sweet_spot: "Sweet Spot", threshold: "Threshold", vo2max: "VO₂max", anaerobic: "Anaerobní kapacita", sprint: "Sprint" };
 
@@ -26,7 +27,7 @@ function fueling(minutes, system) {
 const ZONE_RANGE = { Z1: [40, 55], Z2: [56, 75], Z3: [76, 90], Z4: [91, 105], Z5: [106, 120], Z6: [121, 150], Z7: [151, 200] };
 
 // Steps grouped as they appear in the workout, with watt targets.
-export function stepRows(structure = [], { ftp = null, environment = "indoor" } = {}) {
+export function stepRows(structure = [], { ftp = null, environment = "indoor", zones = null } = {}) {
   const watts = pct => ftp ? Math.round(ftp * pct / 100) : null;
   const width = p => environment === "outdoor" ? (p >= 106 ? 4 : p >= 76 ? 3 : 5) : 0;
   const row = s => {
@@ -35,7 +36,8 @@ export function stepRows(structure = [], { ftp = null, environment = "indoor" } 
     return {
       durationSeconds: Math.round(n(s.durationMinutes, 0) * 60), percentLow: Math.round(low), percentHigh: Math.round(high),
       wattsLow: s.free ? null : watts(low), wattsHigh: s.free ? null : watts(high), free: Boolean(s.free), ramp: Boolean(s.ramp),
-      cadence: s.cadence || null, note: s.note || null
+      cadence: s.cadence || null, note: s.note || null,
+      zone: zones && !s.free ? zoneForPercent(zones, (low + high) / 2)?.name || null : null
     };
   };
   return structure.map(block => block.steps ? { repeats: n(block.repeats, 1), note: block.note || null, steps: block.steps.map(row) } : { repeats: 1, steps: [row(block)] });
@@ -58,15 +60,15 @@ export function explainWorkout(workout, { coach = {}, environment = "indoor", th
   else if (p) why.push("Tvoje úroveň " + (SYSTEM_LABEL[p.system] || p.system) + " je " + Number(p.capabilityLevel).toFixed(1) + "; dnes cílím obtížnost " + Number(p.targetDifficulty).toFixed(1) + " a tento trénink má " + Number(workout.difficulty).toFixed(1) + ".");
   if (!coach.rationale?.length && !planned) why.push("V plánu na tento den nic nemáš, proto vybírám podle zátěže posledních dní a tvé úrovně.");
   const how = [...(HOW[system] || HOW.endurance)];
-  if (ftp) how.unshift("Watty počítám z tvého " + (environment === "indoor" && thresholds.indoorFtp ? "indoor " : "") + "FTP " + ftp + " W" + (thresholds.source === "latest-ride" ? " (z poslední jízdy)" : " (z Intervals.icu)") + ".");
-  else how.unshift("FTP v Intervals.icu nemám – cíle jsou v % FTP. Nastav FTP v Intervals.icu → Settings → Cycling.");
+  if (ftp) how.unshift("Watty počítám z tvého " + (environment === "indoor" && thresholds.indoorFtp ? "indoor " : "") + "FTP " + ftp + " W" + ({ manual: " (nastaveno v aplikaci)", "latest-ride": " (z poslední jízdy)" }[thresholds.source] || " (z Intervals.icu)") + ".");
+  else how.unshift("FTP neznám – cíle jsou v % FTP. Zadej nebo spočítej FTP v Nastavení → FTP a zóny.");
   return {
     title: SYSTEM_LABEL[system] || system,
     why, how,
     environment: workout.environment_notes || [],
     fueling: fueling(minutes, system),
     ftp: ftp || null, ftpSource: thresholds.source || null,
-    steps: stepRows(structure, { ftp, environment }),
-    planned: planned ? { name: planned.name, minutes: planned.minutes, system: planned.system, intensityFactor: planned.intensityFactor, steps: stepRows(planned.structure || [], { ftp, environment: "indoor" }) } : null
+    steps: stepRows(structure, { ftp, environment, zones: thresholds.powerZones }),
+    planned: planned ? { name: planned.name, minutes: planned.minutes, system: planned.system, intensityFactor: planned.intensityFactor, steps: stepRows(planned.structure || [], { ftp, environment: "indoor", zones: thresholds.powerZones }) } : null
   };
 }

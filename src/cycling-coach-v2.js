@@ -133,6 +133,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   const requestedMinutes=clamp(n(availabilityMinutes,n(preferences.availableMinutes,n(plannedInfo?.minutes,n(plannedToday?.durationHours)*60||90))),30,360);
   const cadence=preferences.cadence||"85–95 rpm";
   const rationale=[];
+  let returning=false;
 
   // Recovery week: this week's load (done + planned) well below last week's,
   // or a plan named that way.
@@ -161,6 +162,27 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   else if(requestedMinutes>=150) kind="long_endurance";
   else if(phase==="build"&&hard7<2) kind=domains.high<domains.moderate*0.35?"vo2":"threshold";
   else if(phase==="base"&&hard7<2&&domains.moderate<domains.low*0.45) kind="sweet_spot";
+  else if(!recoveryWeek){
+    // Nothing planned and no phase set: decide from the recent rides.
+    const lastRide=completedAll.map(a=>diffDays(targetDate,a.date)).filter(d=>d!=null&&d>=0).sort((a,b)=>a-b)[0];
+    const lastHard=completedAll.filter(isHard).map(a=>diffDays(targetDate,a.date)).filter(d=>d!=null&&d>=0).sort((a,b)=>a-b)[0];
+    if(lastRide==null||lastRide>=7){
+      kind="endurance";returning=true;
+      rationale.push(lastRide==null?"V datech nevidím žádnou nedávnou jízdu – začínám aerobní jízdou; kvalitu přidám, až bude trénink zase pravidelný.":"Posledních "+lastRide+" dní bez jízdy – návrat přes aerobní jízdu se sníženou obtížností, kvalita přijde v dalších dnech.");
+    } else if(readiness==="green"&&hard7===0){
+      // The quality system trained longest ago (by feedback), in phase order.
+      const order=phase==="build"?["threshold","vo2max","sweet_spot"]:["sweet_spot","threshold","vo2max"];
+      const lastTouched=sys=>Date.parse(capabilities?.[sys]?.updated_at||"")||0;
+      const pick=[...order].sort((a,b)=>lastTouched(a)-lastTouched(b))[0];
+      kind=pick==="vo2max"?"vo2":pick;
+      rationale.push("Tento týden zatím žádná kvalita a jsi odpočatý"+(tsb!=null?" (TSB "+Math.round(tsb)+")":"")+" – je čas na kvalitní trénink. "+({sweet_spot:"Sweet spot",threshold:"Práh",vo2max:"VO₂max"}[pick])+" jsi z kvalitních systémů trénoval nejdéle.");
+    } else if(readiness==="green"&&hard7===1&&(lastHard==null||lastHard>=2)){
+      kind=domains.high<domains.moderate?"vo2":"threshold";
+      rationale.push("Jedna kvalita v týdnu už byla a od ní uběhlo "+(lastHard??"několik")+" dní – přidávám druhou, jiného typu.");
+    } else {
+      rationale.push(hard7>=2?"Dvě kvalitní jízdy v týdnu už byly – dnes aerobní objem.":lastHard!=null&&lastHard<2?"Kvalita byla před méně než 48 h – dnes aerobní jízda na zotavení.":"Připravenost není ideální pro kvalitu – aerobní jízda je bezpečná volba.");
+    }
+  }
 
   const adaptations=[];
   if(readiness==="red"){
@@ -185,7 +207,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   const capability=capabilities?.[capabilitySystem]||null;
   const capabilityLevel=n(capability?.level,3);
   const progressionOffset=readiness==="green"?.45:readiness==="yellow"?-.25:-1;
-  const targetDifficulty=Math.round(clamp(capabilityLevel+progressionOffset+(phase==="build"?.2:phase==="recovery"?-.6:0),1,10)*10)/10;
+  const targetDifficulty=Math.round(clamp(capabilityLevel+progressionOffset+(phase==="build"?.2:phase==="recovery"?-.6:0)-(returning?1:0),1,10)*10)/10;
   const progressionAction=readiness==="red"?"deload":targetDifficulty>capabilityLevel+.1?"progress":targetDifficulty<capabilityLevel-.1?"regress":"maintain";
   const alternatives=[];
   if(kind!=="endurance") alternatives.push(workoutTemplate("endurance",Math.min(requestedMinutes,90),cadence));
