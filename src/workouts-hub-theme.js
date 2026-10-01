@@ -73,4 +73,48 @@ export const workoutsHubTheme = `
 .zone-panel select{width:100%;margin-bottom:8px}
 @media(max-width:1050px){.hub-week{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:700px){.hub-week{grid-template-columns:repeat(2,minmax(0,1fr))}.week-hub-tools{width:100%}.activity-gallery{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+.insight-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px}
+.insight-grid .card h3{margin:2px 0 10px}
+.fresh-layout{display:grid;grid-template-columns:minmax(200px,300px) minmax(0,1fr);gap:16px;align-items:center}
+.muscle-map{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.muscle-map .gym-figure{display:block!important;text-align:center;font-size:10px;color:#9ca6b5}
+.muscle-map .gym-figure svg{width:100%;max-height:300px}
+.muscle-map .gym-muscle{cursor:default;stroke:#1d262d}.muscle-map .gym-muscle:hover{fill:var(--fresh-fill);filter:brightness(1.15)}
+.fresh-list{display:grid;gap:5px;min-width:0}
+.fresh-row{display:grid;grid-template-columns:minmax(90px,1.1fr) minmax(60px,1fr) 46px 70px;gap:8px;align-items:center;font-size:12px}
+.fresh-row strong{text-align:right;font-variant-numeric:tabular-nums}.fresh-row small{color:#9ca6b5;font-size:10px}
+.fresh-bar{height:6px;border-radius:9px;background:#252b36;overflow:hidden}.fresh-bar i{display:block;height:100%;border-radius:9px}
+.fresh-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:#9ca6b5}.fresh-legend i,.focus-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.load-gauge{display:block;width:100%;max-width:260px;margin:0 auto}
+.load-status{text-align:center;font-weight:800;margin:4px 0 8px;color:#3fda9c}.load-status.detraining{color:#64d2ff}.load-status.maintaining{color:#c6acff}.load-status.peaking{color:#ffc15c}.load-status.overtraining{color:#ff6478}.load-status.calibrating{color:#9ca6b5}
+.spark-bars{width:100%;height:60px;display:block;margin:6px 0}
+.load-muscles{display:flex;flex-wrap:wrap;gap:5px}.load-muscles .pill{font-size:10px}
+.load-overtraining{color:#ff9aa7}.load-detraining{color:#9fdcff}.load-productive{color:#8ff0ca}
+.focus-bar{display:flex;height:14px;border-radius:8px;overflow:hidden;background:#252b36;margin:6px 0 10px}
+.focus-bar i{display:block;height:100%}
+.low{background:#64d2ff}.high{background:#ffc15c}.anaerobic{background:#ff6478}
+.focus-legend{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.focus-legend b{display:block;font-size:20px}.focus-legend span{font-size:11px;color:#9ca6b5}
+.focus-weeks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end;height:110px;margin:14px 0 6px}
+.focus-weeks>div{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.focus-week{display:flex;flex-direction:column;width:34px;height:var(--h);border-radius:6px;overflow:hidden}.focus-week i{display:block;width:100%}
+.focus-weeks small{font-size:10px;color:#9ca6b5}
+.pr-badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+.pr-badge{display:grid;grid-template-columns:38px 1fr;gap:2px 8px;align-items:center;padding:8px;border-radius:12px;background:#151b26;border:1px solid #2a3140}
+.pr-badge span{grid-row:span 2;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-weight:800;color:#fff;background:radial-gradient(circle at 35% 30%,#8bb8ff,#3b6fd8)}
+.pr-heaviest span{background:radial-gradient(circle at 35% 30%,#ffb38a,#e8642c)}.pr-setVolume span,.pr-sessionVolume span{background:radial-gradient(circle at 35% 30%,#ffe08a,#e0a21a)}.pr-setReps span{background:radial-gradient(circle at 35% 30%,#d6b5ff,#8a55e8)}
+.pr-badge strong{font-size:14px}.pr-badge small{font-size:10px;color:#9ca6b5;line-height:1.3}
+.pr-table{font-size:12px}.pr-table td,.pr-table th{padding:6px 8px}
+.pr-cardio{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px}
+.pr-cardio div{display:grid;gap:2px;padding:8px 10px;border-radius:10px;background:#151b26;border:1px solid #2a3140}.pr-cardio span{font-size:18px}.pr-cardio strong{font-size:15px}.pr-cardio small{font-size:10px;color:#9ca6b5}
+.timeline{list-style:none;margin:6px 0 0;padding:0 0 0 6px;display:grid;gap:0}
+.timeline li{position:relative;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0 8px;border-left:2px solid #2a3140;padding-left:14px;margin-left:10px}
+.timeline .tl-icon{position:absolute;left:-17px;top:6px;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#1a2030;border:1px solid #333b49;font-size:15px}
+.timeline li>div{grid-column:2;min-width:0}.timeline strong{display:block;font-size:13px}.timeline small{display:block;color:#9ca6b5;font-size:11px;overflow-wrap:anywhere}
+.timeline time{grid-column:3;font-size:12px;color:#c9d2de;font-variant-numeric:tabular-nums}
+.tl-sleep .tl-icon{background:#241f45}.tl-food .tl-icon{background:#2b2342}.tl-activity .tl-icon{background:#173a30}.tl-planned .tl-icon{border-style:dashed}
+.copy-days{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.copy-days label{display:inline-flex!important;align-items:center;gap:5px;padding:5px 8px;border:1px solid #333b49;border-radius:8px;font-size:12px;min-width:0!important}
+.hrr-card{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:14px 0;padding:12px 14px;border-radius:12px;background:#151b26;border:1px solid #2a3140}.hrr-card strong{display:block;font-size:24px;color:#ff9c97}.hrr-card small{color:#9ca6b5;font-size:11px}.hrr-card p{margin:0;max-width:340px}
+.activity-extras h3{margin:14px 0 8px}
+@media(max-width:1050px){.insight-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.fresh-layout{grid-template-columns:1fr}.muscle-map{max-width:320px;margin:auto}.fresh-row{grid-template-columns:minmax(80px,1fr) minmax(50px,1fr) 40px}.fresh-row small{display:none}.focus-legend b{font-size:16px}}
 `;

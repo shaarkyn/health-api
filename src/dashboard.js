@@ -1,6 +1,6 @@
 import {experienceTheme} from './experience-theme.js';
 import {mobileTheme} from './mobile-theme.js';
-import {gymFocusView,gymFocusTheme} from './gym-focus-view.js';
+import {gymFocusView,gymFocusTheme,muscleMapView} from './gym-focus-view.js';
 import {workoutsHubTheme} from './workouts-hub-theme.js';
 export function dashboardPage() {
   const html = `<!doctype html>
@@ -170,6 +170,7 @@ body{background:radial-gradient(circle at 78% -12%,#211938 0,transparent 28%),va
 </section>
 
 </div></main></div>
+<template id="muscleMapTemplate">${muscleMapView()}</template>
 <div id="toast" class="toast"></div>
 <style>${experienceTheme}${mobileTheme}${gymFocusTheme}${workoutsHubTheme}</style>
 <script src="/app/dashboard-client.js?v=20261001-hub" defer></script>
