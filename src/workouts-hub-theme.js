@@ -122,4 +122,56 @@ export const workoutsHubTheme = `
 .pulse-macro i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 .pulse-macro-bar{height:5px;border-radius:9px;background:#2a343e;overflow:hidden}.pulse-macro-bar i{display:block;width:0;height:100%;border-radius:9px;margin:0}
 .pulse-macro b{font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Phone layout */
+@media(max-width:700px){
+  .pulse-header{margin-bottom:12px}.pulse-header h1{font-size:24px!important}.pulse-header p{font-size:13px}
+  .pulse-grid{gap:8px!important}
+  .pulse-card{display:grid!important;grid-template-columns:72px 1fr!important;gap:12px!important;padding:13px 14px!important;align-items:center}
+  .pulse-ring{width:72px!important;height:72px!important;margin:0!important}.pulse-ring strong{font-size:19px!important}
+  .pulse-card h3{font-size:16px!important;margin:2px 0 3px!important}.pulse-card p{font-size:12px;margin:0}
+  .pulse-macro{grid-template-columns:70px minmax(30px,1fr) auto}
+  #workouts .hero-status{display:none}#workouts .section-hero h1{font-size:26px}#workouts .section-hero p{font-size:13px}
+  .sport-switch .btn{flex:1;padding:8px 6px}
+  .week-hub-head{margin-bottom:8px}
+  .week-hub-tools{display:flex;flex-wrap:nowrap;gap:6px;width:100%}
+  .week-hub-tools .btn{padding:6px 9px;font-size:12px}#hubLocation{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .week-hub-tools .weeknav{width:auto;flex:none}.week-hub-tools .weeknav .btn{flex:none}
+  .planner-bar{gap:6px}.planner-bar>.small:first-of-type{display:none}.planner-palette{flex:1}.planner-chip.palette{flex:1;justify-content:center;padding:7px 6px}
+  /* The week reads as an agenda: day and weather on the left, the day's items on the right. */
+  .hub-week{grid-template-columns:1fr!important;gap:6px}
+  .hub-day{display:grid;grid-template-columns:62px minmax(0,1fr);grid-auto-flow:row dense;column-gap:10px;row-gap:0;padding:8px 10px;min-height:0}.hub-day>*:not(.hub-day-head):not(.hub-weather){margin-bottom:4px}
+  .hub-day>*{grid-column:2}.hub-day>.hub-day-head{grid-column:1;grid-row:1;flex-direction:column;justify-content:flex-start;align-self:start;gap:0}.hub-day>.hub-weather{grid-column:1;grid-row:2/span 8;align-self:start;flex-wrap:wrap;gap:3px;font-size:10px}
+  .hub-day-head strong{font-size:13px}.hub-plan{flex-direction:row;flex-wrap:wrap;margin-top:0;padding-top:4px}
+  .hub-empty{align-self:center}
+  #workoutsEndurance .workout-filter-grid{grid-template-columns:1fr 1fr!important;gap:8px}
+  #workoutsEndurance .workout-filter-grid .workout-filter-actions{grid-column:1/-1}
+  #workoutsEndurance .generate-card .workout-filter-actions{grid-column:auto}#workoutsEndurance .generate-card .workout-filter-actions .btn{width:100%;min-height:42px}
+  .workout-result-head{flex-wrap:nowrap!important}.workout-score{font-size:20px}
+  .workout-result{padding:12px}.workout-result h3{font-size:15px}
+  .fresh-list{grid-template-columns:1fr 1fr;column-gap:14px}
+  .fresh-row{grid-template-columns:minmax(0,1fr) auto!important;row-gap:3px}.fresh-row .fresh-bar{grid-column:1/-1;grid-row:2}.fresh-row span:first-child{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fresh-row strong{white-space:nowrap}
+  .fresh-list>p{grid-column:1/-1}
+  .pr-table th:nth-child(4),.pr-table td:nth-child(4){display:none}
+  .pr-badge{grid-template-columns:32px 1fr}.pr-badge span{width:32px;height:32px}
+  .activity-summary-card .activity-numbers{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px!important}
+  .activity-summary-card .activity-numbers strong{font-size:13px!important}
+  .timeline li{grid-template-columns:minmax(0,1fr) auto;padding-left:24px}.timeline li>div{grid-column:1}.timeline time{grid-column:2}
+  /* Gym plan rows as cards instead of a sideways-scrolling table. */
+  .gym-table{min-width:0!important}.gym-table thead{display:none}
+  .gym-table,.gym-table tbody{display:block}
+  .gym-table tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 8px;padding:10px 0;border-bottom:1px solid #262d39}
+  .gym-table td{padding:0;border:0;min-width:0}
+  .gym-table td:nth-child(1){display:none}
+  .gym-table td:nth-child(2){grid-column:1/4;font-size:14px}
+  .gym-table td:nth-child(3){grid-column:4;text-align:right;font-size:11px;color:#9ca6b5}.gym-table td:nth-child(3):before{content:"série "}
+  .gym-table td:nth-child(4){grid-column:1/2;white-space:nowrap;font-size:12px;color:#c9d2de}.gym-table td:nth-child(4):before{content:"Plán "}.gym-table td:nth-child(4):after{content:" kg"}
+  .gym-table td:nth-child(5){grid-column:2/5;font-size:12px;color:#c9d2de}.gym-table td:nth-child(5):before{content:"× "}
+  .gym-table td:nth-child(6),.gym-table td:nth-child(7),.gym-table td:nth-child(8),.gym-table td:nth-child(9){display:grid;gap:2px;font-size:10px;color:#9ca6b5}
+  .gym-table td:nth-child(6):before{content:"Skutečně kg"}.gym-table td:nth-child(7):before{content:"Opakování"}.gym-table td:nth-child(8):before{content:"RPE"}.gym-table td:nth-child(9):before{content:"Hotovo"}
+  .gym-table input{width:100%!important;min-width:0}.gym-table input[type=checkbox]{width:24px!important;height:24px}
+  .gym-table td:nth-child(10){grid-column:1;align-self:center;font-size:12px}
+  .gym-table td:nth-child(11){grid-column:2/5;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.gym-table td:nth-child(11) .btn{padding:5px 7px;font-size:11px}
+  .gym-table td[colspan]{grid-column:1/-1}
+  #workoutsGym .generate-card .detail-heading .actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}#workoutsGym .generate-card .detail-heading .actions .btn{padding:7px 4px;font-size:12px}
+}
 `;
