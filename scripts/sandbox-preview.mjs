@@ -180,7 +180,7 @@ function plannerSource() {
   const share = { long: 1.5, quality: 1.2, endurance: 1, recovery: .5, gym_upper: .4, gym_full: .5 };
   return `const SHARE=${JSON.stringify(share)},ROLE_LABELS=${JSON.stringify(ROLE_LABELS)},ROLE_FOCUS=${JSON.stringify(ROLE_FOCUS)};${planWeekRoles.toString()}`;
 }
-const banner = '<div style="position:sticky;top:0;z-index:999;background:#4a2f00;color:#ffe2a8;padding:7px 14px;font:600 12px/1.4 system-ui;text-align:center">SANDBOX · ukázková data · nic se neukládá do živé aplikace ani do Intervals.icu</div>';
+const banner = '<div style="position:sticky;top:0;z-index:25;background:#4a2f00;color:#ffe2a8;padding:7px 14px;font:600 12px/1.4 system-ui;text-align:center">SANDBOX · ukázková data · nic se neukládá do živé aplikace ani do Intervals.icu</div>';
 
 async function page({ inline }) {
   let html = await dashboardPage().text();
