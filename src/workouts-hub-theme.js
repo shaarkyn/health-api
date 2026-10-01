@@ -117,4 +117,9 @@ export const workoutsHubTheme = `
 .activity-extras h3{margin:14px 0 8px}
 @media(max-width:1050px){.insight-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.fresh-layout{grid-template-columns:1fr}.muscle-map{max-width:320px;margin:auto}.fresh-row{grid-template-columns:minmax(80px,1fr) minmax(50px,1fr) 40px}.fresh-row small{display:none}.focus-legend b{font-size:16px}}
+.pulse-macros{display:grid;gap:5px;margin-top:10px}
+.pulse-macro{display:grid;grid-template-columns:82px minmax(40px,1fr) auto;gap:8px;align-items:center;font-size:11px;color:#c9d2de}
+.pulse-macro i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.pulse-macro-bar{height:5px;border-radius:9px;background:#2a343e;overflow:hidden}.pulse-macro-bar i{display:block;width:0;height:100%;border-radius:9px;margin:0}
+.pulse-macro b{font-variant-numeric:tabular-nums;white-space:nowrap}
 `;

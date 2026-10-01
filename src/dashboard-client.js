@@ -45,11 +45,11 @@ function nutritionScore(food,target){
 }
 function macroChart(id,days){
   const svg=$(id),shown=(days||[]).slice(-7);if(!shown.length){svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="#91a0b5">Bez dat</text>';return}
-  const compact=true,W=1000,H=440,top=60,bottom=18,left=12,plot=H-top-bottom,slot=(W-left-12)/shown.length,bw=slot*.86,dayNames=["Neděle","Pondělí","Úterý","Středa","Čtvrtek","Pátek","Sobota"];svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height='auto';svg.style.width='100%';svg.style.aspectRatio='1000 / 440';
+  const compact=true,W=1000,H=440,top=96,bottom=18,left=12,plot=H-top-bottom,slot=(W-left-12)/shown.length,bw=slot*.86,dayNames=["Neděle","Pondělí","Úterý","Středa","Čtvrtek","Pátek","Sobota"];svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height='auto';svg.style.width='100%';svg.style.aspectRatio='1000 / 440';
   let out='';
   shown.forEach((d,i)=>{const food=d.food?.totals||{},target=Math.max(1,num(d.daily?.nutrition?.calorieTarget||d.daily?.calories?.target)),eaten=Math.max(0,num(food.kcal)),macroKcal=num(food.protein_g)*4+num(food.carbs_g)*4+num(food.fat_g)*9,vals=[{kcal:num(food.protein_g)*4,color:"#60a5fa"},{kcal:num(food.carbs_g)*4,color:"#f59e0b"},{kcal:num(food.fat_g)*9,color:"#a78bfa"}],x=left+i*slot+(slot-bw)/2,base=top+plot;
     out+='<text x="'+(x+bw/2)+'" y="32" text-anchor="middle" fill="#f4f7fb" font-size="19" font-weight="800">'+dayNames[new Date(d.date+"T12:00:00").getDay()]+'</text><rect x="'+x+'" y="'+top+'" width="'+bw+'" height="'+plot+'" rx="12" fill="#14253a" stroke="#355270" stroke-width="2"/>';
-    const totalY=top+35;out+='<text x="'+(x+bw/2)+'" y="'+totalY+'" text-anchor="middle" fill="#f4f7fb" font-size="'+(compact?23:17)+'" font-weight="850">'+(compact?fmt(eaten):fmt(eaten)+' / '+fmt(target))+'</text>'+(compact?'<text x="'+(x+bw/2)+'" y="'+(totalY+27)+'" text-anchor="middle" fill="#aebcd0" font-size="20">/ '+fmt(target)+'</text>':'');
+    const totalY=62;out+='<text x="'+(x+bw/2)+'" y="'+totalY+'" text-anchor="middle" fill="#f4f7fb" font-size="23" font-weight="850">'+fmt(eaten)+'</text><text x="'+(x+bw/2)+'" y="'+(totalY+24)+'" text-anchor="middle" fill="#aebcd0" font-size="17">/ '+fmt(target)+'</text>';
     let y=base,remaining=Math.min(target,eaten),visible=vals.filter(v=>Math.min(remaining,v.kcal)>0).length;vals.forEach(v=>{const amount=Math.min(remaining,v.kcal),raw=amount/target*plot;remaining-=amount;if(raw>0){const h=Math.max(4,raw-(visible>1?4:0)),share=macroKcal>0?Math.round(v.kcal/macroKcal*100):0;y-=h;out+='<rect x="'+(x+3)+'" y="'+y+'" width="'+(bw-6)+'" height="'+h+'" rx="6" fill="'+v.color+'"/>';if(h>=15)out+='<text x="'+(x+bw/2)+'" y="'+(y+h/2+5)+'" text-anchor="middle" fill="#07101d" font-size="'+(h<24?'13':'16')+'" font-weight="900">'+share+'%</text>';y-=4;}});});
   svg.innerHTML=out;
 }
@@ -739,10 +739,9 @@ function googleWellness(){return state.googleHealth?.wellness||[];}
 function latestGoogleMetric(key){return googleWellness().filter(r=>measured(r[key])).at(-1);}
 function latestVo2(){const google=latestGoogleMetric('vo2max'),intervals=(state.fitness?.wellness||[]).filter(r=>r.id<=selectedHistoryDate&&measured(r.vo2max??r.vo2Max)).at(-1);if(google&&(!intervals||google.id>=intervals.id))return {value:Number(google.vo2max),date:google.id,source:'Google Health'};if(intervals)return {value:Number(intervals.vo2max??intervals.vo2Max),date:intervals.id,source:'Intervals.icu'};return null;}
 function labelSelectedDay(){
-  const past=selectedHistoryDate!==pragueToday(),sections=document.querySelectorAll('#overview>.section');
-  if(sections[0])sections[0].textContent=past?'Signály dne':'Denní signály';
-  if(sections[1])sections[1].textContent=past?'Poradci a hodnocení dne':'Dnešní poradci a hodnocení';
-  if(sections[2])sections[2].textContent=past?'Výživa dne':'Dnešní výživa';
+  // Headings are matched by their text: their order changes as sections are added.
+  const past=selectedHistoryDate!==pragueToday(),rename={'Denní signály':'Signály dne','Dnešní poradci a hodnocení':'Poradci a hodnocení dne'};
+  for(const el of document.querySelectorAll('#overview>.section')){const t=el.textContent;for(const [today,day] of Object.entries(rename))if(t===today||t===day)el.textContent=past?day:today;}
   const heading=document.querySelector('#nutritionBalance h3');if(heading)heading.textContent=past?'Palivo dne':'Dnešní palivo';
   for(const node of document.querySelectorAll('#nutritionBalance .experience-stats span')){
     if(node.textContent==='Dnešní cíl'||node.textContent==='Cíl dne')node.textContent=past?'Cíl dne':'Dnešní cíl';
@@ -769,7 +768,10 @@ function correctDataPresentation(){
   const score=sleepIndex(last),delta=last&&avg!=null?last.durationMin-avg:null,cards=$('dailyPulse')?.querySelectorAll('.pulse-card'),stale=last?.date!==selectedHistoryDate;
   if(cards?.[0])cards[0].outerHTML=experienceRing('Spánek',score==null?'—':score+'%',score||0,'#a99bff','Spánkový index',last?(delta==null?'':(delta>=0?'+':'−')+hm(Math.abs(delta))+' proti průměru 30 dní · ')+dateLabel(last.date)+(stale?' · starší noc':''):'Čekám na noc');
   const food=state.daily?.nutrition?.foodLog?.totals||{},target=num(state.daily?.nutrition?.calorieTarget),macroEnergy=num(food.protein_g)*4+num(food.carbs_g)*4+num(food.fat_g)*9,fill=target?Math.min(100,num(food.kcal)/target*100):0,p=macroEnergy?num(food.protein_g)*4/macroEnergy*fill:0,c=macroEnergy?num(food.carbs_g)*4/macroEnergy*fill:0;
-  const calorieCard=$('dailyPulse')?.querySelectorAll('.pulse-card')[2];if(calorieCard){calorieCard.querySelector('.label').textContent='Kalorie';const ring=calorieCard.querySelector('.pulse-ring');if(ring){ring.style.background='conic-gradient(#60a5fa 0 '+p+'%,#f59e0b '+p+'% '+(p+c)+'%,#a78bfa '+(p+c)+'% '+fill+'%,#2a343e '+fill+'% 100%)';const strong=ring.querySelector('strong');if(strong)strong.textContent='';}}
+  const calorieCard=$('dailyPulse')?.querySelectorAll('.pulse-card')[2];if(calorieCard){calorieCard.querySelector('.label').textContent='Kalorie';
+    const m=state.daily?.nutrition?.macros||{},goal=k=>num(m[k+'_g']??m[k+'Grams']),row=(label,key,color,eat)=>{const g=goal(key==='carbs'?'carbs':key);return '<div class="pulse-macro"><span><i style="background:'+color+'"></i>'+label+'</span><span class="pulse-macro-bar"><i style="width:'+(g?Math.min(100,eat/g*100):0)+'%;background:'+color+'"></i></span><b>'+fmt(eat)+(g?' / '+fmt(g):'')+' g</b></div>';};
+    calorieCard.querySelector('.pulse-macros')?.remove();
+    calorieCard.querySelector('div:not(.pulse-ring)')?.insertAdjacentHTML('beforeend','<div class="pulse-macros">'+row('Bílkoviny','protein','#60a5fa',num(food.protein_g))+row('Sacharidy','carbs','#f59e0b',num(food.carbs_g))+row('Tuky','fat','#a78bfa',num(food.fat_g))+'</div>');const ring=calorieCard.querySelector('.pulse-ring');if(ring){ring.style.background='conic-gradient(#60a5fa 0 '+p+'%,#f59e0b '+p+'% '+(p+c)+'%,#a78bfa '+(p+c)+'% '+fill+'%,#2a343e '+fill+'% 100%)';const strong=ring.querySelector('strong');if(strong)strong.textContent='';}}
   $('recoveryScore').textContent=score==null?'—':score+'%';$('recoveryOrb').style.setProperty('--orb-value',score||0);$('recoveryOrb').querySelector('span').textContent='Spánek';$('recoveryVsBaseline').textContent='';
   $('recoveryTitle').textContent='Spánek a regenerace';$('recoveryInsight').textContent=last?'Poslední noc '+dateLabel(last.date)+' · skutečný spánek '+hm(last.durationMin)+(last.timeInBedMin?' · v posteli '+hm(last.timeInBedMin):''):'Čekám na měření';
   const signal=recoverySignals(googleWellness(),last,selectedHistoryDate);$('recoveryGuide').textContent=signal.title;$('recoveryGuideMeta').textContent=signal.text;
