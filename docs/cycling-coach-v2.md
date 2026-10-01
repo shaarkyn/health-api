@@ -69,20 +69,35 @@ The length comes from the first of these that exists:
 
 1. the time the athlete entered
 2. the planned workout in Intervals.icu
-3. **automatic**: the athlete's usual session in this sport
+3. **automatic**: an estimate of what the athlete can do today (`capacityMinutes`)
 
-The usual session is the median of the sessions over the last 21 days, when there are at least three. Otherwise it is estimated from CTL (bike 60–105 min, run 40–70 min).
+The automatic estimate starts from fitness. CTL is roughly the average daily load, and a training day carries about 7/5 of it. Easy riding is about 49 TSS/h; easy running is about 69 rTSS/h, and a run gets 20 % less. The estimate is then adjusted:
 
-The automatic length then depends on the day:
-
-| Situation | Length |
+| Signal | Change |
 |---|---|
-| Saturday or Sunday, no plan, not a recovery week, readiness not red | long ride/run ≈ 1.6× usual (bike 150–240 min, run 75–150 min) |
-| Quality session | usual length, kept within bike 60–105 / run 45–75 min |
-| Easy ride/run | usual length; −25 % in a recovery week; shorter after a break, at low readiness, or after a long session yesterday |
-| Recovery | 0.6× usual (bike 30–60, run 20–40 min) |
+| Sleep under 6 h / under 7 h | −20 % / −10 % |
+| TSB ≤ −25 / ≤ −15 / ≥ +5 | −25 % / −15 % / +15 % |
+| Readiness red / yellow | −30 % / −10 % |
+| Recovery week | −30 % |
+| Comeback after 7+ days off | −30 % |
 
-The chosen length and its reasons are the last line of `rationale` ("Délka 75 min: …"). An explicit time always wins.
+Then the session type sets the final length:
+
+- **Easy day:** when the estimate reaches the long-session length (bike 150 min, run 90 min), the day becomes a long ride or run. This applies on any day of the week.
+- **Quality:** bike 60–120 min, run 40–80 min.
+- **Recovery:** half the estimate (bike 30–60 min, run 20–40 min).
+
+Without CTL the estimate starts at 75 min (bike) or 45 min (run). The reasons appear as the last line of `rationale` ("Délka 95 min: kondice CTL 55 ≈ 77 TSS…").
+
+### Changing the length of a proposal
+**Změnit délku** keeps the proposal and changes only its length (`resizeWorkout`):
+
+1. If the library has the same family and main set at that length, that workout is used.
+2. Otherwise the structure is resized:
+   - the aerobic part grows or shrinks
+   - in long sessions, an aerobic block is added before the main set and a cool-down ride after it
+   - when that is not enough, warm-up and cool-down are trimmed first, then repetitions are removed
+3. A resized workout has the id `<id>~<minutes>`. It can be scheduled and rated like any other.
 
 The workout explanation ("Jak ho jet", "Venku", "Jídlo a pití") is also built from the workout's own structure:
 - the main set with watts or paces

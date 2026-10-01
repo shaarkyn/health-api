@@ -104,7 +104,7 @@ body{background:radial-gradient(circle at 78% -12%,#211938 0,transparent 28%),va
     <p class="small" style="margin-top:0">Trenér zváží únavu, spánek, tvrdé dny v týdnu, gym a tvoji aktuální úroveň a vybere trénink, který tě posune.</p>
     <div class="workout-filter-grid">
       <label><span class="small">Den</span><input id="generateDate" type="date"></label>
-      <label><span class="small">Čas na trénink (min)</span><input id="generateMinutes" type="number" min="20" max="360" step="5" placeholder="auto" title="Prázdné = délka z plánu v Intervals.icu, jinak ji trenér zvolí podle tvé obvyklé délky tréninku, dne v týdnu a únavy."></label>
+      <label><span class="small">Čas na trénink (min)</span><input id="generateMinutes" type="number" min="20" max="360" step="5" placeholder="auto" title="Prázdné = délka z plánu v Intervals.icu, jinak ji trenér odhadne z kondice (CTL), spánku, formy (TSB) a připravenosti."></label>
       <label><span class="small">Kde</span><select id="generateEnvironment" data-env-select><option value="indoor">Indoor · trenažér</option><option value="outdoor" selected>Outdoor · venku</option></select></label>
       <div class="workout-filter-actions"><button class="btn primary" id="generateWorkoutBtn">Vygenerovat trénink</button></div>
     </div>
@@ -165,7 +165,7 @@ body{background:radial-gradient(circle at 78% -12%,#211938 0,transparent 28%),va
 </div></main></div>
 <div id="toast" class="toast"></div>
 <style>${experienceTheme}${mobileTheme}${gymFocusTheme}</style>
-<script src="/app/dashboard-client.js?v=20261001-auto" defer></script>
+<script src="/app/dashboard-client.js?v=20261001-resize" defer></script>
 </body></html>`;
   return new Response(html,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
