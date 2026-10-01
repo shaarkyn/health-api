@@ -1150,7 +1150,7 @@ const INFO_TEXTS={
   load:['Cílový load','Tréninková zátěž (TSS): kombinace délky a intenzity. Hodina na FTP ≈ 100. Vyplň, když chceš konkrétní zátěž – jinak ji neřeš.'],
   rpe:['RPE 1–10','Jak těžký trénink subjektivně byl: 1–2 velmi lehce, 3–4 lehce, 5–6 středně, 7–8 těžce, 9 velmi těžce, 10 maximum.','Uložím ho k aktivitě i do Intervals.icu. Pro trenéra je to nejdůležitější signál, jestli byl trénink přiměřený.'],
   feedback:['Naplánované workouty','Jak velkou část workoutu jsi odjel, spočítám sám z aktivity spárované v Intervals.icu (zátěž nebo čas proti plánu).','Ty doplníš jen RPE a případně pocit. RPE se zapíše i k aktivitě v Intervals.icu.'],
-  planner:['Plánovač týdne','Vyber, ve které dny chceš jezdit, běhat nebo jít do posilovny – klidně víc aktivit v jeden den.','Trenér z toho rozloží týden: jeden dlouhý trénink o víkendu, až dva kvalitní dny s odstupem, po nich lehčí den, a gym před intervaly jen na horní tělo. Generátor se podle toho řídí, ale únava a připravenost mají vždy přednost.']
+  planner:['Plánovač týdne','Přetáhni Kolo, Běh nebo Gym na dny, kdy chceš trénovat – klidně víc aktivit v jeden den. Mezi dny je přesouváš tažením, ✕ je odebere. Na mobilu ťukni na sport a pak na den. Ukládá se to samo.','Trenér z toho rozloží týden: jeden dlouhý trénink o víkendu, až dva kvalitní dny s odstupem, po nich lehčí den, a gym před intervaly jen na horní tělo. Generátor se podle toho řídí, ale únava a připravenost mají vždy přednost.']
 };
 function installInfoTips(){
   if($('infoPop'))return;
@@ -1221,15 +1221,52 @@ async function renderWeekHub(){
   }).join('');
   $('hubWeekLoad').textContent=(target?'Cíl týdne ≈ '+target.tss+' TSS (udržení kondice: CTL '+fmt(target.ctl)+' × 7) · ':'')+'odjeto '+fmt(doneTss)+' TSS'+(plannedTss?' · v plánu dalších '+fmt(plannedTss)+' TSS':'')+(state.weatherError?' · počasí nedostupné':'');
 }
+// Planner: three sport chips dragged onto days (several per day), moved
+// between days or removed; on a phone a tap picks the chip and a tap places it.
+// Every change saves itself.
 function renderPlanner(){
   const grid=$('plannerGrid');if(!grid)return;const plan=state.weekPlan;if(!plan)return;
-  const days=plan.prefs.days,names=['pondělí','úterý','středa','čtvrtek','pátek','sobota','neděle'];
-  grid.innerHTML=names.map((name,i)=>'<div class="planner-day"><strong>'+name+'</strong>'+Object.entries(HUB_SPORTS).map(([sport,label])=>'<button type="button" data-plan-day="'+i+'" data-plan-sport="'+sport+'" aria-pressed="'+days[i].includes(sport)+'">'+label+'</button>').join('')+'<div class="planner-role">'+(plan.dirty?'':esc((plan.roles?.[i]?.items||[]).map(x=>x.label).join(' · ')))+'</div></div>').join('');
+  const days=plan.prefs.days,names=['pondělí','úterý','středa','čtvrtek','pátek','sobota','neděle'],picked=state.plannerPick;
+  $('plannerPalette').innerHTML=Object.entries(HUB_SPORTS).map(([sport,label])=>'<button type="button" class="planner-chip palette" draggable="true" data-chip-sport="'+sport+'" aria-pressed="'+(picked===sport)+'" title="Přetáhni na den, nebo ťukni a pak ťukni na den">'+label+'</button>').join('');
+  grid.innerHTML=names.map((name,i)=>{
+    const roles=plan.dirty?[]:(plan.roles?.[i]?.items||[]);
+    return '<div class="planner-day'+(picked?' pickable':'')+'" data-plan-day="'+i+'"><strong>'+name+'</strong>'+(days[i].map(sport=>{const role=roles.find(x=>x.sport===sport);return '<span class="planner-chip" draggable="true" data-chip-sport="'+sport+'" data-chip-day="'+i+'">'+HUB_SPORTS[sport]+'<button type="button" data-chip-remove aria-label="Odebrat '+esc(HUB_SPORTS[sport])+' z '+name+'">✕</button>'+(role?'<small>'+esc(role.label.replace(/^Gym · /,''))+'</small>':'')+'</span>'}).join('')||'<span class="planner-empty">'+(picked?'Ťukni sem':'Přetáhni sem')+'</span>')+'</div>';
+  }).join('');
+}
+let plannerSaveTimer=null;
+function plannerChanged(){state.weekPlan.dirty=true;$('plannerStatus').textContent='Ukládám…';renderPlanner();clearTimeout(plannerSaveTimer);plannerSaveTimer=setTimeout(saveWeekPlanner,500);}
+function plannerPlace(sport,day,fromDay=null){
+  const days=state.weekPlan.prefs.days;if(!HUB_SPORTS[sport]||!days[day])return;
+  if(fromDay!=null&&fromDay!==day)days[fromDay]=days[fromDay].filter(x=>x!==sport);
+  if(!days[day].includes(sport))days[day].push(sport);
+  plannerChanged();
 }
 async function saveWeekPlanner(){
-  const b=$('plannerSave');b.disabled=true;$('plannerStatus').textContent='Ukládám…';
-  try{state.weekPlan=await jsonFetch('/app/api/week-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state.weekPlan.prefs)});$('plannerStatus').textContent='Uloženo. Generátor se podle plánu řídí.';renderPlanner();renderGymPlanHint();await renderWeekHub();}
-  catch(error){$('plannerStatus').textContent=error.message;}finally{b.disabled=false;}
+  $('plannerStatus').textContent='Ukládám…';
+  const sent=JSON.stringify(state.weekPlan.prefs);
+  try{const saved=await jsonFetch('/app/api/week-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:sent});
+    // A newer edit made meanwhile has its own save queued; keep it.
+    if(JSON.stringify(state.weekPlan.prefs)!==sent)return;
+    state.weekPlan=saved;$('plannerStatus').textContent='✓ Uloženo · generátor se podle plánu řídí';renderPlanner();renderGymPlanHint();await renderWeekHub();}
+  catch(error){$('plannerStatus').textContent='Neuloženo: '+error.message;}
+}
+function installPlannerDrag(){
+  const box=$('weekPlanner');let drag=null;
+  box.addEventListener('dragstart',e=>{const chip=e.target.closest('.planner-chip');if(!chip)return;drag={sport:chip.dataset.chipSport,from:chip.dataset.chipDay==null?null:Number(chip.dataset.chipDay)};e.dataTransfer.effectAllowed=drag.from==null?'copy':'move';e.dataTransfer.setData('text/plain',drag.sport);chip.classList.add('dragging');});
+  box.addEventListener('dragend',e=>{e.target.closest?.('.planner-chip')?.classList.remove('dragging');box.querySelectorAll('.drop-target').forEach(d=>d.classList.remove('drop-target'));
+    // A chip dragged off the days is removed.
+    if(drag&&drag.from!=null&&e.dataTransfer.dropEffect==='none'){state.weekPlan.prefs.days[drag.from]=state.weekPlan.prefs.days[drag.from].filter(x=>x!==drag.sport);plannerChanged();}drag=null;});
+  box.addEventListener('dragover',e=>{const day=e.target.closest('[data-plan-day]');if(!drag||!day)return;e.preventDefault();e.dataTransfer.dropEffect=drag.from==null?'copy':'move';box.querySelectorAll('.drop-target').forEach(d=>{if(d!==day)d.classList.remove('drop-target')});day.classList.add('drop-target');});
+  box.addEventListener('dragleave',e=>{const day=e.target.closest('[data-plan-day]');if(day&&!day.contains(e.relatedTarget))day.classList.remove('drop-target');});
+  box.addEventListener('drop',e=>{const day=e.target.closest('[data-plan-day]');if(!drag||!day)return;e.preventDefault();const d=drag;drag=null;plannerPlace(d.sport,Number(day.dataset.planDay),d.from);});
+  box.addEventListener('click',e=>{
+    const remove=e.target.closest('[data-chip-remove]');
+    if(remove){const chip=remove.closest('.planner-chip'),i=Number(chip.dataset.chipDay);state.weekPlan.prefs.days[i]=state.weekPlan.prefs.days[i].filter(x=>x!==chip.dataset.chipSport);plannerChanged();return}
+    const palette=e.target.closest('.planner-chip.palette');
+    if(palette){state.plannerPick=state.plannerPick===palette.dataset.chipSport?null:palette.dataset.chipSport;$('plannerStatus').textContent=state.plannerPick?'Ťukni na den, kam '+HUB_SPORTS[state.plannerPick]+' patří':'';renderPlanner();return}
+    const day=e.target.closest('[data-plan-day]');
+    if(day&&state.plannerPick){plannerPlace(state.plannerPick,Number(day.dataset.planDay));}
+  });
 }
 // The gym panel suggests muscle groups from the day's planner role.
 const ROLE_MUSCLES={gym_upper:['chest','upper_back','lats','side_delts','abs'],gym_full:['quads','hamstrings','chest','upper_back','abs']};
@@ -1256,8 +1293,7 @@ function installWorkoutsHub(){
       out.querySelectorAll('[data-loc]').forEach(b=>b.onclick=async()=>{const x=rows[Number(b.dataset.loc)];state.weekPlan.prefs.location={name:x.name,latitude:x.latitude,longitude:x.longitude};$('hubLocationForm').hidden=true;out.innerHTML='';state.weatherKey=null;await saveWeekPlanner();});
     }catch(error){out.innerHTML='<span class="small">'+esc(error.message)+'</span>';}
   };
-  $('plannerGrid').addEventListener('click',e=>{const b=e.target.closest('[data-plan-sport]');if(!b)return;const day=state.weekPlan.prefs.days[Number(b.dataset.planDay)],sport=b.dataset.planSport,i=day.indexOf(sport);if(i>=0)day.splice(i,1);else day.push(sport);state.weekPlan.dirty=true;$('plannerStatus').textContent='Neuloženo';renderPlanner();});
-  $('plannerSave').onclick=saveWeekPlanner;
+  installPlannerDrag();
   installPlannedEditing();
 }
 // Planned workouts from Intervals.icu: drag between days (desktop) or the
