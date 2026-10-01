@@ -63,6 +63,34 @@ The API remains backwards-compatible with the existing UI. New fields are option
 }
 ```
 
+## Session length
+
+The length comes from the first of these that exists:
+
+1. the time the athlete entered
+2. the planned workout in Intervals.icu
+3. **automatic**: the athlete's usual session in this sport
+
+The usual session is the median of the sessions over the last 21 days, when there are at least three. Otherwise it is estimated from CTL (bike 60–105 min, run 40–70 min).
+
+The automatic length then depends on the day:
+
+| Situation | Length |
+|---|---|
+| Saturday or Sunday, no plan, not a recovery week, readiness not red | long ride/run ≈ 1.6× usual (bike 150–240 min, run 75–150 min) |
+| Quality session | usual length, kept within bike 60–105 / run 45–75 min |
+| Easy ride/run | usual length; −25 % in a recovery week; shorter after a break, at low readiness, or after a long session yesterday |
+| Recovery | 0.6× usual (bike 30–60, run 20–40 min) |
+
+The chosen length and its reasons are the last line of `rationale` ("Délka 75 min: …"). An explicit time always wins.
+
+The workout explanation ("Jak ho jet", "Venku", "Jídlo a pití") is also built from the workout's own structure:
+- the main set with watts or paces
+- the minutes of work in the target intensity
+- pacing for the reps
+- the uninterrupted stretch needed outdoors
+- total carbohydrates and fluids for the length
+
 ## Deterministic engine output
 
 `buildCyclingCoachV2()` returns:

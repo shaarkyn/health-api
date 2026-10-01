@@ -409,7 +409,7 @@ async function loadScheduledWorkouts(){
 async function loadWorkoutLibrary(){
   const date=$("workoutScheduleDate");if(date&&!date.value)date.value=pragueToday();if(date)date.min=pragueToday();
   const p=new URLSearchParams(),system=$("workoutSystem")?.value,duration=$("workoutDuration")?.value,tol=$("workoutDurationTolerance")?.value,load=$("workoutLoad")?.value,difficulty=$("workoutDifficulty")?.value,phase=$("workoutPhase")?.value;
-  p.set("sport",workoutSport());if(system)p.set("system",system);p.set("environment",$("workoutEnvironment")?.value||"indoor");if($("workoutSource")?.value)p.set("source",$("workoutSource").value);if(duration)p.set("duration",duration);if(tol)p.set("durationTolerance",tol);if(load)p.set("load",load);if(difficulty)p.set("maxDifficulty",difficulty);if(phase)p.set("phase",phase);if(date?.value)p.set("date",date.value);p.set("limit","40");
+  p.set("sport",workoutSport());if(system)p.set("system",system);p.set("environment",$("workoutEnvironment")?.value||"outdoor");if($("workoutSource")?.value)p.set("source",$("workoutSource").value);if(duration)p.set("duration",duration);if(tol)p.set("durationTolerance",tol);if(load)p.set("load",load);if(difficulty)p.set("maxDifficulty",difficulty);if(phase)p.set("phase",phase);if(date?.value)p.set("date",date.value);p.set("limit","40");
   $("workoutResults").innerHTML='<div class="small">Počítám vhodnost workoutů…</div>';
   try{const r=await jsonFetch("/app/api/workouts/search?"+p.toString());state.workoutLibrary=r;renderWorkoutLibrary(r);$("workoutSourceNote").textContent=r.sourcePolicy||"Veřejné reference mají zdroj; proprietární knihovny se nekopírují.";await loadScheduledWorkouts()}
   catch(e){$("workoutResults").innerHTML='<div class="notice status-error">'+esc(e.message)+'</div>'}
@@ -418,7 +418,7 @@ async function scheduleLibraryWorkout(id,dateOverride=null,environment=null){
   const date=dateOverride||$("workoutScheduleDate")?.value;if(!date){toast("Vyber datum.");return}
   const row=[...(state.workoutLibrary?.workouts||[]),state.generated?.workout,...(state.generated?.alternatives||[])].find(x=>x&&x.id===id),name=row?.name||id;
   if(!window.confirm('Přidat „'+name+'“ na '+date+' do Intervals.icu?'))return;
-  try{const r=await jsonFetch("/app/api/workouts/schedule",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({workoutId:id,date,confirm:true,environment:environment||$("workoutEnvironment")?.value||"indoor"})});toast(r.status==='already_scheduled'?'Workout už je na tento den naplánovaný.':r.workout.name+' přidán do Intervals.icu na '+r.date);await loadScheduledWorkouts()}
+  try{const r=await jsonFetch("/app/api/workouts/schedule",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({workoutId:id,date,confirm:true,environment:environment||$("workoutEnvironment")?.value||"outdoor"})});toast(r.status==='already_scheduled'?'Workout už je na tento den naplánovaný.':r.workout.name+' přidán do Intervals.icu na '+r.date);await loadScheduledWorkouts()}
   catch(e){toast("Zápis do Intervals.icu selhal: "+e.message)}
 }
 async function saveWorkoutFeedback(form){
