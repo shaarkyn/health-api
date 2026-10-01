@@ -2,6 +2,7 @@
 // Intervals.icu, Google or the production database.
 //   node scripts/sandbox-preview.mjs            → http://127.0.0.1:8792/app
 //   node scripts/sandbox-preview.mjs --build F  → one static HTML file F
+//   (add --fragment for a page whose host supplies <html>/<head>/<body>)
 // Workout ranking and generation run the real code on an in-memory SQLite.
 import http from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
@@ -120,7 +121,7 @@ function shim(data, planner) {
 let prefs=${JSON.stringify(weekPlan)},gym=${JSON.stringify({ values: gymValues, history: gymHistory })};
 const FOCUS=${JSON.stringify(FOCUS_GROUPS)},weather=${JSON.stringify(weatherSample())};
 const ok=b=>new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}});
-const realFetch=window.fetch.bind(window);
+const realFetch=window.fetch.bind(window);window.confirm=()=>true;
 window.fetch=async(input,opts={})=>{const url=new URL(typeof input==='string'?input:input.url,location.href),m=(opts.method||'GET').toUpperCase(),body=opts.body?JSON.parse(opts.body):{};
  if(/open-meteo/.test(url.host)){if(/geocoding/.test(url.host))return ok({results:[{name:url.searchParams.get('name')||'Praha',admin1:'Ukázka',country_code:'CZ',latitude:50.08,longitude:14.43}]});return ok(weather);}
  const p=url.pathname;
@@ -156,11 +157,17 @@ async function page({ inline }) {
   return html;
 }
 
+// A hosted page supplies its own document skeleton: keep the styles and body only.
+function fragment(html) {
+  return '<title>PFD Workouty Sandbox</title>\n' + html.replace(/^<!doctype html>\s*<html[^>]*>\s*<head>/i, "").replace(/<meta[^>]*>\s*/g, "").replace(/<title>[^<]*<\/title>/, "").replace("</head>\n<body>", "").replace(/<\/body><\/html>\s*$/, "");
+}
+
 let inlineData;
 const buildIndex = process.argv.indexOf("--build");
 if (buildIndex > 0) {
   inlineData = await staticResponses();
-  await writeFile(process.argv[buildIndex + 1], await page({ inline: true }));
+  const html = await page({ inline: true });
+  await writeFile(process.argv[buildIndex + 1], process.argv.includes("--fragment") ? fragment(html) : html);
   console.log("Sandbox uložen: " + process.argv[buildIndex + 1]);
 } else {
   // Local server: the same shim, so the browser sees exactly the static build.
