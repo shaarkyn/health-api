@@ -103,9 +103,9 @@ body{background:radial-gradient(circle at 78% -12%,#211938 0,transparent 28%),va
   </div>
   <div class="card week-hub">
     <div class="week-hub-head"><div><div class="eyebrow">Tento týden</div><h3 id="hubWeekTitle" style="margin:3px 0 0">Týdenní přehled</h3><div class="small" id="hubWeekLoad"></div></div><div class="week-hub-tools"><button class="btn" type="button" id="hubLocation" title="Změnit místo pro počasí">📍 <span id="hubLocationName">Kutná Hora</span></button><div class="weeknav"><button class="btn" type="button" id="hubPrevWeek" aria-label="Předchozí týden">←</button><button class="btn" type="button" id="hubThisWeek">Tento týden</button><button class="btn" type="button" id="hubNextWeek" aria-label="Další týden">→</button></div></div></div>
+    <div class="planner-bar" id="weekPlanner"><div id="plannerPalette" class="planner-palette" aria-label="Sporty k přetažení do týdne"></div><span class="small">Přetáhni sport na den, kdy chceš trénovat</span> <button type="button" class="info-tip" data-info="planner" aria-label="Vysvětlivka: plán týdne">i</button><span class="small" id="plannerStatus" aria-live="polite"></span></div>
     <form id="hubLocationForm" class="select-row" hidden><input id="hubLocationQuery" type="search" placeholder="Město nebo obec" aria-label="Místo pro počasí" autocomplete="off"><button class="btn primary" type="submit">Hledat</button><div id="hubLocationResults" class="select-row"></div></form>
     <div id="hubWeek" class="hub-week"><div class="small">Načítám týden…</div></div>
-    <details class="week-planner" id="weekPlanner"><summary><strong>Plánovač týdne</strong> <span class="small">– přetáhni sporty na dny, podle nich rozložím zátěž</span> <button type="button" class="info-tip" data-info="planner" aria-label="Vysvětlivka: plánovač">i</button></summary><div class="planner-bar"><div id="plannerPalette" class="planner-palette" aria-label="Sporty k přetažení"></div><span class="small" id="plannerStatus" aria-live="polite"></span></div><div id="plannerGrid" class="planner-grid"></div></details>
   </div>
   <div id="workoutsEndurance">
   <div class="card generate-card">

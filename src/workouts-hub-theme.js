@@ -30,12 +30,10 @@ export const workoutsHubTheme = `
 .hub-actions input{width:100%;min-width:0;background:#0d1119;color:#fff;border:1px solid #393245;border-radius:6px;padding:4px;font-size:11px}
 .hub-actions [data-hub-delete]{border-color:#5a2a33;color:#ffb3bd}
 .hub-empty{font-size:11px;color:#6f7888}
-.week-planner{margin-top:12px;border-top:1px solid #262d39;padding-top:10px}
-.week-planner summary{cursor:pointer}
-.planner-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:10px}
-.planner-day{background:#0f141d;border:1px solid #262d39;border-radius:10px;padding:8px;display:grid;gap:5px}
-.planner-day strong{font-size:12px;text-transform:capitalize}
-.planner-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
+.planner-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.hub-plan{display:flex;flex-direction:column;gap:4px;margin-top:auto;padding-top:6px;border-top:1px dashed #2c3442}
+.hub-plan .planner-chip{padding:4px 7px;font-size:11px;border-radius:6px}
+.hub-day.pickable{cursor:copy;border-style:dashed;border-color:#6b5a99}
 .planner-palette{display:flex;gap:8px;flex-wrap:wrap}
 .planner-chip{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 9px;border-radius:8px;border:1px solid #4a3f66;background:#231c38;color:#f1ecff;font-size:12px;font-weight:650;cursor:grab;user-select:none}
 .planner-chip.palette{padding:8px 12px;border-style:dashed;background:#171424}
@@ -44,10 +42,6 @@ export const workoutsHubTheme = `
 .planner-chip small{flex-basis:100%;font-size:10px;font-weight:500;color:#c6acff}
 .planner-chip button{border:0;background:transparent;color:#b8adcf;padding:0 2px;font-size:11px;line-height:1;cursor:pointer;margin-left:auto}
 .planner-chip button:hover,.planner-chip button:focus-visible{color:#fff;outline:none}
-.planner-day{min-height:86px;align-content:start}
-.planner-day.pickable{cursor:copy;border-style:dashed}
-.planner-day.drop-target{border-color:#9b6bff;background:#171428}
-.planner-empty{font-size:11px;color:#5f6878;padding:6px 0}
 .capability-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important;gap:8px!important}
 .capability-card{padding:10px 12px!important}
 .capability-card strong{display:block;font-size:20px;margin:2px 0}
@@ -77,6 +71,6 @@ export const workoutsHubTheme = `
 .zone-table td:first-child{font-weight:700;width:42px;color:#c6acff}
 .zone-table td:nth-child(n+3){text-align:right;white-space:nowrap;color:#d7dce6}
 .zone-panel select{width:100%;margin-bottom:8px}
-@media(max-width:1050px){.hub-week,.planner-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:700px){.hub-week,.planner-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.week-hub-tools{width:100%}.activity-gallery{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:1050px){.hub-week{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:700px){.hub-week{grid-template-columns:repeat(2,minmax(0,1fr))}.week-hub-tools{width:100%}.activity-gallery{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 `;
