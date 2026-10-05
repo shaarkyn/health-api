@@ -74,7 +74,7 @@ export function planValues(body = {}) {
   const date = String(body.date || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid date; expected YYYY-MM-DD");
   const rows = Array.isArray(body.rows) ? body.rows : [];
-  if (!rows.length) throw new Error("rows must be a non-empty 2D array");
+  if (!rows.length) throw new Error("Plán neobsahuje žádné série – není co uložit. Zkus jinou skladbu tréninku nebo méně vyloučených cviků.");
   if (rows.length > MAX_ROWS) throw new Error(`Too many workout rows; maximum is ${MAX_ROWS}`);
   const planName = String(body.planName || "Dnešní trénink").trim();
   const load = Number(body.loadFactor);
