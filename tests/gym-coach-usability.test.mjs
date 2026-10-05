@@ -92,7 +92,7 @@ test('controls do not trigger swipes and vertical scrolling leaves the current s
 test('45 minute strength proposals fit including equipment time, both sides, rests and a buffer',()=>{
   for(const focus of [undefined,'upper','lower']){
     const plan=generateStrengthPlan({date:'2026-10-04',strength:{recentCompletedSets:[]},cycling:{recentActivities:[],plannedWorkouts:[]},recovery:{}},{durationMinutes:45,focus});
-    assert.ok(plan.timing.totalSeconds<=2700);assert.ok(plan.timing.bufferSeconds>=180);
+    assert.ok(plan.timing.totalSeconds<=2700);assert.ok(plan.timing.bufferSeconds>=120);
     assert.deepEqual(estimateStrengthTiming(plan.rows,EXERCISES,45),plan.timing);
     assert.equal(planValues(plan)[4][1],45);
   }

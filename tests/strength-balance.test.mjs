@@ -7,7 +7,8 @@ import { coachInstructions,coachContext } from '../src/coach-assistant.js';
 const base=()=>({date:'2026-10-04',cycling:{recentRideTss:100,recentRideHours:2,recentActivities:[],plannedWorkouts:[]},recovery:{},strength:{recentCompletedSets:[]}});
 const muscles=plan=>new Set(plan.loadEstimates.map(x=>EXERCISES[x.exercise].muscle));
 for(const type of ['Ride','Run','RockClimbing'])test(type+' changes the dose while preserving whole-body strength patterns',()=>{
-  const context=base();context.sports={recentActivities:[{id:type,date:'2026-10-03',type,durationHours:2,tss:110}]};
+  // A long session yesterday (3 h) is an acute load; an ordinary 2 h one no longer reduces the dose.
+  const context=base();context.sports={recentActivities:[{id:type,date:'2026-10-03',type,durationHours:3,tss:180}]};
   const plan=generateStrengthPlan(context,{maxExercises:8});
   assert.ok(muscles(plan).has('quads')||muscles(plan).has('hamstrings'));
   assert.ok(muscles(plan).has('chest'));assert.ok(muscles(plan).has('back'));

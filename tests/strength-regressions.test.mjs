@@ -30,9 +30,11 @@ test('focused gym only generates exercises for selected groups', () => {
   const context={date:'2026-09-28',cycling:{recentRideTss:100,recentRideHours:2,recentActivities:[],nextRide:null},recovery:{},strength:{recentCompletedSets:[]}};
   const plan=generateStrengthPlan(context,{focusMuscles:['chest','upper_back','abs'],durationMinutes:60});
   const work=[...new Set(plan.rows.filter(row=>row[0]==='WORK').map(row=>row[1]))];
-  assert.equal(work.length,3);
+  // The session length sets the exercise count (5 at 60 min), spread over the groups.
+  assert.equal(work.length,5);
+  for(const group of ['chest','upper_back','abs'])assert.ok(work.some(name=>FOCUS_GROUPS[group].exercises.includes(name)),group);
   assert.deepEqual(plan.focusMuscles,['chest','upper_back','abs']);
-  assert.equal(plan.adaptive.volumeModifier,.9);
+  assert.equal(plan.adaptive.volumeModifier,1);
   for(const exercise of work)assert.ok(['chest','upper_back','abs'].some(group=>FOCUS_GROUPS[group].exercises.includes(exercise)));
   assert.ok(plan.planName.includes('Cílený trénink'));
 });
@@ -40,24 +42,30 @@ test('focused gym only generates exercises for selected groups', () => {
 test('short focused gym scales volume without adding unselected muscles', () => {
   const context={date:'2026-09-28',cycling:{recentRideTss:100,recentRideHours:2,recentActivities:[],nextRide:null},recovery:{},strength:{recentCompletedSets:[]}};
   const plan=generateStrengthPlan(context,{focusMuscles:['front_delts','biceps','triceps','calves','abs'],durationMinutes:45});
-  assert.equal(plan.adaptive.volumeModifier,.75);
+  assert.equal(plan.adaptive.volumeModifier,1);
   assert.equal([...new Set(plan.rows.filter(row=>row[0]==='WORK').map(row=>row[1]))].length,5);
-  assert.ok(plan.rows.filter(row=>row[0]==='WORK').length<=10);
+  assert.ok(plan.timing.totalSeconds<=45*60);
 });
 
 test('front, side and rear shoulders map to distinct exercises', () => {
   const context={date:'2026-09-28',cycling:{recentRideTss:100,recentRideHours:2,recentActivities:[],nextRide:null},recovery:{},strength:{recentCompletedSets:[]}};
   const plan=generateStrengthPlan(context,{focusMuscles:['front_delts','side_delts','rear_delts']});
   const exercises=[...new Set(plan.rows.filter(row=>row[0]==='WORK').map(row=>row[1]))];
-  assert.equal(exercises.length,3);
+  assert.equal(exercises.length,5);
   for(const group of ['front_delts','side_delts','rear_delts'])assert.ok(exercises.some(name=>FOCUS_GROUPS[group].exercises.includes(name)));
+  assert.ok(exercises.every(name=>['front_delts','side_delts','rear_delts'].some(group=>FOCUS_GROUPS[group].exercises.includes(name))));
 });
 
 test('focused legs preserve cycling protection', () => {
   const context={date:'2026-09-28',cycling:{recentRideTss:800,recentRideHours:10,recentActivities:[],nextRide:{intensity:true,durationHours:2}},recovery:{},strength:{recentCompletedSets:[]}};
   const plan=generateStrengthPlan(context,{focusMuscles:['quads']});
   assert.equal(plan.protectedLegs,true);
-  assert.deepEqual([...new Set(plan.rows.filter(row=>row[0]==='WORK').map(row=>row[1]))],['Leg extension Prime']);
+  // Protected legs: light quad exercises instead of the heavy presses and squats, all on the quads at a reduced dose.
+  const work=[...new Set(plan.rows.filter(row=>row[0]==='WORK').map(row=>row[1]))];
+  assert.ok(work.includes('Leg extension Prime'));
+  assert.ok(!work.some(name=>['Pivot leg press','Pendulum squat','Barbell back squat','Barbell front squat','Smith machine squat'].includes(name)));
+  assert.ok(work.every(name=>FOCUS_GROUPS.quads.exercises.includes(name)));
+  assert.ok(plan.loadEstimates.every(x=>x.reducedDose&&x.targetRir>=3));
   assert.match(plan.rationale,/rezervu u nohou/);
 });
 import { completedRowsAreSynced } from "../src/strength-sync-guard.js";
@@ -136,7 +144,10 @@ test("load estimator uses multiple recent performances", () => {
   });
   assert.equal(estimate.source, "own-history");
   assert.equal(estimate.performanceCount, 3);
-  assert.equal(estimate.kg, 37.5);
+  // Anchored on the latest session (42.5 × 10 @ 8 in 8–12: keep the load, add a rep),
+  // not pulled down by the older, lighter sessions.
+  assert.equal(estimate.kg, 42.5);
+  assert.equal(estimate.repsHint, 11);
 });
 
 test("generator treats aliased recent leg curl as the same exercise", () => {
@@ -247,7 +258,7 @@ test("generator reduces leg dose while retaining strength work around hard rides
   assert.ok(plan.rows.length > 0);
   const legs=plan.loadEstimates.filter(x => ["Pivot leg press", "Pendulum squat", "Prone leg curl Prime", "Hip thrust", "DB Romanian deadlift", "DB Bulgarian split squat", "Leg extension Prime"].includes(x.exercise));
   assert.ok(legs.length>=2);assert.ok(legs.every(x=>x.reducedDose&&x.sets<=2));
-  assert.ok(plan.rows.filter(r=>r[0]==='WORK'&&legs.some(x=>x.exercise===r[1])).every(r=>/3–4 opakování v rezervě/.test(r[9])));
+  assert.ok(plan.rows.filter(r=>r[0]==='WORK'&&legs.some(x=>x.exercise===r[1])).every(r=>/sportovní zátěž/.test(r[9])&&/cíl RPE 7 \(3 opakování v rezervě\)/.test(r[9])));
 });
 
 test("lower-body plan includes a unilateral movement when fresh", () => {

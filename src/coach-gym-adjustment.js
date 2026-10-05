@@ -1,5 +1,6 @@
 import { parseStrengthSheet } from './strength-history.js';
-import { EXERCISES } from './strength-generator.js';
+import { EXERCISES, warmupRows } from './strength-generator.js';
+import { defaultRir, effortText, restFor } from './strength-timing.js';
 import { findExerciseAlternatives,estimateStartingLoad } from './strength-intelligence.js';
 import { availableAt } from './gym-equipment.js';
 
@@ -20,12 +21,17 @@ export function prepareGymSwap(gym,fromExercise,toExercise,reason){
   if(parsed.rows.some(r=>r.exercise===toExercise))throw new Error('Náhradní cvik už v plánu je.');
   if(source.some(r=>r.completed||r.actualKg!=null||r.actualReps!=null||r.rpe!=null))throw new Error('Rozcvičený nebo rozepsaný cvik nelze nahradit.');
   const work=source.filter(r=>r.type==='WORK');if(!work.length)throw new Error('Cvik nemá pracovní série.');
-  const estimate=estimateStartingLoad({exercise:toExercise,history:gym.history||[],targetReps:def.reps,fallbackKg:null});
+  // Keep the source's dose (reps in reserve, sport or deload notes); the new
+  // exercise brings its own note, rest and warm-up.
+  const sourceNote=String(work[0].note||''),rir=Number(sourceNote.match(/\((\d) opakování v rezervě\)/)?.[1]??defaultRir(def));
+  const estimate=estimateStartingLoad({exercise:toExercise,history:gym.history||[],targetReps:def.reps,fallbackKg:null,targetRir:rir,deload:/\[Deload\]/.test(sourceNote),convert:/sportovní zátěž/.test(sourceNote)});
   // No guessed weight when this athlete has no suitable reference.
-  const kg=estimate.kg??'',video='https://www.youtube.com/results?search_query='+encodeURIComponent(toExercise+' exercise technique');
-  const rows=[];
-  if(def.warmup){for(const [i,factor,reps] of [[1,.4,'8'],[2,.65,'5'],[3,.8,'3']])rows.push(['WARMUP',toExercise,String(i),kg===''?'':String(Math.round(kg*factor*2)/2),reps,'','','','FALSE','[WARMUP]',video,'FALSE','']);}
-  for(const [i,set] of work.entries())rows.push(['WORK',toExercise,String(i+1),String(kg),def.reps,'','','','FALSE',set.note,video,set.toFailure?'TRUE':'FALSE',set.superset]);
+  const kg=estimate.kg??'',fmt=x=>String(x).replace('.',','),video='https://www.youtube.com/results?search_query='+encodeURIComponent(toExercise+' exercise technique');
+  const carry=[sourceNote.match(/; sportovní zátěž[^;\[]*/)?.[0]||'',/\[Deload\]/.test(sourceNote)?' [Deload]':''].join('');
+  const note=def.note+(estimate.note?'; '+estimate.note:'')+carry,rest=' [Pauza '+restFor(def,false)+' s]';
+  // Mid-session the replacement needs one ramp-up set, a full ramp only when it replaces the first main lift.
+  const rows=kg===''?[]:warmupRows(toExercise,kg,source.filter(r=>r.type==='WARMUP').length>=2).map(r=>{r[9]+=' [Pauza '+restFor(def,true)+' s]';r[10]=video;r[11]='FALSE';r[12]='';return r;});
+  for(const [i,set] of work.entries())rows.push(['WORK',toExercise,String(i+1),kg===''?'':fmt(kg),def.reps,'','','','FALSE',set.toFailure?note+rest+'; poslední série do technického selhání, jen při čistém provedení':note+'; '+effortText(rir)+rest,video,set.toFailure?'TRUE':'FALSE',set.superset]);
   return {type:'gym_swap',date:parsed.date,fromExercise,toExercise,reason,sets:work.length,reps:def.reps,kg:estimate.kg,
     sourceSnapshot:source.map(r=>gym.values[r.sheetRow-1]),replacementRows:rows};
 }
