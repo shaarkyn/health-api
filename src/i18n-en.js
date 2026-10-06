@@ -1597,7 +1597,9 @@ export const EN = {
 "Účet se nepodařilo smazat. Zkus to znovu.": "The account could not be deleted. Try again.",
 "Účet správce nejde smazat.": "The admin account cannot be deleted.",
 "Účet neexistuje.": "The account does not exist.",
-"Neplatný původ požadavku.": "Invalid request origin."
+"Neplatný původ požadavku.": "Invalid request origin.",
+"Přihlášení přes Apple": "Sign in with Apple",
+"Připojit Apple": "Link Apple ID"
 };
 
 export const EN_TEMPLATES = {

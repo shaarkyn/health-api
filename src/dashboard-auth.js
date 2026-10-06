@@ -20,6 +20,8 @@ const PUBLIC_PATHS = new Set([
   "/app/logout",
   "/auth/google",
   "/auth/google/callback",
+  "/auth/apple",
+  "/auth/apple/callback",
   "/mcp",
   "/mcp/health",
   "/register",
@@ -100,6 +102,11 @@ export async function sessionCookie(uid, exp, secret) {
   const payload = base64url(new TextEncoder().encode(JSON.stringify({uid:Number(uid),exp})));
   const signature = await dashboardHmac(payload, secret);
   return SESSION_COOKIE+"="+payload+"."+signature+"; Path=/; Max-Age="+SESSION_SECONDS+"; HttpOnly; Secure; SameSite=Lax";
+}
+
+// Signs short-lived values with the session secret (the Apple sign-in state).
+export function signText(value, secret) {
+  return dashboardHmac(value, secret);
 }
 
 async function dashboardHmac(value, secret) {

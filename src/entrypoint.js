@@ -77,6 +77,7 @@ import { estimateFtp, estimateThresholdPace, FTP_METHODS, PACE_METHODS, POWER_ZO
 import {updateFoodEntry,copyFoodEntry,deleteFoodEntry} from './food-entry-management.js';
 import legacyHealthApi, { googleToken } from "./index.js";
 import { handleGoogleLogin } from "./google-login.js";
+import { handleAppleLogin, appleConfigured, appleIdentity, unlinkAppleIdentity } from "./apple-login.js";
 import { chatContext, appendChatTurn, listChats, readChat, deleteChat } from "./assistant-chats.js";
 import { isStaging, markStaging } from "./staging.js";
 import { techniqueFor, ownExerciseVideo, saveOwnExerciseVideo, storedTechnique, generateTechnique, exerciseInUse } from "./exercise-technique.js";
@@ -95,8 +96,9 @@ const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/
 const googleHealthFor = (env, ctx, date) => cached(env, ctx, "google-dashboard:" + date, () => googleDashboard(env.DB, date), { ttl: 120 });
 
 // Requests that read or preview only and so keep the cache.
-// Deleting the account (DELETE /app/api/me) leaves nothing behind, not even a cache version.
-const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me$)/;
+// Deleting the account (DELETE /app/api/me) leaves nothing behind, not even a cache version;
+// unlinking Apple (/app/api/me/apple) changes no training data.
+const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me$|me\/apple$)/;
 const STATIC_PATHS = new Set(['/app','/app/dashboard-client.js','/app/i18n-en.js','/manifest.webmanifest','/logo.svg','/','/privacy','/terms','/support','/mcp/health']);
 
 // Runs fn once per active user (with that user's env and credentials), for
@@ -132,7 +134,7 @@ const worker = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     // Static pages stay independent of storage availability.
-    if (STATIC_PATHS.has(url.pathname) && request.method === 'GET') return staticRoute(url, request);
+    if (STATIC_PATHS.has(url.pathname) && request.method === 'GET') return staticRoute(url, request, env);
     try { await ensureTenancy(env.DB, env, { request }); }
     catch (error) {
       if (error instanceof TenancyUpgradeInProgress) return Response.json({status:"error",message:error.message},{status:503,headers:{"Retry-After":"30","Cache-Control":"no-store"}});
@@ -175,12 +177,19 @@ const worker = {
       if (!env.OPENAI_APP_CHALLENGE) return new Response("Not configured", { status: 404 });
       return new Response(env.OPENAI_APP_CHALLENGE, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
     }
+    // Only if Apple asks for it when the Services ID is set up: the file's content as a secret.
+    if (url.pathname === "/.well-known/apple-developer-domain-association.txt" && request.method === "GET") {
+      if (!env.APPLE_DOMAIN_ASSOCIATION) return new Response("Not configured", { status: 404 });
+      return new Response(env.APPLE_DOMAIN_ASSOCIATION, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+    }
     if (url.pathname.startsWith('/oauth/google') && !signedIn) return new Response('Připojení vyžaduje přihlášení do dashboardu.',{status:401});
     const googleOAuth = await handleGoogleOAuth(request, env, url.pathname);
     if (googleOAuth) return googleOAuth;
     if (url.pathname === "/app/logout" && request.method === "POST") return handleDashboardLogout();
     const googleLogin = await handleGoogleLogin(request, rawEnv, url.pathname);
     if (googleLogin) return googleLogin;
+    const appleLogin = await handleAppleLogin(request, rawEnv, url.pathname, { user: signedIn ? user : null });
+    if (appleLogin) return appleLogin;
     if (url.pathname.startsWith("/app/api/")) {
       if (!user) return unauthorizedResponse();
       const response = await handleDashboardApi(request, env, ctx, url, { user, signedIn });
@@ -207,9 +216,9 @@ export default {
   }
 };
 
-function staticRoute(url, request) {
+function staticRoute(url, request, env) {
   if (url.pathname === "/mcp/health") return Response.json({ status: "ok", service: "health-api-mcp", version: "1.1.0", endpoint: "/mcp", protocol: "2026-07-28+legacy" });
-  if (url.pathname === "/app") return dashboardPage({ clientVersion: CLIENT_VERSION });
+  if (url.pathname === "/app") return dashboardPage({ clientVersion: CLIENT_VERSION, signIn: { apple: appleConfigured(env) } });
   if (url.pathname === "/app/i18n-en.js") return englishScript(url);
   if (url.pathname === "/app/dashboard-client.js") return new Response(dashboardClient, { status: 200, headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": scriptCacheControl(url, CLIENT_VERSION) } });
   if (url.pathname === "/") return overviewPage(request);
@@ -498,9 +507,17 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     }catch(error){return Response.json({message:error.message},{status:400})}
   }
   if (url.pathname === "/app/api/me" && request.method === "GET") {
-    return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env)},{headers:{"Cache-Control":"no-store"}});
+    const apple = appleConfigured(env) && session.user ? await appleIdentity(env.RAW_DB, session.user.id) : null;
+    return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env),apple},{headers:{"Cache-Control":"no-store"}});
   }
   if (url.pathname === "/app/api/me" && request.method === "DELETE") return handleAccountDeletion(request, env, session);
+  // Settings → Účet: unlinks the Apple ID (linking goes through /auth/apple?link=1).
+  if (url.pathname === "/app/api/me/apple" && request.method === "DELETE") {
+    if (!session.signedIn) return Response.json({message:"Přihlas se do dashboardu."},{status:401});
+    if (request.headers.get("Origin") !== url.origin) return Response.json({message:"Neplatný původ požadavku."},{status:403});
+    await unlinkAppleIdentity(env.RAW_DB, session.user.id);
+    return Response.json({status:"ok"},{headers:{"Cache-Control":"no-store"}});
+  }
   if (url.pathname.startsWith("/app/api/admin/")) return handleAdminApi(request, env, url, session);
   // Connections are optional: without them the dashboard works from manual
   // entries (weight, food) and the profile; missingProviders drives the

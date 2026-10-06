@@ -64,6 +64,8 @@ Nastavují se v Cloudflare (`wrangler secret put NAZEV`), ne v repozitáři.
 | `SESSION_SECRET` | Podpis přihlášení do dashboardu. Když chybí, použije se `STRENGTH_API_KEY`. Nastavení nebo změna jednou odhlásí všechny uživatele. |
 | `MCP_API_KEY` | Volitelně samostatný klíč pro `/mcp`; jinak platí `STRENGTH_API_KEY`. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Přihlášení přes Google a připojení Google Health. |
+| `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Volitelně přihlášení přes Apple: Services ID, Team ID, Key ID a obsah souboru `.p8`. Bez nich se tlačítko Apple nezobrazí. Nastavení popisuje [docs/multi-user-setup.md](docs/multi-user-setup.md). |
+| `APPLE_DOMAIN_ASSOCIATION` | Jen když ho Apple při nastavení domény chce: obsah souboru, který aplikace vrátí na `/.well-known/apple-developer-domain-association.txt`. |
 | `INTERVALS_API_KEY` | Intervals.icu správce (ostatní uživatelé si klíč ukládají v aplikaci). |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Asistent trenéra a čtení fotek jídla (volitelně `OPENAI_VISION_MODEL`, jinak `OPENAI_LIGHT_MODEL`). |
 | `OWNER_EMAIL` | Správce aplikace (ve `wrangler.jsonc`). |

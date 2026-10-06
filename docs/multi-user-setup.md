@@ -27,6 +27,17 @@ Silový plán (Gym) má každý uživatel vlastní. Plán dne je v databázi (ta
 
 Katalog cviků odpovídá vybavení pobočky **METAGYM Kutná Hora** (`src/gym-equipment.js`, podle https://metagym.cz/kutnahora; ostatní pobočky mají jiné vybavení). Každý cvik má přiřazené stanoviště. Generátor nabídne jen cviky, pro které pobočka má vybavení. Kutná Hora nemá stojan na dřepy, proto se dřepy dělají na Pendulum squat nebo Pivot leg press.
 
+## Přihlášení přes Apple (volitelné)
+
+Tlačítko „Přihlásit se přes Apple“ se ukáže, až jsou nastavené všechny čtyři secrets `APPLE_*` (`src/apple-login.js`). Potřebuješ placený Apple Developer Program.
+
+1. **Certificates, Identifiers & Profiles → Identifiers → App IDs**: App ID (např. `eu.petrfitnessdata.app`) se zapnutou schopností *Sign in with Apple*.
+2. **Identifiers → Services IDs**: nový Services ID (např. `eu.petrfitnessdata.web`), zapni *Sign in with Apple*, *Configure*: primární App ID z bodu 1, doména `petrfitnessdata.eu`, Return URL `https://petrfitnessdata.eu/auth/apple/callback` (pro testovací kopii i `https://staging.petrfitnessdata.eu/auth/apple/callback` a doménu `staging.petrfitnessdata.eu`). Kdyby Apple chtěl ověřit doménu souborem, ulož jeho obsah do secretu `APPLE_DOMAIN_ASSOCIATION`.
+3. **Keys**: nový klíč se schopností *Sign in with Apple* (primární App ID z bodu 1), stáhni soubor `.p8` (jde stáhnout jen jednou) a poznamenej si Key ID.
+4. V Cloudflare nastav secrets: `APPLE_CLIENT_ID` = Services ID z bodu 2, `APPLE_TEAM_ID` = Team ID (vpravo nahoře v Apple Developer), `APPLE_KEY_ID` = Key ID, `APPLE_PRIVATE_KEY` = celý obsah souboru `.p8`.
+
+Pozvánky fungují stejně jako u Googlu: účet vznikne, když Apple potvrdí pozvaný e-mail. Kdo u Apple zvolí *Skrýt můj e-mail*, dostane aplikace jinou adresu; takový uživatel se přihlásí přes Google a Apple si připojí v **Nastavení → Účet → Připojit Apple** (nebo pozvi přímo tu skrytou adresu). Propojená Apple ID jsou v tabulce `user_identities`.
+
 ## Smazání účtu
 
 Každý uživatel kromě správce si může v **Nastavení → Účet → Smazat účet** smazat účet i se všemi daty (`src/account-deletion.js`). Aplikace nejdřív zruší svůj přístup k jeho Google účtu, pak smaže řádky ve všech tabulkách se sloupcem `user_id`, pozvánku a nakonec samotného uživatele. Co už bylo zkopírované do Intervals.icu nebo Google Health, tam zůstane. Odpojení Google Health v Nastavení přístup u Googlu taky zruší.

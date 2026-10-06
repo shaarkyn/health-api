@@ -104,7 +104,7 @@ test("Settings offers deleting the account, and the Worker routes it without a c
   assert.match(client, /<summary>Smazat účet<\/summary>/);
   assert.match(client, /fetch\('\/app\/api\/me',\{method:'DELETE'/);
   assert.match(entry, /url\.pathname === "\/app\/api\/me" && request\.method === "DELETE"\) return handleAccountDeletion\(request, env, session\)/);
-  assert.match(entry, /const CACHE_NEUTRAL = .*\|me\$\)/);
+  assert.match(entry, /const CACHE_NEUTRAL = .*\|me\$[|)]/);
   // Disconnecting Google Health gives up the access at Google too.
   assert.match(entry, /body\.provider==='google'&&env\.GOOGLE_REFRESH_TOKEN&&!env\.USER_IS_OWNER\) await revokeGoogleToken/);
 });
