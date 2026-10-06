@@ -17,9 +17,15 @@ let cachedJwks = null;
 let cachedJwksAt = 0;
 
 export async function handleGoogleLogin(request, env, pathname) {
-  if (pathname === "/auth/google" && request.method === "GET") return startLogin(env);
-  if (pathname === "/auth/google/callback" && request.method === "GET") return finishLogin(request, env);
+  if (pathname === "/auth/google" && request.method === "GET") return startLogin(googleClientEnv(env));
+  if (pathname === "/auth/google/callback" && request.method === "GET") return finishLogin(request, googleClientEnv(env));
   return null;
+}
+
+// Values pasted into the Cloudflare dashboard easily pick up a stray space,
+// which Google answers with "OAuth client was not found".
+function googleClientEnv(env) {
+  return { ...env, GOOGLE_CLIENT_ID: String(env.GOOGLE_CLIENT_ID || "").trim(), GOOGLE_CLIENT_SECRET: String(env.GOOGLE_CLIENT_SECRET || "").trim() };
 }
 
 function configured(env) {
