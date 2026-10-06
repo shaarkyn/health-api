@@ -82,6 +82,7 @@ import { isStaging, markStaging } from "./staging.js";
 import { techniqueFor, ownExerciseVideo, saveOwnExerciseVideo, storedTechnique, generateTechnique, exerciseInUse } from "./exercise-technique.js";
 import { isPublicPath, resolvePrincipal, unauthorizedResponse, handleDashboardLogout } from "./dashboard-auth.js";
 import { ensureTenancy, TenancyUpgradeInProgress, userEnv, findUser, ownerUser, usersWithProviders, listUsersAndInvites, inviteUser, removeInvite, setUserDisabled } from "./tenancy.js";
+import { handleAccountDeletion, revokeGoogleToken } from "./account-deletion.js";
 import { pragueToday } from './prague-date.js';
 import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.js';
 import { englishScript } from './i18n.js';
@@ -94,7 +95,8 @@ const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/
 const googleHealthFor = (env, ctx, date) => cached(env, ctx, "google-dashboard:" + date, () => googleDashboard(env.DB, date), { ttl: 120 });
 
 // Requests that read or preview only and so keep the cache.
-const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats)/;
+// Deleting the account (DELETE /app/api/me) leaves nothing behind, not even a cache version.
+const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me$)/;
 const STATIC_PATHS = new Set(['/app','/app/dashboard-client.js','/app/i18n-en.js','/manifest.webmanifest','/logo.svg','/','/privacy','/terms','/support','/mcp/health']);
 
 // Runs fn once per active user (with that user's env and credentials), for
@@ -498,6 +500,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   if (url.pathname === "/app/api/me" && request.method === "GET") {
     return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env)},{headers:{"Cache-Control":"no-store"}});
   }
+  if (url.pathname === "/app/api/me" && request.method === "DELETE") return handleAccountDeletion(request, env, session);
   if (url.pathname.startsWith("/app/api/admin/")) return handleAdminApi(request, env, url, session);
   // Connections are optional: without them the dashboard works from manual
   // entries (weight, food) and the profile; missingProviders drives the
@@ -889,6 +892,8 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     const body=await request.json().catch(()=>({}));
     if (request.method === 'DELETE') {
       if(!['google','intervals'].includes(body.provider)) return Response.json({message:'Neznámé připojení.'},{status:400});
+      // Loadwise also gives up its access at Google. The owner's token can be the shared Worker secret, which stays.
+      if(body.provider==='google'&&env.GOOGLE_REFRESH_TOKEN&&!env.USER_IS_OWNER) await revokeGoogleToken(env.GOOGLE_REFRESH_TOKEN).catch(error=>console.error('Google token revocation failed',error.message));
       await deleteConnectionSecret(env,body.provider);
       if(body.provider==='google') await deleteConnectionSecret(env,'google_scopes');
       return Response.json({status:'ok',message:'Připojení je odebrané.'},{headers:{'Cache-Control':'no-store'}});

@@ -63,8 +63,10 @@ export function unauthorizedResponse() {
   );
 }
 
+export const CLEARED_SESSION_COOKIE = SESSION_COOKIE+"=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax";
+
 export function handleDashboardLogout() {
-  return new Response(JSON.stringify({status:"ok"}),{status:200,headers:{"content-type":"application/json; charset=utf-8","Set-Cookie":SESSION_COOKIE+"=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax","Cache-Control":"no-store"}});
+  return new Response(JSON.stringify({status:"ok"}),{status:200,headers:{"content-type":"application/json; charset=utf-8","Set-Cookie":CLEARED_SESSION_COOKIE,"Cache-Control":"no-store"}});
 }
 
 // Returns the session payload ({uid, exp}) or null.

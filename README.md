@@ -68,7 +68,7 @@ Nastavují se v Cloudflare (`wrangler secret put NAZEV`), ne v repozitáři.
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Asistent trenéra a čtení fotek jídla (volitelně `OPENAI_VISION_MODEL`, jinak `OPENAI_LIGHT_MODEL`). |
 | `OWNER_EMAIL` | Správce aplikace (ve `wrangler.jsonc`). |
 
-Google OAuth: připojení žádá jen scopes Google Health (`google-scopes.js`). Tlačítko „Rozšířit oprávnění Google“ v Nastavení si zvlášť vyžádá zápis váhy (`googlehealth.health_metrics_and_measurements.writeonly`) a datum narození (`user.birthday.read`, People API); obojí musí být povolené na OAuth consent screen a People API zapnuté v Google Cloud. Udělená oprávnění se ukládají k připojení uživatele.
+Google OAuth: přihlášení žádá jen `openid email` (`google-login.js`), připojení jen scopes Google Health (`google-scopes.js`). Před stránkou souhlasu Google aplikace sama ukáže, jaká data čte a zapisuje, k čemu a kdo je dostane, a chce zaškrtnutý souhlas (vyžadují to zásady Google Health API); přímá návštěva `/oauth/google` vrátí uživatele na tento dialog. Tlačítko „Rozšířit oprávnění Google“ v Nastavení si zvlášť vyžádá zápis váhy (`googlehealth.health_metrics_and_measurements.writeonly`) a datum narození (`user.birthday.read`, People API); obojí musí být povolené na OAuth consent screen a People API zapnuté v Google Cloud. Udělená oprávnění se ukládají k připojení uživatele.
 
 GitHub Actions potřebují `CLOUDFLARE_API_TOKEN` a `CLOUDFLARE_ACCOUNT_ID`; automatizace se k API přihlašují tokenem GitHub OIDC.
 

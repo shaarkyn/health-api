@@ -6,7 +6,9 @@ import {assistantPanelTheme} from './assistant-panel-theme.js';
 import {designSystem,themeBoot,themeSwitch} from './design-system.js';
 import {ICON_PATHS,icon} from './icons.js';
 import {langBoot} from './i18n.js';
-export function dashboardPage({clientVersion='dev'}={}) {
+import {signInButtons,signInButtonsCss} from './sign-in-buttons.js';
+// signIn.apple: show "Sign in with Apple" (only once its keys are set).
+export function dashboardPage({clientVersion='dev',signIn={}}={}) {
   const html = `<!doctype html>
 <html lang="cs">
 <head>
@@ -45,6 +47,8 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
 #enteredFood>.detail-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap}#enteredFood>.detail-heading h3{margin:0 auto 0 0}.meal-diary-date{width:auto;min-width:145px;padding:7px}#enteredFood>.detail-heading .pill{white-space:nowrap}
 #foodManageDialog{width:min(620px,calc(100vw - 24px));max-height:88vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);padding:20px}#foodManageDialog::backdrop{background:#000a}.food-manage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}.food-manage-grid label,.food-copy-controls label{display:grid;gap:5px;font-size:12px;color:var(--muted)}.food-manage-grid input,.food-manage-grid select{width:100%}.food-manage-actions,.food-copy-controls{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:12px}.food-copy-controls{border-top:1px solid var(--line);padding-top:14px}.food-copy-controls label{min-width:170px}@media(max-width:620px){.food-manage-grid{grid-template-columns:1fr}.meal-row-main{display:block}.meal-row-main strong,.meal-row-main span{display:block}.meal-row-actions select{max-width:none;width:100%}}
 #foodManageDialog .detail-heading{display:flex;align-items:center;justify-content:space-between;flex-direction:row;gap:12px}#foodManageDialog .detail-heading h3{margin:0}#foodManageClose{flex:none}
+.consent-dialog{width:min(560px,calc(100vw - 24px));max-height:88vh;overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);padding:22px}.consent-dialog::backdrop{background:#000a}.consent-dialog h3{margin:0 0 6px;font-size:20px}.consent-list{margin:14px 0;padding-left:18px;display:grid;gap:9px;font-size:13px;line-height:1.5}.consent-check{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--text) 4%,var(--bg));font-weight:600;cursor:pointer}.consent-check input{flex:none;width:18px;height:18px;margin:2px 0 0}.consent-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}.consent-dialog a{color:var(--primary-text)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--bg))}.account-delete{margin-top:12px}.account-delete summary{cursor:pointer;color:var(--muted);font-size:13px}.account-delete p{margin:10px 0}.account-delete-note{margin:10px 0 0}
 </style>
 </head>
 <body>
@@ -186,7 +190,8 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
 </div></main></div>
 <template id="muscleMapTemplate">${muscleMapView()}</template>
 <div id="toast" class="toast"></div>
-<style>${experienceTheme}${mobileTheme}${gymFocusTheme}${workoutsHubTheme}${assistantPanelTheme}${designSystem}</style>
+<template id="signInButtons">${signInButtons(signIn)}</template>
+<style>${experienceTheme}${mobileTheme}${gymFocusTheme}${workoutsHubTheme}${assistantPanelTheme}${designSystem}${signInButtonsCss}</style>
 <script>window.LW_ICONS=${JSON.stringify(ICON_PATHS)};</script>
 <script src="/app/dashboard-client.js?v=${clientVersion}" defer></script>
 </body></html>`;
