@@ -1553,7 +1553,10 @@ export const EN = {
 "Hustota · g/ml": "Density · g/ml",
 "Vybrat partie": "Choose muscle groups",
 "Rychle zapsat": "Quick log",
-"Velikost porce": "Portion size"
+"Velikost porce": "Portion size",
+"Moje regenerace": "My recovery",
+"Upravit tento gym": "Adjust this gym session",
+"Historie": "History"
 };
 
 export const EN_TEMPLATES = {
@@ -1975,5 +1978,15 @@ export const EN_PATTERNS = [
 ["(?<!\\p{L})Proti(?!\\p{L}) (?=\\d)", "vs "],
 ["(?<!\\p{L})Automaticky(?!\\p{L}):", "Automatic:"],
 ["Sv\\. dopo\\.", "AM snack"],
-["Sv\\. odpo\\.", "PM snack"]
+["Sv\\. odpo\\.", "PM snack"],
+["^Den(?= · )", "Day"],
+["^Tréninky(?= · )", "Workouts"],
+["^Historie(?= · )", "History"],
+["^Zdraví(?= · )", "Health"],
+["^Výživa(?= · )", "Nutrition"],
+["^Nastavení(?= · )", "Settings"],
+["^🚴 Kolo(?= · )", "🚴 Ride"],
+["^🏃 Běh(?= · )", "🏃 Run"],
+["^🏋️ Posilovna(?= · )", "🏋️ Gym"],
+["^Přidat(?= · )", "Add"]
 ];
