@@ -50,6 +50,15 @@
     // on its own. Deployed by .github/workflows/deploy-staging.yml.
     "staging": {
       "name": "health-api-staging",
+      // Under petrfitnessdata.eu, so Google sign-in needs only two more
+      // redirect URIs on the existing OAuth client, no new authorized domain.
+      "routes": [
+        {
+          "pattern": "staging.petrfitnessdata.eu",
+          "custom_domain": true
+        }
+      ],
+      "workers_dev": false,
       "triggers": {
         "crons": []
       },
@@ -64,7 +73,7 @@
       "vars": {
         "OWNER_EMAIL": "chelseafc.czsk@gmail.com",
         "ENVIRONMENT": "staging",
-        "APP_ORIGIN": "https://health-api-staging.chelseafc-czsk.workers.dev"
+        "APP_ORIGIN": "https://staging.petrfitnessdata.eu"
       }
     }
   }

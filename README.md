@@ -74,11 +74,12 @@ GitHub Actions potřebují `CLOUDFLARE_API_TOKEN` a `CLOUDFLARE_ACCOUNT_ID`; aut
 
 ## Testovací kopie (staging)
 
-Na https://health-api-staging.chelseafc-czsk.workers.dev/app běží kopie aplikace s vlastní databází `health-data-staging` (`env.staging` ve `wrangler.jsonc`). Workflow `deploy-staging.yml` na ni nasadí každý push do otevřeného pull requestu (nebo ručně vybranou větev), takže se změna dá vyzkoušet před „mergni“. Živá verze se nasazuje dál jen z `main`.
+Na https://staging.petrfitnessdata.eu/app běží kopie aplikace s vlastní databází `health-data-staging` (`env.staging` ve `wrangler.jsonc`). Workflow `deploy-staging.yml` na ni nasadí každý push do otevřeného pull requestu (nebo ručně vybranou větev), takže se změna dá vyzkoušet před „mergni“. Živá verze se nasazuje dál jen z `main`.
 
+- Prázdná databáze dostane strukturu živé databáze (bez dat) ze `staging/schema.sql`, potom běží migrace jako v produkci.
 - Každá stránka má dole štítek „TEST · staging“ a hlavičku `noindex`.
 - Nemá cron, sama nic nesynchronizuje do Google ani Intervals.icu.
-- Secrets se nastavují zvlášť: `wrangler secret put NAZEV --env staging` (nebo v Cloudflare u Workeru `health-api-staging`). Pro přihlášení stačí `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` a `STRENGTH_API_KEY` (u stagingu klidně jiný než v produkci); v Google Cloud musí OAuth klient mít navíc přesměrování `…staging…/auth/google/callback` a `…staging…/oauth/google/callback`.
+- Secrets se nastavují zvlášť: `wrangler secret put NAZEV --env staging` (nebo v Cloudflare u Workeru `health-api-staging`). Pro přihlášení stačí `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` a `STRENGTH_API_KEY` (u stagingu klidně jiný než v produkci); v Google Cloud musí OAuth klient mít navíc přesměrování `https://staging.petrfitnessdata.eu/auth/google/callback` a `https://staging.petrfitnessdata.eu/oauth/google/callback`.
 - `INTERVALS_API_KEY` a připojení Google Health ve stagingu pracují se skutečnými účty, zápisy (tréninky, váha) se tedy propíšou i tam.
 
 ## Další dokumentace

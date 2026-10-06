@@ -1,6 +1,6 @@
 name: Deploy staging
 
-# The test copy at https://health-api-staging.chelseafc-czsk.workers.dev runs
+# The test copy at https://staging.petrfitnessdata.eu runs
 # the newest push of any open pull request (or a branch picked by hand), with
 # its own database, so a change can be tried before it is merged and goes live.
 on:
@@ -13,6 +13,7 @@ on:
       - "public/**"
       - "wrangler.jsonc"
       - "migrations/**"
+      - "staging/**"
       - ".github/workflows/deploy-staging.yml"
 
 permissions:
@@ -24,7 +25,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  STAGING_URL: https://health-api-staging.chelseafc-czsk.workers.dev
+  STAGING_URL: https://staging.petrfitnessdata.eu
 
 jobs:
   deploy:
@@ -46,6 +47,14 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      # Tables that predate the migrations; a no-op once they exist.
+      - name: Prepare staging database structure
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 execute health-data-staging --remote --env staging --file staging/schema.sql
 
       - name: Apply D1 migrations (staging database)
         uses: cloudflare/wrangler-action@v4

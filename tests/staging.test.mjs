@@ -4,7 +4,7 @@ import { isStaging, markStaging } from "../src/staging.js";
 import { mayUpgradeFrom } from "../src/tenancy.js";
 import { googleLoginRedirectUri } from "../src/google-login.js";
 
-const STAGING = { ENVIRONMENT: "staging", APP_ORIGIN: "https://health-api-staging.chelseafc-czsk.workers.dev" };
+const STAGING = { ENVIRONMENT: "staging", APP_ORIGIN: "https://staging.petrfitnessdata.eu" };
 
 test("staging pages carry a badge and stay out of search engines", async () => {
   assert.equal(isStaging(STAGING), true);
