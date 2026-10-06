@@ -42,5 +42,30 @@
   // The owner is the first admin; existing single-user data belongs to this account.
   "vars": {
     "OWNER_EMAIL": "chelseafc.czsk@gmail.com"
+  },
+  "env": {
+    // Test copy for trying changes before they go live: its own Worker
+    // (health-api-staging) and its own database, so nothing done there can
+    // touch live data. No cron jobs, so it never syncs to Google or Intervals
+    // on its own. Deployed by .github/workflows/deploy-staging.yml.
+    "staging": {
+      "name": "health-api-staging",
+      "triggers": {
+        "crons": []
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "health-data-staging",
+          "database_id": "6fbc690b-c776-42c9-b052-8f4ee44669fd",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "vars": {
+        "OWNER_EMAIL": "chelseafc.czsk@gmail.com",
+        "ENVIRONMENT": "staging",
+        "APP_ORIGIN": "https://health-api-staging.chelseafc-czsk.workers.dev"
+      }
+    }
   }
 }

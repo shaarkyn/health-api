@@ -1,0 +1,77 @@
+name: Deploy staging
+
+# The test copy at https://health-api-staging.chelseafc-czsk.workers.dev runs
+# the newest push of any open pull request (or a branch picked by hand), with
+# its own database, so a change can be tried before it is merged and goes live.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "wrangler.jsonc"
+      - "migrations/**"
+      - ".github/workflows/deploy-staging.yml"
+
+permissions:
+  contents: read
+
+# One staging copy: the newest push wins, an older deploy in flight is dropped.
+concurrency:
+  group: staging
+  cancel-in-progress: true
+
+env:
+  STAGING_URL: https://health-api-staging.chelseafc-czsk.workers.dev
+
+jobs:
+  deploy:
+    # Pull requests from forks never get the Cloudflare secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check syntax
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Apply D1 migrations (staging database)
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply health-data-staging --remote --env staging
+
+      - name: Deploy staging Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env staging
+          workingDirectory: .
+
+      - name: Wait for the staging copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' "$STAGING_URL/app/api/me" || true)"
+            if [ "$code" = "401" ]; then break; fi
+            echo "Waiting for staging (HTTP $code, attempt $attempt)"; sleep 10
+          done
+          [ "$code" = "401" ] || { echo "Staging did not come up"; exit 1; }
+          page="$(curl -fsS "$STAGING_URL/app")"
+          grep -q "TEST · staging" <<< "$page" || { echo "Staging badge missing"; exit 1; }
+          echo "Staging: $STAGING_URL/app (${GITHUB_HEAD_REF:-$GITHUB_REF_NAME} @ ${GITHUB_SHA::7})" >> "$GITHUB_STEP_SUMMARY"
