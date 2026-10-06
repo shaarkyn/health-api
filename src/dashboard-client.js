@@ -10,9 +10,16 @@ const reflectionDays=new Set();
 let statusCoachingRevision=0;
 let planDataRevision=0;
 let coachRefreshTimer;
+// When each part of the dashboard data was last read (see load), declared early
+// because a change can be saved before the first load ends.
+let loadedAt={},loadedWeek=null,loadsRunning=0;
+// A saved change makes the data it touches old: food only the nutrition history,
+// anything else everything. The shown day is read again on every load anyway.
+function markDataChanged(path){if(/\/(food|nutrition|fluids)\//.test(path))delete loadedAt.nutrition;else loadedAt={};loadedWeek=null;}
 function scheduleCoachRefresh(){clearTimeout(coachRefreshTimer);coachRefreshTimer=setTimeout(refreshCoachLifecycle,250);}
 async function refreshCoachLifecycle(){
-  if(document.hidden||coachRefreshRunning||selectedHistoryDate!==pragueToday())return;
+  // A load in progress reads the day and the advisers anyway.
+  if(document.hidden||coachRefreshRunning||loadsRunning||selectedHistoryDate!==pragueToday())return;
   coachRefreshRunning=true;
   const revision=statusCoachingRevision;
   const planRevision=planDataRevision;
@@ -30,7 +37,8 @@ async function refreshCoachLifecycle(){
     renderOverview();renderCoachCouncil();renderToday();renderNutrition();if(gymChanged&&(gym.cancelled||!gymEditing))renderGym();try{correctDataPresentation();}catch{}await renderWeekHub();
   }catch{}finally{coachRefreshRunning=false;}
 }
-setInterval(refreshCoachLifecycle,30000);
+// New activities arrive through the five-minute sync, so two minutes keep the advisers current.
+setInterval(refreshCoachLifecycle,120000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshCoachLifecycle();});
 let weekStart=pragueMonday(),selectedHistoryDate=pragueToday(),state={};
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
@@ -114,15 +122,15 @@ function populateWeekSelectors(weekId,dayId,days){
 // A modal dialog covers the page, so messages and tips move into it while open.
 function overlayHost(){try{return document.querySelector('dialog:modal')||document.body}catch{return document.body}}
 function toast(msg){const t=$("toast"),host=overlayHost();if(t.parentNode!==host)host.appendChild(t);t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600)}
-async function jsonFetch(path,options={}){const r=await fetch(path,{credentials:"same-origin",...options,headers:{...options.headers,"X-Interface-Language":document.documentElement.lang||"cs"}});const d=await r.json().catch(()=>({message:"Invalid response"}));if(r.status===401)showLoginGate();if(r.status===409&&d.status==="onboarding")showOnboarding(d.missingProviders||[]);if(!r.ok)throw new Error(d.message||"HTTP "+r.status);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate/.test(path)&&typeof clearLibraryCache==='function')clearLibraryCache();if(options.method&&options.method!=='GET'&&!/\/assistant|\/sync|\/athlete-state|\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/(?:generate|schedule)|\/estimate|\/week-plan|\/planned\//.test(path))scheduleCoachRefresh();return d}
+async function jsonFetch(path,options={}){const r=await fetch(path,{credentials:"same-origin",...options,headers:{...options.headers,"X-Interface-Language":document.documentElement.lang||"cs"}});const d=await r.json().catch(()=>({message:"Invalid response"}));if(r.status===401)showLoginGate();if(r.status===409&&d.status==="onboarding")showOnboarding(d.missingProviders||[]);if(!r.ok)throw new Error(d.message||"HTTP "+r.status);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate|\/assistant/.test(path))markDataChanged(path);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate/.test(path)&&typeof clearLibraryCache==='function')clearLibraryCache();if(options.method&&options.method!=='GET'&&!/\/assistant|\/sync|\/athlete-state|\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/(?:generate|schedule)|\/estimate|\/week-plan|\/planned\//.test(path))scheduleCoachRefresh();return d}
 // Every data API requires a session; the first 401 swaps the dashboard for a login screen.
 const gateStyle='position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto';
-function showLoginGate(){if($("loginGate"))return;document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card" style="width:min(380px,100%);display:grid;gap:12px"><h2 id="loginGateTitle" style="margin:0">Přihlášení</h2><p class="small" style="margin:0">Do aplikace se přihlašuješ svým Google účtem. Přístup mají jen pozvaní uživatelé.</p><a class="btn primary" href="/auth/google" style="text-align:center;text-decoration:none">Přihlásit přes Google</a></div></div>');}
+function showLoginGate(){if($("loginGate"))return;forgetDashboard();document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card" style="width:min(380px,100%);display:grid;gap:12px"><h2 id="loginGateTitle" style="margin:0">Přihlášení</h2><p class="small" style="margin:0">Do aplikace se přihlašuješ svým Google účtem. Přístup mají jen pozvaní uživatelé.</p><a class="btn primary" href="/auth/google" style="text-align:center;text-decoration:none">Přihlásit přes Google</a></div></div>');}
 // Until Google Health and Intervals.icu are connected the dashboard shows only the setup steps.
 // Connections are optional: the user may continue with manual entries.
 function onboardingSkipped(){try{return localStorage.getItem('onboardingSkipped')==='1';}catch{return false;}}
 function showOnboarding(missing){if($("loginGate")||$("onboardingGate"))return;const need=id=>missing.includes(id);document.body.insertAdjacentHTML("beforeend",'<div id="onboardingGate" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle" style="'+gateStyle+'"><div class="card" style="width:min(520px,100%);display:grid;gap:14px"><div><div class="eyebrow">Vítej</div><h2 id="onboardingTitle" style="margin:4px 0 6px">Připoj svoje data</h2><p class="small" style="margin:0">Propoj Google Health a Intervals.icu a data se budou načítat sama. Můžeš pokračovat i bez nich: váhu a jídlo pak zapisuješ ručně a kalorický cíl spočítáme z profilu. Každý uživatel vidí jen svoje vlastní data.</p></div><div class="notice"><strong>1. Google Health</strong> '+(need("google")?'<span class="pill">Nepřipojeno</span><p class="small">Spánek, aktivity, hmotnost a jídlo. Budeš přesměrován na souhlas Google.</p><a class="btn primary" href="/oauth/google" style="display:inline-block;text-decoration:none">Připojit Google Health</a>':'<span class="pill good">Připojeno</span>')+'</div><div class="notice"><strong>2. Intervals.icu</strong> '+(need("intervals")?'<span class="pill">Nepřipojeno</span><p class="small">API klíč najdeš v Intervals.icu → Settings → Developer Settings. Athlete ID zadávat nemusíš.</p><form id="onboardingIntervals" class="select-row"><input id="onboardingIntervalsKey" type="password" autocomplete="off" placeholder="API klíč Intervals.icu" aria-label="API klíč Intervals.icu" required style="background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;min-width:0;flex:1"><button class="btn primary" type="submit">Ověřit a připojit</button></form><div class="small" id="onboardingIntervalsResult" aria-live="polite"></div>':'<span class="pill good">Připojeno</span>')+'</div><button class="btn primary" id="onboardingSkip" type="button">Pokračovat bez propojení</button><button class="btn" id="onboardingLogout" type="button">Odhlásit</button></div></div>');$("onboardingSkip").onclick=()=>{try{localStorage.setItem('onboardingSkipped','1');}catch{}$("onboardingGate").remove();load();toast('Propojit služby můžeš kdykoli v Nastavení.');};const form=$("onboardingIntervals");if(form)form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector("button");b.disabled=true;try{await jsonFetch("/app/api/connections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:"intervals",key:$("onboardingIntervalsKey").value.trim()})});location.reload();}catch(error){$("onboardingIntervalsResult").textContent=error.message;b.disabled=false;}};$("onboardingLogout").onclick=logout;}
-async function logout(){await fetch("/app/logout",{method:"POST",credentials:"same-origin"}).catch(()=>{});location.href="/app";}
+async function logout(){forgetDashboard();await fetch("/app/logout",{method:"POST",credentials:"same-origin"}).catch(()=>{});location.href="/app";}
 function activate(view){if(!$(view)?.classList.contains('view'))return;try{localStorage.setItem('pfd-active-view',view);}catch{}document.querySelectorAll(".navbtn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===view));const title=document.querySelector('.navbtn[data-view="'+view+'"] span')?.textContent;if(title&&$('topTitle'))$('topTitle').textContent=title;window.scrollTo({top:0,behavior:'instant'});}
 // Open coach proposals (the assistant's action cards read them).
 async function loadInbox(){try{const r=await jsonFetch("/app/api/inbox");state.inbox=r.items||[];}catch{/* the cards stay as they are */}}
@@ -653,24 +661,54 @@ async function generateWorkoutForDay(variant=0){
   finally{b.disabled=false}
 }
 let dashboardLoadRevision=0;
+const DAY_INDEPENDENT=['athleteState','fitness','weight','activities','nutrition','sleep'];
+// The last loaded day stays on this device, so opening the app shows it at once
+// while the fresh data loads. Only today, never older than half a day; the
+// largest parts are left out when the browser's storage is too small.
+const SNAPSHOT_KEY='lw-dashboard-snapshot',SNAPSHOT_PARTS=['athleteState','daily','coaches','gym','week','fitness','weight','activities','sleep','nutrition'];
+function saveDashboardSnapshot(){
+  const data={};for(const key of SNAPSHOT_PARTS)if(state[key]!=null)data[key]=state[key];
+  for(const drop of [null,'nutrition','sleep','activities','week']){
+    if(drop)delete data[drop];
+    try{const text=JSON.stringify({date:pragueToday(),weekStart,savedAt:Date.now(),data});if(text.length>2e6)continue;localStorage.setItem(SNAPSHOT_KEY,text);return;}catch{}
+  }
+  try{localStorage.removeItem(SNAPSHOT_KEY);}catch{}
+}
+function showDashboardSnapshot(){
+  try{
+    const snap=JSON.parse(localStorage.getItem(SNAPSHOT_KEY)||'null');
+    if(!snap||snap.date!==pragueToday()||selectedHistoryDate!==snap.date||Date.now()-snap.savedAt>12*3600e3)return;
+    for(const key of SNAPSHOT_PARTS){if(snap.data[key]==null||(key==='week'&&snap.weekStart!==weekStart))continue;state[key]=snap.data[key];renderLoadedData(key);}
+    $('topStatus').textContent='Aktualizuji…';
+  }catch{}
+}
+function forgetDashboard(){try{localStorage.removeItem('lw-dashboard-ready');localStorage.removeItem(SNAPSHOT_KEY);}catch{}}
 function renderLoadedData(key){
   const renderers=key==='coaches'?[renderCoachCouncil]:key==='gym'?[renderGym]:key==='nutrition'?[renderNutrition]:key==='athleteState'?[renderAthleteStatus,renderCoachMemories,renderToday]:
     key==='week'?[renderTraining,renderToday]:key==='sleep'?[renderOverview,renderRecovery,renderHealth,renderToday]:key==='fitness'?[renderOverview,renderTraining,renderRecovery,renderHealth,renderToday]:
     key==='daily'?[renderOverview,renderNutrition,renderToday]:[renderOverview,renderHealth];
   for(const render of renderers){try{render();}catch{/* Other inputs may still be arriving. */}}
 }
-async function load(){
+async function load(){loadsRunning++;try{await loadDashboardData();}finally{loadsRunning--;}}
+async function loadDashboardData(){
   const revision=++dashboardLoadRevision,statusRevision=statusCoachingRevision,date=selectedHistoryDate;
-  $('topStatus').textContent='Načítám…';
-  const jobs=[['athleteState','/app/api/athlete-state'],['daily','/app/api/daily?date='+date],['coaches','/app/api/coaches?date='+date],['fitness','/app/api/fitness?days=90'],['week','/app/api/week?start='+weekStart],['weight','/app/api/weight'],['activities','/app/api/activities'],['nutrition','/app/api/nutrition?start='+dateShift(pragueToday(),-365)+'&end='+dateShift(pragueToday(),1)],['sleep','/app/api/sleep?start='+dateShift(pragueToday(),-365)+'&end='+dateShift(pragueToday(),1)],['gym','/app/api/gym?date='+gymDay()]];
+  $('topStatus').textContent=state.daily?'Aktualizuji…':'Načítám…';
+  // Switching the day reads only what depends on it: the history (sleep, weight,
+  // nutrition, fitness) and the shown week stay until a change or five minutes.
+  const now=Date.now(),fresh=key=>state[key]!=null&&now-(loadedAt[key]||0)<300000;
+  const jobs=[['athleteState','/app/api/athlete-state'],['daily','/app/api/daily?date='+date],['coaches','/app/api/coaches?date='+date],['fitness','/app/api/fitness?days=90'],['week','/app/api/week?start='+weekStart],['weight','/app/api/weight'],['activities','/app/api/activities'],['nutrition','/app/api/nutrition?start='+dateShift(pragueToday(),-365)+'&end='+dateShift(pragueToday(),1)],['sleep','/app/api/sleep?start='+dateShift(pragueToday(),-365)+'&end='+dateShift(pragueToday(),1)],['gym','/app/api/gym?date='+gymDay()]].filter(([key])=>key==='week'?!(loadedWeek===weekStart&&fresh('week')):!DAY_INDEPENDENT.includes(key)||!fresh(key));
+  const shownWeek=weekStart;
+  // What stays is drawn for the new day at once, before any answer arrives.
+  for(const key of [...DAY_INDEPENDENT,'week'])if(!jobs.some(([k])=>k===key))renderLoadedData(key);
   const results=await Promise.allSettled(jobs.map(async([key,url])=>{
     const result=key==='week'?await fetchWeek(weekStart):await jsonFetch(url);
     if(revision!==dashboardLoadRevision||date!==selectedHistoryDate)return;
     if(['athleteState','coaches'].includes(key)&&statusRevision!==statusCoachingRevision)return;
-    state[key]=key==='athleteState'?result.state:result;renderLoadedData(key);
+    state[key]=key==='athleteState'?result.state:result;loadedAt[key]=Date.now();if(key==='week')loadedWeek=shownWeek;renderLoadedData(key);
   }));
   if(revision!==dashboardLoadRevision)return;
   const failed=results.filter(r=>r.status==='rejected').length;
+  if(date===pragueToday())saveDashboardSnapshot();
   loadInbox().catch(()=>{});
   $('topStatus').textContent=failed===0?'Live · '+new Date().toLocaleTimeString('cs-CZ'):failed<jobs.length?'Částečně načteno':'Data nejsou dostupná';
   $('topStatus').className=failed===0?'status-label small':failed<jobs.length?'status-label small status-partial':'status-label small status-error';
@@ -696,7 +734,7 @@ $('refresh').onclick=async()=>{
       const current=await jsonFetch('/app/api/sync');status=current.status;
       if(i%5===4&&status==='running')await refreshCoachLifecycle();
     }
-    b.textContent='Obnovuji…';await load();
+    b.textContent='Obnovuji…';markDataChanged('');await load();
     toast(status==='running'?'Synchronizace pokračuje na pozadí; doporučení průběžně obnovujeme.':status==='partial'||status==='error'?'Část služeb se neobnovila. Dostupná data jsou načtená.':status==='idle'?started.message||'Není co synchronizovat.':'Nová data jsou načtená.');
   }catch(error){toast('Synchronizace selhala: '+error.message);}
   finally{b.disabled=false;b.textContent='Obnovit';}
@@ -1313,7 +1351,7 @@ function installDataCorrections(){
   $('foodSaveButton').insertAdjacentHTML('beforebegin','<button type="button" class="btn" id="savePersonalFood">Uložit potravinu pro příště</button>');$('savePersonalFood').onclick=async()=>{try{await jsonFetch('/app/api/food/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(foodEditorProduct())});foodMessage('Potravina je uložená v tvojí databázi. Příště ji najdeš podle názvu i podobného zadání.');}catch(e){foodMessage(e.message);}};
   const selectWithSource=selectFoodProduct;selectFoodProduct=function(p){selectWithSource(p);if(p.source==='personal')$('foodSource').textContent='Moje databáze · tvoje uložené nutriční hodnoty';};
   const oldExperience=renderExperience;renderExperience=function(){oldExperience();correctDataPresentation();};
-  const oldLoad=load;load=async()=>{$('viewDate').value=selectedHistoryDate;$('nextDay').disabled=selectedHistoryDate>=lastSelectableDay();if($('foodDate'))$('foodDate').value=selectedHistoryDate;try{state.googleHealth=selectedHistoryDate>pragueToday()?{wellness:[],sync:{status:'future'}}:await jsonFetch('/app/api/google-health?date='+selectedHistoryDate);}catch(e){state.googleHealth={wellness:[],sync:{status:'error',error:e.message}};}await oldLoad();if(selectedHistoryDate!==pragueToday()){try{const coaches=await jsonFetch('/app/api/coaches?date='+selectedHistoryDate);if(coaches.date!==selectedHistoryDate)throw new Error('Historická data poradců chybí.');state.coaches=coaches;renderCoachCouncil();}catch{$('coachPriorities').hidden=false;$('coachPriorities').textContent=selectedHistoryDate>pragueToday()?'Hodnocení poradců bude k dispozici v ten den.':'Historické hodnocení není dostupné.';$('coachCards').innerHTML='';}}const today=state.week?.days?.find(d=>d.date===selectedHistoryDate);if(today&&state.daily?.nutrition?.energyBudget){today.daily.nutrition=state.daily.nutrition;today.daily.calories=state.daily.calories;renderOverview();renderNutrition();}correctDataPresentation();labelSelectedDay();if($('enteredFood'))loadEnteredFood();};
+  const oldLoad=load;load=async()=>{$('viewDate').value=selectedHistoryDate;$('nextDay').disabled=selectedHistoryDate>=lastSelectableDay();if($('foodDate'))$('foodDate').value=selectedHistoryDate;const shownDay=selectedHistoryDate,health=shownDay>pragueToday()?Promise.resolve({wellness:[],sync:{status:'future'}}):jsonFetch('/app/api/google-health?date='+shownDay).catch(e=>({wellness:[],sync:{status:'error',error:e.message}}));await oldLoad();{const g=await health;if(shownDay===selectedHistoryDate){state.googleHealth=g;try{renderOverview();renderNutrition();}catch{}}}if(selectedHistoryDate!==pragueToday()){try{const coaches=state.coaches?.date===selectedHistoryDate?state.coaches:await jsonFetch('/app/api/coaches?date='+selectedHistoryDate);if(coaches.date!==selectedHistoryDate)throw new Error('Historická data poradců chybí.');state.coaches=coaches;renderCoachCouncil();}catch{$('coachPriorities').hidden=false;$('coachPriorities').textContent=selectedHistoryDate>pragueToday()?'Hodnocení poradců bude k dispozici v ten den.':'Historické hodnocení není dostupné.';$('coachCards').innerHTML='';}}const today=state.week?.days?.find(d=>d.date===selectedHistoryDate);if(today&&state.daily?.nutrition?.energyBudget){today.daily.nutrition=state.daily.nutrition;today.daily.calories=state.daily.calories;renderOverview();renderNutrition();}correctDataPresentation();labelSelectedDay();if($('enteredFood'))loadEnteredFood();};
   const oldActivate=activate;activate=function(id){oldActivate(id);if(state.daily)correctDataPresentation();};
 }
 function simpleFoodPortions(product){
@@ -1488,7 +1526,12 @@ function wireRunProfile(d){
 async function loadAccount(){const me=await jsonFetch('/app/api/me');const card=$('accountCard');if(card){card.innerHTML='<div class="detail-heading"><h3>Účet</h3><button class="btn" type="button" id="logoutBtn">Odhlásit</button></div><p class="small" style="margin:0">Přihlášen jako <strong>'+esc(me.user?.email||'')+'</strong>'+(me.user?.isAdmin?' · správce':'')+'</p>';$('logoutBtn').onclick=logout;}if(me.missingProviders?.length&&!onboardingSkipped())showOnboarding(me.missingProviders);if(!$('trainingProfileCard')&&$('settings')){$('connectionCards').insertAdjacentHTML('afterend','<article class="card" id="trainingProfileCard" style="margin-top:12px"><h3>FTP a zóny</h3><div class="small">Načítám…</div></article>');loadTrainingProfile();}if(me.user?.isAdmin)installAdmin();return me;}
 function installAdmin(){if($('adminCard'))return;$('settings').insertAdjacentHTML('beforeend','<article class="card" id="adminCard" style="margin-top:12px"><h3>Uživatelé</h3><p class="small">Přihlásit se přes Google mohou jen pozvaní. Pozvi e-mail Google účtu a pošli uživateli odkaz na aplikaci. Připojení Google Health a Intervals si každý nastaví sám.</p><form id="inviteForm" class="select-row"><input id="inviteEmail" type="email" required placeholder="email@gmail.com" aria-label="E-mail pozvaného uživatele" style="background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;min-width:0;flex:1"><button class="btn primary" type="submit">Pozvat</button></form><p class="small">Google Health je v testovacím režimu Google Cloud: každý nový uživatel musí být přidaný i mezi Test users v OAuth consent screen, jinak připojení Google Health odmítne.</p><div id="adminUsers" class="small">Načítám…</div></article>');$('inviteForm').onsubmit=async e=>{e.preventDefault();try{const r=await jsonFetch('/app/api/admin/invites',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('inviteEmail').value})});$('inviteEmail').value='';toast(r.message);loadAdmin();}catch(error){toast(error.message);}};loadAdmin();}
 async function loadAdmin(){try{const d=await jsonFetch('/app/api/admin/users');const users=d.users.map(u=>'<div class="metric-line"><span>'+esc(u.email)+(u.role==='admin'?' · správce':'')+(u.disabled?' · zablokovaný':'')+'<br><small>'+(u.last_login_at?'Naposledy '+esc(new Date(u.last_login_at+'Z').toLocaleString('cs-CZ')):'Zatím se nepřihlásil')+'</small></span>'+(u.role==='admin'?'':'<button class="btn" type="button" data-user="'+u.id+'" data-disabled="'+(u.disabled?0:1)+'">'+(u.disabled?'Obnovit přístup':'Zablokovat')+'</button>')+'</div>').join('');const invites=d.invites.map(i=>'<div class="metric-line"><span>'+esc(i.email)+' · pozvánka čeká</span><button class="btn" type="button" data-invite="'+esc(i.email)+'">Zrušit</button></div>').join('');$('adminUsers').innerHTML=users+(invites||'');document.querySelectorAll('[data-user]').forEach(b=>b.onclick=async()=>{try{const r=await jsonFetch('/app/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:Number(b.dataset.user),disabled:b.dataset.disabled==='1'})});toast(r.message);loadAdmin();}catch(error){toast(error.message);}});document.querySelectorAll('[data-invite]').forEach(b=>b.onclick=async()=>{try{const r=await jsonFetch('/app/api/admin/invites',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:b.dataset.invite})});toast(r.message);loadAdmin();}catch(error){toast(error.message);}});}catch(e){$('adminUsers').textContent=e.message;}}
-installDataCorrections();installSimpleFoodEditor();installCompactFoodEditor();loadAccount().then(me=>{loadConnections();if(!me.missingProviders?.length||onboardingSkipped())load();}).catch(()=>{});
+installDataCorrections();installSimpleFoodEditor();installCompactFoodEditor();{// A device that opened the dashboard before asks for the data together with the
+// account check instead of after it; the first visit waits for the check (onboarding).
+let ready=false;try{ready=localStorage.getItem('lw-dashboard-ready')==='1';}catch{}
+// After the rest of this file has run: later parts extend load().
+if(ready)queueMicrotask(()=>{showDashboardSnapshot();load();});
+loadAccount().then(me=>{loadConnections();const open=!me.missingProviders?.length||onboardingSkipped();try{if(open)localStorage.setItem('lw-dashboard-ready','1');else forgetDashboard();}catch{}if(open&&!ready)load();}).catch(()=>{});}
 
 // ---- Workouts hub: info tips, week overview with weather, weekly planner ----
 const INFO_TEXTS={
@@ -2751,7 +2794,7 @@ function installPhoneLayer(){
   // The gym panel gets the workout mode on every screen size.
   $('generateGym')?.insertAdjacentHTML('beforebegin','<button class="btn primary" id="startGymMode" type="button">▶ Režim tréninku</button>');
   $('startGymMode').onclick=openGymMode;
-  const previous=load;load=async()=>{await previous();await loadWeekPlan().catch(()=>{});renderToday();};
+  const previous=load;load=async()=>{const plan=loadWeekPlan().catch(()=>{});await previous();await plan;renderToday();};
   const wasActivate=activate;activate=function(id){wasActivate(id);$('quickAdd').hidden=id==='settings';if(id!=='today'){const tl=$('dayTimeline'),pulse=$('dailyPulse');if(id==='overview'&&tl&&pulse)pulse.after(tl);}else renderToday();};
   let restored='today';try{const saved=localStorage.getItem('pfd-active-view');if($(saved)?.classList.contains('view'))restored=saved;}catch{}activate(restored);
 }
@@ -3878,7 +3921,7 @@ function installAdaptivePlanning(){
   };
   $('assistantMessage').addEventListener('input',updateAssistantComposer);updateAssistantComposer();
   window.visualViewport?.addEventListener('resize',positionAssistantInViewport);window.visualViewport?.addEventListener('scroll',positionAssistantInViewport);
-  const previous=load;load=async()=>{await previous();try{const r=await jsonFetch('/app/api/athlete-state');state.athleteState=r.state;renderCoachMemories();renderToday();const signature=JSON.stringify([pragueToday(),state.athleteState.status,(state.fitness?.wellness||[]).at(-1),(state.sleep?.sessions||[]).filter(s=>s.date===pragueToday())]);if(state.checkInSignature!==signature){const check=await jsonFetch('/app/api/coach/check-in');state.coachAdvice=check.advice;state.checkInSignature=signature;renderAthleteStatus();}}catch{};};
+  const previous=load;load=async()=>{await previous();try{if(!state.athleteState){const r=await jsonFetch('/app/api/athlete-state');state.athleteState=r.state;}renderCoachMemories();renderToday();const signature=JSON.stringify([pragueToday(),state.athleteState.status,(state.fitness?.wellness||[]).at(-1),(state.sleep?.sessions||[]).filter(s=>s.date===pragueToday())]);if(state.checkInSignature!==signature){const check=await jsonFetch('/app/api/coach/check-in');state.coachAdvice=check.advice;state.checkInSignature=signature;renderAthleteStatus();}}catch{};};
   const priorActivate=activate;activate=function(id){priorActivate(id);if(id==='settings'){renderAvailabilitySummary();renderCoachMemories();}if(id==='today')renderAthleteStatus();if($('assistantDialog').open&&!assistantBusy)renderAssistantContext();};
   document.addEventListener('change',e=>{if(['generateDate','gymDate','viewDate'].includes(e.target.id)&&$('assistantDialog').open&&!assistantBusy)renderAssistantContext();});
 }
