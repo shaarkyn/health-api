@@ -1,6 +1,7 @@
 {
   "name": "health-api",
-  "main": "src/entrypoint.js",
+  // main.js is entrypoint.js behind HTTPS and security headers (web-security.js).
+  "main": "src/main.js",
   "rules": [
     {
       "type": "Text",

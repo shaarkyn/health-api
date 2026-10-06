@@ -118,7 +118,7 @@ export default {
       }
 
       if (url.pathname === "/food/log-text") {
-        return await foodLogText(env, request, url);
+        return await foodLogText(env, request);
       }
 
       if (url.pathname === "/food/today") {
@@ -2930,9 +2930,11 @@ async function deleteFoodLog(env, url) {
   return Response.json({ status: "ok", id, deleted: Number(result.meta.changes || 0) > 0 });
 }
 
-async function foodLogText(env, request, url) {
+async function foodLogText(env, request) {
   let body = {};
 
+  // POST only: a link opened from another site (a GET with the session cookie)
+  // must not write to the food diary.
   if (request.method === "POST") {
     const contentType = request.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
@@ -2941,12 +2943,6 @@ async function foodLogText(env, request, url) {
       const raw = await request.text();
       body = raw ? { text: raw } : {};
     }
-  } else if (request.method === "GET") {
-    body = {
-      text: url.searchParams.get("text") || url.searchParams.get("message") || "",
-      date: url.searchParams.get("date") || null,
-      consumed_at: url.searchParams.get("consumed_at") || null
-    };
   } else {
     return Response.json({ status: "error", message: "Method not allowed" }, { status: 405 });
   }
