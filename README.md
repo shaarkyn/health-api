@@ -17,21 +17,18 @@ Na produkci se nasazuje jen přes GitHub Actions (`.github/workflows/deploy-work
 
 ## Jak teče požadavek
 
-`src/entrypoint.js` je vstupní bod Workeru. Řeší přihlášení (`dashboard-auth.js`), uživatele (`tenancy.js`), dashboard API (`/app/api/*`), MCP (`/mcp`) a automatizace (`/automation/*`). Co nezpracuje sám, posílá dál vrstvami, z nichž každá přepisuje pár cest a zbytek předá níž:
+`src/entrypoint.js` je vstupní bod Workeru. Řeší přihlášení (`dashboard-auth.js`), uživatele (`tenancy.js`), dashboard API (`/app/api/*`), MCP (`/mcp`) a automatizace (`/automation/*`). Co nezpracuje sám, posílá dál:
 
 ```
-entrypoint.js → sheets-gateway.js → v400.js → v323fix.js → v323.js → index.js
+entrypoint.js → sheets-gateway.js → index.js
 ```
 
-- `sheets-gateway.js`: síla, výživa, denní plán, rozhodnutí dne (`/strength/*`, `/nutrition/*`, `/daily/plan`, …).
-- `v400.js`: `/analysis/energy`, `/analysis/day-plan`, `/food/day-plan`.
-- `v323fix.js`: opravuje klasifikaci plánovaných tréninků z Intervals.icu pro všechny cesty pod sebou.
-- `v323.js`: `/food/recommend` (doporučení jídel k osobnímu cíli) a kontext tréninku k `/analysis/energy`.
-- `index.js`: původní API: synchronizace Google Health a Intervals.icu, `/analysis/daily`, deník jídla, cron.
+- `sheets-gateway.js`: síla, výživa, denní plán, rozhodnutí dne (`/strength/*`, `/nutrition/*`, `/daily/plan`, …) a `/food/recommend` (návrhy jídel k osobnímu cíli z `food-recommend.js`).
+- `index.js`: původní API: synchronizace Google Health a Intervals.icu, `/analysis/daily`, `/analysis/energy`, deník jídla, cron.
 
 Vzhled dashboardu: barvy rozhraní jsou tokeny v `src/design-system.js` (načítá se jako poslední vrstva CSS), ikony jsou jedna SVG sada v `src/icons.js`. Barvy dat v grafech (makra, fáze spánku, zóny) zůstávají u grafů.
 
-Nová logika patří do samostatných modulů v `src/` volaných z `entrypoint.js` nebo `sheets-gateway.js`, ne do vrstev `v*.js`. Ty se postupně ruší.
+Nová logika patří do samostatných modulů v `src/` volaných z `entrypoint.js` nebo `sheets-gateway.js`.
 
 Kalorický cíl, který vidí uživatel, je vyšší ze dvou hodnot (`applyEnergyBudget` v `energy-budget.js`): očekávaný den z profilu (`nutrition.calorieTarget` z `/analysis/daily`) a průběžný rozpočet z aktivní energie naměřené Google Health. Ráno tak cíl neleží na minimu a během aktivního dne roste.
 
