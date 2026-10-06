@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createD1 } from "./helpers/d1.mjs";
-import gateway from "../src/sheets-gateway.js";
+import gateway from "../src/strength-gateway.js";
 
 // The week view's meal suggestions (/food/recommend in food-recommend.js) fit the
 // personal target; a missing variable there once broke the whole week view.

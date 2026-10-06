@@ -1,4 +1,4 @@
-import app from "./sheets-gateway.js";
+import app from "./strength-gateway.js";
 import { buildCoachCouncil } from "./coach-engine.js";
 import { trainingStatus } from './training-status.js';
 import { handleMcpCompat } from "./mcp-compat.js";
@@ -48,8 +48,11 @@ import { lookupFoodWithAI } from "./food-ai.js";
 import { addFluid, deleteFluid, listFluids, hydrationTarget, dayActivityHours, foodDrinks } from "./fluids.js";
 import { isFoodLogMessage, buildFoodDraft, foodDraftSummary } from "./food-chat.js";
 import dashboardClient from "./dashboard-client.js";
+import { assetVersion, scriptCacheControl } from "./asset-version.js";
+
+const CLIENT_VERSION = assetVersion(dashboardClient);
 import { handleGoogleOAuth } from "./google-oauth.js";
-import { importStrengthHistory, getStrengthHistory, parseStrengthSheet, removeManualSets } from "./strength-history.js";
+import { importStrengthHistory, getStrengthHistory, parseStrengthPlan, removeManualSets } from "./strength-history.js";
 import { searchCookbookRecipes, logFood, mealConsumedAt } from "./food-log.js";
 import { getWorkout, searchWorkoutLibrary, parseWorkoutSearchFilters, getCapabilities, getScheduledWorkouts, recordWorkoutFeedback, scheduleWorkoutInIntervals, generateWorkout, pendingScheduledWorkouts, hasFeedback, markScheduleCompleted, scheduledLink, stepRows } from "./workout-library.js";
 import { buildCyclingCoachV2 } from "./cycling-coach-v2.js";
@@ -79,12 +82,19 @@ import { techniqueFor, ownExerciseVideo, saveOwnExerciseVideo, storedTechnique, 
 import { isPublicPath, resolvePrincipal, unauthorizedResponse, handleDashboardLogout } from "./dashboard-auth.js";
 import { ensureTenancy, TenancyUpgradeInProgress, userEnv, findUser, ownerUser, usersWithProviders, listUsersAndInvites, inviteUser, removeInvite, setUserDisabled } from "./tenancy.js";
 import { pragueToday } from './prague-date.js';
+import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.js';
+import { englishScript } from './i18n.js';
+import { dateFormat } from "./date-format.js";
 
 const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/openapi.json";
 
+// A month of Google Health samples summed per day: thousands of rows that only a
+// sync changes (every five minutes, or the Obnovit button, which drops the cache).
+const googleHealthFor = (env, ctx, date) => cached(env, ctx, "google-dashboard:" + date, () => googleDashboard(env.DB, date), { ttl: 120 });
+
 // Requests that read or preview only and so keep the cache.
 const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats)/;
-const STATIC_PATHS = new Set(['/app','/app/dashboard-client.js','/manifest.webmanifest','/logo.svg','/','/privacy','/terms','/support','/mcp/health']);
+const STATIC_PATHS = new Set(['/app','/app/dashboard-client.js','/app/i18n-en.js','/manifest.webmanifest','/logo.svg','/','/privacy','/terms','/support','/mcp/health']);
 
 // Runs fn once per active user (with that user's env and credentials), for
 // cron jobs and GitHub automations that act on everyone's data.
@@ -119,7 +129,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     // Static pages stay independent of storage availability.
-    if (STATIC_PATHS.has(url.pathname) && request.method === 'GET') return staticRoute(url);
+    if (STATIC_PATHS.has(url.pathname) && request.method === 'GET') return staticRoute(url, request);
     try { await ensureTenancy(env.DB, env, { request }); }
     catch (error) {
       if (error instanceof TenancyUpgradeInProgress) return Response.json({status:"error",message:error.message},{status:503,headers:{"Retry-After":"30","Cache-Control":"no-store"}});
@@ -186,14 +196,15 @@ export default {
   }
 };
 
-function staticRoute(url) {
+function staticRoute(url, request) {
   if (url.pathname === "/mcp/health") return Response.json({ status: "ok", service: "health-api-mcp", version: "1.1.0", endpoint: "/mcp", protocol: "2026-07-28+legacy" });
-  if (url.pathname === "/app") return dashboardPage();
-  if (url.pathname === "/app/dashboard-client.js") return new Response(dashboardClient, { status: 200, headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
-  if (url.pathname === "/") return homepagePage();
-  if (url.pathname === "/privacy") return privacyPage();
-  if (url.pathname === "/terms") return policyPage("Terms of Use", `Health & Strength is provided for personal training organization and planning. You are responsible for the accuracy of connected data and for deciding whether a generated workout is appropriate for you. The app does not provide medical diagnosis or emergency care. Use of the app requires authorization to the connected health-api service.`);
-  if (url.pathname === "/support") return policyPage("Support", `Support for Health & Strength is provided through the project repository and its maintainer. Include the affected tool name, approximate time, and non-sensitive error message when reporting a problem. Never include API keys, OAuth refresh tokens, or other secrets in a support request.`);
+  if (url.pathname === "/app") return dashboardPage({ clientVersion: CLIENT_VERSION });
+  if (url.pathname === "/app/i18n-en.js") return englishScript(url);
+  if (url.pathname === "/app/dashboard-client.js") return new Response(dashboardClient, { status: 200, headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": scriptCacheControl(url, CLIENT_VERSION) } });
+  if (url.pathname === "/") return overviewPage(request);
+  if (url.pathname === "/privacy") return privacyPage(request);
+  if (url.pathname === "/terms") return termsPage(request);
+  if (url.pathname === "/support") return supportPage(request);
   if (url.pathname === "/logo.svg") return logoResponse();
   return Response.json({name:"Loadwise",short_name:"Loadwise",start_url:"/app",scope:"/app",display:"standalone",background_color:"#0a0d12",theme_color:"#0d131a",icons:[{src:"/logo.svg",sizes:"any",type:"image/svg+xml",purpose:"any maskable"}]},{headers:{"Content-Type":"application/manifest+json; charset=utf-8","Cache-Control":"public, max-age=3600"}});
 }
@@ -358,7 +369,7 @@ async function loadCoachInputsFresh(env,ctx,internalAuth,date){
     app.fetch(new Request('https://internal/analysis/daily?date='+date,{headers:internalAuth}),env,ctx),
     cached(env,ctx,'fitness:90',()=>internal('/app/api/fitness?days=90').then(json)).then(d=>Response.json(d)),internal('/app/api/gym?date='+date),
     app.fetch(new Request('https://internal/health/sleep?start='+shiftDate(date,-7)+'&end='+shiftDate(date,1),{headers:internalAuth}),env,ctx).then(r=>r.json()).catch(()=>({})).then(d=>withIntervalsSleep(env,d,shiftDate(date,-7),shiftDate(date,1))).then(d=>Response.json(d)),
-    googleDashboard(env.DB,date).catch(()=>({}))
+    googleHealthFor(env,ctx,date).catch(()=>({}))
   ]);
   // The three weeks are the heavy part (every day's analysis, food and
   // recommendations). One week at a time, cached and shared by every day of
@@ -425,7 +436,7 @@ async function recentCoachProposals(env){
 }
 // Midnight of a Prague day as a UTC timestamp in SQLite's format.
 function pragueDayStartUtc(date){
-  for(const hours of [1,2]){const at=new Date(Date.parse(date+'T00:00:00Z')-hours*3600e3);if(new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Prague',hour:'2-digit',hourCycle:'h23'}).format(at)==='00')return at.toISOString().slice(0,19).replace('T',' ');}
+  for(const hours of [1,2]){const at=new Date(Date.parse(date+'T00:00:00Z')-hours*3600e3);if(dateFormat('sv-SE',{timeZone:'Europe/Prague',hour:'2-digit',hourCycle:'h23'}).format(at)==='00')return at.toISOString().slice(0,19).replace('T',' ');}
   return date+' 00:00:00';
 }
 
@@ -523,7 +534,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   if(url.pathname==='/app/api/google-health'&&request.method==='GET'){
     const date=url.searchParams.get('date')||pragueToday();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>pragueToday())return Response.json({message:'Neplatné datum.'},{status:400});
-    return Response.json(await googleDashboard(env.DB,date),{headers:{'Cache-Control':'no-store'}});
+    return Response.json(await googleHealthFor(env,ctx,date),{headers:{'Cache-Control':'no-store'}});
   }
   // Planned workouts: move (drag between days) or delete, in Intervals.icu and locally.
   if(url.pathname==='/app/api/planned/move'||url.pathname==='/app/api/planned/delete'||url.pathname==='/app/api/planned/environment'){
@@ -545,7 +556,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     try{
       const body=await request.json().catch(()=>({})),date=/^\d{4}-\d{2}-\d{2}$/.test(String(body.date||''))?body.date:pragueToday();
       const [inputs,gym,prefs,feedback,notes]=await Promise.all([loadCoachInputs(env,ctx,internalAuth,date),readGymPlan(env.DB,date).catch(()=>null),getWeekPlan(env.DB,date).catch(()=>null),recentWorkoutFeedback(env.DB,shiftDate(date,-21)).catch(()=>[]),listReflections(env.DB,{limit:3}).catch(()=>[])]);
-      const gymRows=gym?.stored?parseStrengthSheet(gym.values).rows||[]:[];
+      const gymRows=gym?.stored?parseStrengthPlan(gym.values).rows||[]:[];
       const input=buildReviewInput({date,today:pragueToday(),week:inputs.week,fitness:inputs.fitness,health:inputs.health,gymRows,roles:prefs?planWeekRoles(prefs.days):[],feedback,coachNotes:notes.map(r=>({date:r.date,text:r.text}))});
       const state=await getAthleteState(env.DB);Object.assign(input,{athleteState:state.status,statusNote:state.note,preferenceMemory:state.memories,availability:availabilityOn(prefs,date)});
       const reviews=[await reviewDay(env,input,null,inputs.focus).catch(error=>({model:lightModel(env),error:error.message}))];
@@ -1091,7 +1102,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       const storedValues = Array.isArray(body?.fullValues) ? body.fullValues : values;
       await env.DB.prepare(`INSERT INTO gym_plans(user_id,workout_date,values_json,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(user_id,workout_date) DO UPDATE SET values_json=excluded.values_json,updated_at=CURRENT_TIMESTAMP`).bind(env.USER_ID,date,JSON.stringify(storedValues)).run();
       const history=await getStrengthHistory(env.DB,500);
-      return Response.json({status:"ok",storage:"d1",values:storedValues,history,historySaved:historyResult,sheetSaved:false,message:sets.length?"Workout uložen do interní databáze.":"Změny plánu jsou uložené; dokončené série označ Hotovo."},{headers:{"Cache-Control":"no-store"}});
+      return Response.json({status:"ok",storage:"d1",values:storedValues,history,historySaved:historyResult,message:sets.length?"Workout uložen do interní databáze.":"Změny plánu jsou uložené; dokončené série označ Hotovo."},{headers:{"Cache-Control":"no-store"}});
       } catch(error) {
         console.error("Gym save failed", error);
         return Response.json({status:"error",message:"Gym save: "+(error?.message||"unknown error")},{status:500,headers:{"Cache-Control":"no-store"}});
@@ -1116,7 +1127,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       if((await readGymPlan(env.DB,plan.date)).stored)throw new Error('Na tento den již existuje gym plán. Otevři jej a uprav ho.');
       const prefs=await getWeekPlan(env.DB,plan.date),budget=trainingBudget(prefs,plan.date,draft.minutes);
       if(budget<draft.minutes)throw new Error('Časové možnosti se změnily. Připrav nový návrh.');
-      const r=await app.fetch(new Request('https://internal/strength/sheet/write-plan',{method:'POST',headers:{...internalAuth,'Content-Type':'application/json'},body:JSON.stringify(plan)}),env,ctx);
+      const r=await app.fetch(new Request('https://internal/strength/write-plan',{method:'POST',headers:{...internalAuth,'Content-Type':'application/json'},body:JSON.stringify(plan)}),env,ctx);
       if(!r.ok)throw new Error('Gym plán se nepodařilo uložit.');
       const intervals=await writeStrengthPlanToIntervals(env,plan,{durationMinutes:draft.minutes,startTime:draft.startTime||'00:00'}).catch(error=>({status:'error',message:error.message}));
       await env.DB.prepare("UPDATE coach_inbox SET status='confirmed',confirmed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?").bind(env.USER_ID,row.id).run();
@@ -1193,7 +1204,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     const gymPlans=new Map(((await env.DB.prepare('SELECT workout_date,values_json FROM gym_plans WHERE user_id=? AND workout_date>=? AND workout_date<=?').bind(env.USER_ID,start,dates[6]).all().catch(()=>({results:[]}))).results||[]).map(r=>{let v=[];try{v=JSON.parse(r.values_json);}catch{}const rows=(Array.isArray(v)?v.slice(7):[]).filter(x=>x?.[1]);return [r.workout_date,rows.length?{name:String(v[2]?.[3]||'').slice(0,120),exercises:new Set(rows.map(x=>x[1])).size,sets:rows.filter(x=>String(x[0]||'WORK').toUpperCase()==='WORK').length}:null];}).filter(([,p])=>p));
     // Same calorie target as the day view: one Google Health read covers the week.
     const profile = await dashboardProfile(env);
-    const health = profile ? await googleDashboard(env.DB, dates[6]).catch(error => { console.error("Energy budget unavailable", error.message); return null; }) : null;
+    const health = profile ? await googleHealthFor(env, ctx, dates[6]).catch(error => { console.error("Energy budget unavailable", error.message); return null; }) : null;
     // D1 runs one query at a time: three days at once keep its queue short
     // (all seven at once overloaded it when several weeks were asked together).
     const days = await mapLimit(dates, 3, async date => {
@@ -1246,7 +1257,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   const internal = new URL(target, request.url);
   for (const [key, value] of url.searchParams) internal.searchParams.set(key, value);
   const response = await app.fetch(new Request(internal, { method: "GET", headers: internalAuth }), env, ctx);
-  if(url.pathname==='/app/api/daily'&&response.ok){const daily=await response.json();try{const date=url.searchParams.get('date')||pragueToday(),profile=await dashboardProfile(env);if(profile)applyEnergyBudget(daily,profile,await googleDashboard(env.DB,date));}catch(e){console.error('Energy budget unavailable',e.message);}return Response.json(daily,{headers:{'Cache-Control':'no-store'}});}
+  if(url.pathname==='/app/api/daily'&&response.ok){const daily=await response.json();try{const date=url.searchParams.get('date')||pragueToday(),profile=await dashboardProfile(env);if(profile)applyEnergyBudget(daily,profile,await googleHealthFor(env,ctx,date));}catch(e){console.error('Energy budget unavailable',e.message);}return Response.json(daily,{headers:{'Cache-Control':'no-store'}});}
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store");
   return new Response(response.body, { status: response.status, headers });
@@ -1399,7 +1410,6 @@ async function handleStrengthAutomation(request, env, ctx) {
       focus_lower: "/strength/generate-plan",
       substitute: "/strength/substitute",
       import_history: "/strength/history/import",
-      sheet_maintenance: "/strength/sheets/maintenance",
       sync: "/strength/sync"
     };
     const route = routes[action];
@@ -1457,18 +1467,6 @@ async function handleNutritionAutomation(request, env, ctx) {
   }
 }
 
-function homepagePage() {
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Petr Fitness Data — Health & Strength</title><meta name="description" content="Petr Fitness Data is a personal training data service for workout planning, training history, cycling context and nutrition workflows."></head><body><main><h1>Petr Fitness Data</h1><p>Petr Fitness Data is a private personal training service used with Health & Strength to organize training history, generate strength workouts, use cycling context, and support nutrition workflows.</p><p><strong>Google Health data disclosure:</strong> With your authorization, the service may read fitness, health-metric, sleep, and nutrition data from Google Health. It may also add nutrition logs to Google Health when you ask the service to record food or drinks. This data is used only for the requested training and nutrition features.</p><p>The service can process training and fitness data from connected services, including Google data and Google Sheets data that the account owner has authorized, in order to provide these requested workflows.</p><p><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Use</a> · <a href="/support">Support</a></p></main></body></html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
-}
-
-function privacyPage() {
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy — Petr Fitness Data</title></head><body><main><h1>Privacy Policy</h1><p><strong>Petr Fitness Data</strong> is a private personal training service used with Health & Strength.</p><h2>What data the service may access</h2><p>When authorized by the account owner, the service may access fitness and training information from connected Google services and other configured services. This can include Google Sheet workout data, training history, planned workouts, cycling context, recovery metrics, nutrition information, and other fitness data needed for the requested workflows.</p><h2>How Google data is used</h2><p>Google user data is used only to provide the training and nutrition workflows requested by the account owner, such as reading and updating the configured workout spreadsheet, processing authorized fitness data, reading authorized nutrition logs, and adding nutrition logs that the account owner asks the service to record. The service does not sell Google user data and does not use it for advertising.</p><h2>Storage and sharing</h2><p>Data may be processed and stored in the private health-api backend, its configured database, and connected services such as the account owner's Google Sheet. Data may be transmitted between these configured services when necessary to provide the requested functionality. The service does not intentionally disclose personal data to unrelated third parties.</p><h2>Security</h2><p>OAuth credentials and API secrets are intended to be stored as private service secrets rather than in the source code repository. Access to the service is controlled by the configured authentication mechanisms.</p><h2>Changes</h2><p>This policy may be updated when the service or its data practices change. The current version is published on this page.</p><h2>Contact</h2><p>For support or privacy questions, use the <a href="/support">Support</a> page.</p><p><a href="/">Back to Petr Fitness Data</a></p></main></body></html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
-}
-
-function policyPage(title, text) {
-  return new Response(`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Health & Strength</title></head><body><main><h1>${title}</h1><p>${text}</p></main></body></html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
-}
-
 function logoResponse() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" rx="48" fill="#111827"/><path d="M68 132h32l18-54 30 100 20-46h20" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/><circle cx="68" cy="132" r="8" fill="#fff"/></svg>`;
   return new Response(svg, { status: 200, headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=86400" } });
@@ -1485,7 +1483,7 @@ async function handlePlannedCaloriesAutomation(request, rawEnv) {
   try {
     const body=await request.json().catch(()=>({}));
     const users=await forEachUser(rawEnv,["intervals"],async env=>{
-      const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND LOWER(data_type) LIKE '%weight%' AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first().catch(()=>null);
+      const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND data_type IN ('weight','weight-written') AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first().catch(()=>null);
       const thresholds=await athleteThresholds(env).catch(()=>({}));
       const weightKg=Number(row?.value_numeric);
       return syncPlannedEventCalories(env,{oldest:body?.oldest,newest:body?.newest,weightKg:Number.isFinite(weightKg)&&weightKg>30?weightKg:undefined,ftp:thresholds.ftp||undefined});
@@ -1506,7 +1504,7 @@ async function handleNutritionNotesAutomation(request, rawEnv) {
       if (remove) return deleteDailyNutritionNotes(env,{oldest,newest});
       let weightKg=Number(body?.weightKg);
       if(!Number.isFinite(weightKg)){
-        const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND LOWER(data_type) LIKE '%weight%' AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first();
+        const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND data_type IN ('weight','weight-written') AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first();
         weightKg=Number(row?.value_numeric);
       }
       if(!Number.isFinite(weightKg)||weightKg<=0) weightKg=88;
@@ -1520,7 +1518,7 @@ async function handleNutritionNotesAutomation(request, rawEnv) {
 
 function pragueWeekStart() {
   const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-GB", {timeZone:"Europe/Prague",year:"numeric",month:"2-digit",day:"2-digit",weekday:"short"}).formatToParts(now);
+  const parts = dateFormat("en-GB", {timeZone:"Europe/Prague",year:"numeric",month:"2-digit",day:"2-digit",weekday:"short"}).formatToParts(now);
   const y = Number(parts.find(x=>x.type==="year").value);
   const m = Number(parts.find(x=>x.type==="month").value);
   const d = Number(parts.find(x=>x.type==="day").value);
