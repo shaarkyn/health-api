@@ -1362,14 +1362,14 @@ async function syncIntervalsActivities(env,{activityDays=CONFIG.activityDays}={}
     saved++;
   }
 
+  // Counts only: the activities themselves are health data, and this result
+  // ends up in the public GitHub Actions log of the periodic sync.
   return {
     activities_found:
       activities.length,
 
     activities_saved:
-      saved,
-
-    activities
+      saved
   };
 }
 
@@ -1447,9 +1447,7 @@ async function syncIntervalsEvents(env) {
       saved,
 
     reconciled_from:
-      oldest,
-
-    events
+      oldest
   };
 }
 
