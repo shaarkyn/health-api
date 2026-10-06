@@ -42,7 +42,11 @@ body{background:var(--bg)}
 :focus-visible{outline-color:var(--primary)}
 
 /* Vzhled: light / dark switch in the top bar and in Nastavení. */
-.theme-toggle{display:inline-grid;place-items:center;padding:8px 10px}
+.theme-switch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.theme-switch button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:999px;background:none;color:var(--muted);cursor:pointer}
+.theme-switch button:hover{color:var(--text)}
+.theme-switch button[aria-checked=true]{background:var(--primary-surface);color:var(--primary-text)}
+.theme-switch .icon{width:16px;height:16px}
 .theme-card{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
 .theme-card h3{margin:0 0 4px}.theme-card p{margin:0}
 .theme-choices{display:flex;gap:6px;flex-wrap:wrap}
