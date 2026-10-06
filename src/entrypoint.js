@@ -24,7 +24,7 @@ import {athleteFocus} from './athlete-focus.js';
 import {loadEffectiveProfile,refreshSuggestions} from './profile-suggestions.js';
 import {syncWeights} from './weight-sync.js';
 import {syncWellnessToIntervals} from './wellness-sync.js';
-import {gymExerciseCatalog,gymAlternatives} from './gym-catalog.js';
+import {gymExerciseCatalog,gymAlternatives,gymLoadEstimate} from './gym-catalog.js';
 import {askCoach,coachContext,lightModel,assistantTask,engineSport,pragueNow} from './coach-assistant.js';
 import {assistantAppContext,selectedAssistantContext} from './assistant-app-context.js';
 import {validateCoachActions,actionSafetyContext,actionsNote,actionSummary} from './coach-actions.js';
@@ -62,9 +62,10 @@ import { getAthleteState, updateAthleteState, explicitPreference, assertTraining
 import { capWeekTargets, weekProposal, weekWeather, environmentFor, activityHistoryEstimate, indoorMinutes } from './adaptive-week.js';
 import { movePlannedEvent, deletePlannedEvent, isStrengthEvent } from "./planned-events.js";
 import { loadFitnessInsights, exerciseMuscles } from "./fitness-insights.js";
+import { adjustGymPlan, cleanGymRows, catalogNames } from "./gym-adjust.js";
 import { saveTrainingProfile } from "./training-profile.js";
 import { syncPlannedEventCalories } from "./intervals-calories.js";
-import { readGymPlan, cancelGymPlan, restoreGymPlan, ensureGymPlans } from "./gym-plan-store.js";
+import { readGymPlan, cancelGymPlan, restoreGymPlan, ensureGymPlans, moveGymPlan } from "./gym-plan-store.js";
 import { applyGymSwap } from './coach-gym-adjustment.js';
 import { dashboardSyncStatus,startDashboardSync } from './dashboard-sync.js';
 import { assistantStreamResponse } from './assistant-stream.js';
@@ -463,6 +464,8 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       context.availabilityByDate=Object.fromEntries(inputs.week.days.filter(d=>d.date>=today&&d.date<=context.reviewScope.end).map(d=>[d.date,effectiveWeeks.get(mondayOfDate(d.date)).availability[(new Date(d.date+'T12:00:00Z').getUTCDay()+6)%7]]));
       if(start<today)context.weatherUpcoming=await weekWeather(prefs.location,today);
       let review=fallbackWeekReview(context),aiError=null;
+      // "Vygenerovat tréninky" only needs the week's sessions; the AI review is the chat's.
+      if(body.review===false)return Response.json({status:'ok',start,proposal,actions:[]},{headers:{'Cache-Control':'no-store'}});
       if(env.OPENAI_API_KEY){try{
         review={...await askCoach(env,WEEK_REVIEW_REQUEST,context,{focus:inputs.focus,task:'planning',actions:true,concise:true}),source:'ai'};
       }catch(error){aiError=error.message}}
@@ -486,6 +489,34 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     const [plan,history]=await Promise.all([readGymPlan(env.DB,date).catch(()=>null),getStrengthHistory(env.DB,500).catch(()=>[])]);
     const inPlan=[...new Set((plan?.values||[]).slice(7).map(r=>r?.[1]).filter(Boolean))];
     return Response.json({status:'ok',exercise,alternatives:gymAlternatives(exercise,history,inPlan)},{headers:{'Cache-Control':'no-store'}});
+  }
+  // Loads for exercises added by hand, or a plan's sets left without a weight.
+  if(url.pathname==='/app/api/gym/estimate'&&request.method==='GET'){
+    let names=[];try{names=JSON.parse(url.searchParams.get('names')||'[]');}catch{}
+    const list=(Array.isArray(names)?names:[]).slice(0,30).map(n=>String(n).slice(0,120)).filter(Boolean);
+    const history=await getStrengthHistory(env.DB,500).catch(()=>[]);
+    return Response.json({status:'ok',estimates:Object.fromEntries(list.map(name=>[name,gymLoadEstimate(name,history)]).filter(([,e])=>e))},{headers:{'Cache-Control':'no-store'}});
+  }
+  // Muscles of exercises added to a proposal (its body figure).
+  if(url.pathname==='/app/api/gym/muscles'&&request.method==='GET'){
+    let names=[];try{names=JSON.parse(url.searchParams.get('names')||'[]');}catch{}
+    const list=(Array.isArray(names)?names:[]).slice(0,30).map(n=>String(n).slice(0,120)).filter(Boolean);
+    return Response.json({status:'ok',muscles:Object.fromEntries(list.map(name=>[name,exerciseMuscles(name)]))},{headers:{'Cache-Control':'no-store'}});
+  }
+  // A plan changed by the athlete's words in its preview; nothing is saved here.
+  if(url.pathname==='/app/api/gym/adjust'&&request.method==='POST'){
+    if(!session.signedIn)return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
+    if(request.headers.get('Origin')!==url.origin)return Response.json({message:'Neplatný původ požadavku.'},{status:403});
+    if(!env.OPENAI_API_KEY)return Response.json({message:'AI není připojena (chybí OPENAI_API_KEY).'},{status:503});
+    try{
+      const body=await request.json().catch(()=>({})),text=String(body.request||'').trim().slice(0,300);
+      if(!text)throw new Error('Napiš, co v tréninku změnit.');
+      const rows=cleanGymRows(body.rows,new Set([...catalogNames(),...(Array.isArray(body.rows)?body.rows:[]).map(r=>String(r?.[1]??'').trim()).filter(Boolean)]));
+      const history=await getStrengthHistory(env.DB,300).catch(()=>[]);
+      const result=await adjustGymPlan(env,{rows,request:text,history});
+      const muscles=Object.fromEntries([...new Set(result.rows.map(r=>r[1]))].map(name=>[name,exerciseMuscles(name)]));
+      return Response.json({status:'ok',...result,muscles},{headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({message:error.ai?'AI úprava se nepovedla: '+error.message:error.message},{status:error.ai?502:400})}
   }
   if(url.pathname==='/app/api/sync/recent'&&request.method==='POST')return legacyHealthApi.fetch(new Request('https://internal/sync/google/recent',{method:'POST',headers:internalAuth}),env,ctx);
   if(url.pathname==='/app/api/profile'){await env.DB.prepare("CREATE TABLE IF NOT EXISTS dashboard_profile (user_id INTEGER NOT NULL,id INTEGER NOT NULL,profile_json TEXT NOT NULL,PRIMARY KEY (user_id,id))").run();if(request.method==='POST'){const profile=normalizeProfile(await request.json().catch(()=>({})));await env.DB.prepare('INSERT INTO dashboard_profile(user_id,id,profile_json) VALUES(?,1,?) ON CONFLICT(user_id,id) DO UPDATE SET profile_json=excluded.profile_json').bind(env.USER_ID,JSON.stringify(profile)).run();return Response.json({status:'ok',profile});}const r=await env.DB.prepare('SELECT profile_json FROM dashboard_profile WHERE user_id=? AND id=1').bind(env.USER_ID).first();const suggestions=await refreshSuggestions(env,{googleToken}).catch(error=>{console.error('Profile suggestions failed',error.message);return null;});return Response.json({profile:r?JSON.parse(r.profile_json):null,suggestions});}
@@ -600,8 +631,8 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     const preferences=body.preferences&&typeof body.preferences==='object'?body.preferences:{};
     const reply=async (onAnswer,onProgress=()=>{})=>{
       let inputs={},coachCtx={date,now:pragueNow()},selected=null,focus=null;
+      onProgress('Trenér připravuje odpověď…');
       if(task!=='simple'){
-        onProgress('Načítám plán a aktuální regeneraci…');
         ctx.waitUntil(reconcileWorkoutLibraryCompletions(env,ctx,internalAuth).catch(error=>console.error('Assistant reconciliation failed',error.message)));
         const [loaded,capabilities,athleteFeedback,notes,prefs,blockHistory,thresholds,earlierProposals]=await Promise.all([
           loadCoachInputs(env,ctx,internalAuth,date),getCapabilities(env.DB),recentWorkoutFeedback(env.DB,shiftDate(date,-28)),listReflections(env.DB,{limit:5}).catch(()=>[]),
@@ -634,7 +665,6 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
         phase:coachCtx.cyclingCoachV2?.constraints?.phase
       }):{workouts:[]}:{workouts:[]};
       coachCtx.workoutLibraryRecommendations=(library.workouts||[]).map(w=>({id:w.id,name:w.name,sport:w.sport||sport,source:w.source_name,sourceKind:w.source_kind,system:w.primary_system,durationMinutes:w.duration_minutes,targetLoad:w.target_load,difficulty:w.difficulty,suitability:w.suitability,challengeGap:w.challenge_gap,structure:w.intervals_description,reasons:w.reasons}));
-      onProgress('Trenér připravuje odpověď…');
       const contextMs=Date.now()-started,answer=await askCoach(env,message,coachCtx,{focus,actions:true,task,onAnswer});
       onProgress('Kontroluji návrhy pro aplikaci…');
       coachCtx.userMessage=message;coachCtx.appContext=coachCtx.appContext||appContext;coachCtx.gymPlan=appContext.sport==='gym'?selected?.gymPlan:inputs.gym;
@@ -995,6 +1025,14 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       const body = await request.json().catch(() => ({}));
       const date = body?.date || pragueToday();
       if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return Response.json({message:'Neplatné datum.'},{status:400});
+      // A saved plan without its Intervals.icu event, dragged to another day in the week.
+      if(body.action==='move'){
+        const to=String(body.to||'');
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<pragueToday())return Response.json({message:'Gym jde přesunout jen na dnešek nebo pozdější den.'},{status:400});
+        const moved=await moveGymPlan(env.DB,date,to);
+        if(!moved.moved)return Response.json({message:'Gym se nepodařilo přesunout: cílový den už má gym plán, nebo jsou v tréninku zapsané série.'},{status:409});
+        return Response.json({status:'ok',date:to,message:'Gym je přesunutý.'},{headers:{'Cache-Control':'no-store'}});
+      }
       if(body.action==='cancel'){
         const rows=(await env.DB.prepare("SELECT external_id,payload_json FROM health_datapoints WHERE user_id=? AND source_family='intervals' AND data_type='planned-workout' AND start_time>=? AND start_time<?").bind(env.USER_ID,date,shiftDate(date,1)).all()).results||[];
         for(const row of rows){let event;try{event=JSON.parse(row.payload_json)}catch{continue}if(isStrengthEvent(event))await deletePlannedEvent(env,{eventId:row.external_id});}
@@ -1067,6 +1105,8 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       if(row.status==='confirmed')return Response.json({status:'ok',message:'Návrh už je uložený.'});
       const draft=JSON.parse(row.draft_json),plan=draft.plan;
       if(draft.kind!=='gym_preview'||!plan||plan.date<pragueToday())throw new Error('Neplatný nebo starý návrh.');
+      // The proposal as changed in its preview (exercises from the catalog or the proposal itself).
+      if(Array.isArray(body.rows))plan.rows=cleanGymRows(body.rows,new Set([...catalogNames(),...(plan.rows||[]).map(r=>r?.[1]).filter(Boolean)]));
       if((await readGymPlan(env.DB,plan.date)).stored)throw new Error('Na tento den již existuje gym plán. Otevři jej a uprav ho.');
       const prefs=await getWeekPlan(env.DB,plan.date),budget=trainingBudget(prefs,plan.date,draft.minutes);
       if(budget<draft.minutes)throw new Error('Časové možnosti se změnily. Připrav nový návrh.');
@@ -1074,7 +1114,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       if(!r.ok)throw new Error('Gym plán se nepodařilo uložit.');
       const intervals=await writeStrengthPlanToIntervals(env,plan,{durationMinutes:draft.minutes,startTime:draft.startTime||'00:00'}).catch(error=>({status:'error',message:error.message}));
       await env.DB.prepare("UPDATE coach_inbox SET status='confirmed',confirmed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?").bind(env.USER_ID,row.id).run();
-      return Response.json({status:'ok',intervals,message:'Gym plán je uložený.'},{headers:{'Cache-Control':'no-store'}});
+      return Response.json({status:'ok',intervals,eventId:intervals?.eventId!=null?'planned:'+intervals.eventId:null,message:'Gym plán je uložený.'},{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({message:error.message},{status:409})}
   }
   // Technique card of one exercise (text and video), plus the athlete's own video link.
@@ -1123,6 +1163,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       const draft={kind:'gym_preview',plan:data.plan,minutes:body.durationMinutes||60,startTime:body.startTime||null};
       const saved=await env.DB.prepare('INSERT INTO coach_inbox(user_id,channel,message,draft_json) VALUES(?,?,?,?)').bind(env.USER_ID,'gym','Návrh z týdenního plánu',JSON.stringify(draft)).run();
       data.draftId=saved.meta?.last_row_id;
+      data.muscles=Object.fromEntries([...new Set(data.plan.rows.map(r=>r?.[1]).filter(Boolean))].map(name=>[name,exerciseMuscles(name)]));
     }
     return Response.json(data,{status:response.status,headers:{"Cache-Control":"no-store"}});
   }
@@ -1141,6 +1182,9 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     const week = await cached(env, ctx, 'week-api:' + start, async () => {
     await ensureGymPlans(env.DB);
     const cancelledGym=new Set((await env.DB.prepare('SELECT workout_date FROM gym_plan_cancellations WHERE user_id=? AND workout_date>=? AND workout_date<=?').bind(env.USER_ID,start,dates[6]).all()).results.map(r=>r.workout_date));
+    // Gym plans saved for the week (generated, confirmed or built by hand), so a
+    // day shows its plan even before or without an Intervals.icu event.
+    const gymPlans=new Map(((await env.DB.prepare('SELECT workout_date,values_json FROM gym_plans WHERE user_id=? AND workout_date>=? AND workout_date<=?').bind(env.USER_ID,start,dates[6]).all().catch(()=>({results:[]}))).results||[]).map(r=>{let v=[];try{v=JSON.parse(r.values_json);}catch{}const rows=(Array.isArray(v)?v.slice(7):[]).filter(x=>x?.[1]);return [r.workout_date,rows.length?{name:String(v[2]?.[3]||'').slice(0,120),exercises:new Set(rows.map(x=>x[1])).size,sets:rows.filter(x=>String(x[0]||'WORK').toUpperCase()==='WORK').length}:null];}).filter(([,p])=>p));
     // Same calorie target as the day view: one Google Health read covers the week.
     const profile = await dashboardProfile(env);
     const health = profile ? await googleDashboard(env.DB, dates[6]).catch(error => { console.error("Energy budget unavailable", error.message); return null; }) : null;
@@ -1163,6 +1207,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       return {
         date,
         gymCancelled:cancelledGym.has(date),
+        gymPlan:cancelledGym.has(date)?null:gymPlans.get(date)||null,
         daily: applyEnergyBudget(await dailyResponse.json(), profile, {today: health?.wellness?.find(w => w.id === date) || {}}),
         food: await foodResponse.json(),
         recommendations: recommendResponse ? await recommendResponse.json() : null
