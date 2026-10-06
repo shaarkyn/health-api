@@ -232,7 +232,7 @@ ${phone('today', 'Loadwise v telefonu: obrazovka Dnes', {eager:true})}
 </div>
 </div>
 
-<div class="works wrap reveal"><p>Propojeno s</p><div class="names"><span>Intervals.icu</span><span>Google Health</span><span>Google Sheets</span></div></div>
+<div class="works wrap reveal"><p>Propojeno s</p><div class="names"><span>Intervals.icu</span><span>Google Health</span></div></div>
 
 <section id="funkce"><div class="wrap">
 <div class="head reveal"><h2>Ráno víš, na čem jsi.</h2><p>Tělo posílá signály celý den. Loadwise z nich udělá pár jasných čísel a jedno doporučení.</p></div>
