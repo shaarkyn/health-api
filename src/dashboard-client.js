@@ -320,23 +320,51 @@ function renderCoachCouncil(){
   // A priority that only repeats a card's headline and first line is left to the card.
   const heads=cards.map(x=>String(x.headline||'')).filter(Boolean),priorities=(council.priorities||[]).filter(x=>!heads.some(h=>String(x).startsWith(h)));
   p.hidden=!priorities.length;p.innerHTML=priorities.length?'<div class="eyebrow">KOORDINÁTOR · DNEŠNÍ PRIORITY</div><ol class="coach-actions">'+priorities.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ol>':'';
-  c.innerHTML=withRatings(cards,(state.reflections?.[selectedHistoryDate]||[]).filter(r=>!r.date||r.date===selectedHistoryDate)).map(x=>x.rating?ratingCard(x):x.sections||x.chart||x.sets?rideReviewCard(x):'<article class="coach-card '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><ul class="coach-actions">'+(x.actions||[]).map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+((x.analysis||[]).length?'<div class="coach-analysis">'+x.analysis.map(a=>'<div><strong>'+esc(a.label)+'</strong><p>'+esc(a.text)+'</p></div>').join('')+'</div>':'')+((x.resources||[]).length?'<div class="small" style="margin-top:8px">'+x.resources.filter(r=>/^https:\/\//.test(String(r.url||''))).map(r=>'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.label||'Otevřít postup')+'</a>').join('<br>')+'</div>':'')+'</article>').join('');
+  c.innerHTML=withRatings(cards,(state.reflections?.[selectedHistoryDate]||[]).filter(r=>!r.date||r.date===selectedHistoryDate),selectedHistoryDate).map(x=>x.rating?ratingCard(x):x.sections||x.chart||x.sets?rideReviewCard(x):'<article class="coach-card '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><ul class="coach-actions">'+(x.actions||[]).map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+((x.analysis||[]).length?'<div class="coach-analysis">'+x.analysis.map(a=>'<div><strong>'+esc(a.label)+'</strong><p>'+esc(a.text)+'</p></div>').join('')+'</div>':'')+((x.resources||[]).length?'<div class="small" style="margin-top:8px">'+x.resources.filter(r=>/^https:\/\//.test(String(r.url||''))).map(r=>'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.label||'Otevřít postup')+'</a>').join('<br>')+'</div>':'')+'</article>').join('');
 }
 
 // The athlete's own rating of a session (RPE, note) and the coach's answer sit
 // right after that session's review card, for any day shown. A note saved from
 // Today starts with the session name; otherwise a day with one review gets it.
-function withRatings(cards,reflections){
+function withRatings(cards,reflections,date=null){
   const out=[...cards],reviews=cards.filter(x=>x.sections||x.chart||x.sets);
   for(const r of reflections.filter(r=>r.text||r.rpe!=null)){
     const notes=String(r.notes||''),own=reviews.find(x=>x.headline&&notes.startsWith(x.headline+': '))||(reviews.length===1?reviews[0]:null);
     const note=own&&notes.startsWith(own.headline+': ')?notes.slice(own.headline.length+2):notes;
-    out.splice(own?out.indexOf(own)+1:out.length,0,{rating:true,name:own?.headline||null,rpe:r.rpe,note,text:r.text,ai:r.source==='ai'});
+    out.splice(own?out.indexOf(own)+1:out.length,0,{rating:true,name:own?.headline||null,rpe:r.rpe,note,text:r.text,ai:r.source==='ai',date:r.date||date});
   }
   return out;
 }
 function ratingCard(x){
-  return '<article class="coach-card review rating"><div class="eyebrow">'+uiText('Tvoje hodnocení a kouč','Your rating and the coach')+'</div><h3><span data-no-i18n>'+esc(x.name||uiText('Trénink','Session'))+'</span>'+(x.rpe!=null?' · RPE '+fmt(x.rpe,Number.isInteger(Number(x.rpe))?0:1):'')+'</h3>'+(x.note?'<p class="review-note"><strong>'+uiText('Poznámka','Note')+':</strong> <span data-no-i18n>'+esc(x.note)+'</span></p>':'')+(x.text?'<div class="coach-note"><small>'+esc(x.ai?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+'</small><p data-no-i18n>'+esc(x.text)+'</p></div>':'')+'</article>';
+  const rpe=Number(x.rpe),has=x.rpe!=null&&rpe>=1&&rpe<=10;
+  const gauge=has?'<div class="rpe-gauge" role="img" aria-label="RPE '+fmt(rpe,1)+' / 10"><div class="rpe-cells">'+Array.from({length:10},(_,k)=>'<i class="'+(k<Math.round(rpe)?'on':'')+'" style="--c:'+rpeColor(k+1)+'"></i>').join('')+'</div><span class="rpe-word"><b class="ink" style="--c:'+rpeColor(rpe)+'">RPE '+fmt(rpe,Number.isInteger(rpe)?0:1)+'</b> · '+rpeWord(rpe)+'</span></div>':'';
+  const note=x.note?'<blockquote class="rating-note" data-no-i18n>'+esc(x.note)+'</blockquote>':'';
+  return '<article class="coach-card review rating"><div class="eyebrow">'+uiText('Tvoje hodnocení a kouč','Your rating and the coach')+'</div><h3 data-no-i18n>'+esc(x.name||uiText('Trénink','Session'))+'</h3>'+gauge+note+ratingSignals(x.date)+(x.text?coachAdvice(x.text,x.ai):'')+'</article>';
+}
+function rpeColor(v){return v<=3?'#3fda9c':v<=5?'#9ad46a':v<=7?'#ffc274':v<=8?'#ff9a4d':'#ff6478';}
+function rpeWord(v){return v<=2?uiText('velmi lehké','very easy'):v<=4?uiText('lehké','easy'):v<=6?uiText('střední','moderate'):v<=8?uiText('těžké','hard'):v<9.5?uiText('velmi těžké','very hard'):uiText('maximální','maximal');}
+// The day's recovery signals beside the rating: sleep, HRV and form against the athlete's own previous week.
+function ratingSignals(date){
+  if(!date)return '';
+  const nights=primarySleepSessions(state.sleep?.sessions),day=s=>s.date||String(s.endTime||'').slice(0,10),night=nights.find(s=>day(s)===date);
+  const before=nights.filter(s=>day(s)<date).slice(0,7).map(s=>num(s.durationMin)),avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const rows=(state.fitness?.wellness||[]).filter(r=>r.id<=date),today=rows.find(r=>r.id===date)||{},week=rows.filter(r=>r.id<date).slice(-7).map(r=>num(r.hrv)).filter(v=>v>0);
+  const tsb=today.tsb!=null?num(today.tsb):today.ctl!=null&&today.atl!=null?num(today.ctl)-num(today.atl):null,tiles=[];
+  if(night){const m=num(night.durationMin),a=avg(before),low=m<390||a!=null&&m<a-45;tiles.push([uiText('Spánek','Sleep'),hm(m),a!=null?uiText('průměr ','avg ')+hm(a):'',low?'#ff9a4d':'#3fda9c']);}
+  if(num(today.hrv)>0){const a=avg(week),low=a!=null&&num(today.hrv)<a*.85;tiles.push(['HRV',Math.round(num(today.hrv))+' ms',a!=null?uiText('průměr ','avg ')+Math.round(a)+' ms':'',low?'#ff6478':'#3fda9c']);}
+  if(tsb!=null)tiles.push([uiText('Forma','Form'),String(Math.round(tsb)).replace('-','−'),'TSB · '+(tsb<-20?uiText('vysoká únava','high fatigue'):tsb<-10?uiText('únava','fatigued'):tsb>5?uiText('odpočatý','fresh'):uiText('v rovnováze','balanced')),tsb<-20?'#ff6478':tsb<-10?'#ff9a4d':'#3fda9c']);
+  return tiles.length?'<div class="rating-signals">'+tiles.map(([l,v,s,c])=>'<div class="rating-tile"><span class="label">'+l+'</span><b class="ink" style="--c:'+c+'">'+esc(v)+'</b><small>'+esc(s)+'</small></div>').join('')+'</div>':'';
+}
+// The coach's answer as a lead sentence and short points with an icon each;
+// tomorrow's advice and a health warning stand out at the end.
+function coachAdvice(text,ai){
+  const parts=String(text).split(/(?<=[.!?])\s+|;\s+/).map(t=>t.trim()).filter(Boolean).map(t=>t[0].toUpperCase()+t.slice(1));
+  const strong=t=>esc(t).replace(/(\d+\s?h\s\d+\s?min|[−-]?\d+(?:[.,]\d+)?(?:\s?(?:%|ms|TSS|h|min|g|kcal|W|km|bpm)\b)?)/g,'<b>$1</b>');
+  const icon=t=>/HRV|tep|puls|heart/i.test(t)?'❤️':/spal|spánek|spánk|sleep/i.test(t)?'😴':/TSB|únav|fatigue|form/i.test(t)?'🔋':/sacharid|jídl|tekutin|carb|fluid|eat/i.test(t)?'🍝':/křeč|cramp/i.test(t)?'⚡':/RPE|interval|sprint|tempo|úsek/i.test(t)?'🚴':'•';
+  const tomorrow=parts.filter(t=>/^(zítra|tomorrow)|\bzítra\b|\btomorrow\b/i.test(t)),warn=parts.filter(t=>!tomorrow.includes(t)&&/odborník|lékař|bolí|bolest|doctor|pain/i.test(t)),rest=parts.filter(t=>!tomorrow.includes(t)&&!warn.includes(t));
+  const lead=rest.shift();
+  return '<div class="coach-advice" data-no-i18n><small class="coach-by">'+esc(ai?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+'</small>'+(lead?'<p class="advice-lead">'+strong(lead)+'</p>':'')+(rest.length?'<ul class="advice-points">'+rest.map(t=>'<li><span class="advice-icon" aria-hidden="true">'+icon(t)+'</span><span>'+strong(t)+'</span></li>').join('')+'</ul>':'')+
+    tomorrow.map(t=>'<div class="advice-call next"><span aria-hidden="true">📅</span><span>'+strong(t)+'</span></div>').join('')+warn.map(t=>'<div class="advice-call warn"><span aria-hidden="true">⚠️</span><span>'+strong(t)+'</span></div>').join('')+'</div>';
 }
 // A ride review: verdict, plan vs. reality per step, the main set as a table,
 // then what went well, what to do better and load with recovery. The texts come
