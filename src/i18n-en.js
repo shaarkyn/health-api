@@ -1682,6 +1682,8 @@ export const EN = {
 "CTL · odhad": "CTL · estimate",
 "Bez dat z Intervals.icu": "No Intervals.icu data",
 "aktuálně": "current",
+"Bez měřiče se řiď dechem: jeď nebo běž tak, abys zvládl mluvit v celých větách (námaha 2–4 z 10). Když mluvíš jen po slovech, zpomal.": "With no meter, go by your breathing: ride or run so you can talk in full sentences (effort 2–4 out of 10). If you can only say a few words, slow down.",
+"Bez hodinek: ráno po probuzení vleže počítej tep na zápěstí 60 s, tři dny po sobě, a zapiš průměr. Bez klidového tepu počítám zóny z max. tepu, bez obou se řídíš dechem.": "No watch: in the morning, lying down right after waking, count your pulse at the wrist for 60 s on three days and enter the average. Without a resting heart rate the zones use max heart rate; without both, go by your breathing.",
 "AI funkce nejsou pro tento účet zapnuté.": "AI features are not enabled for this account."
 };
 

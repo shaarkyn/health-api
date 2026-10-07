@@ -151,6 +151,9 @@ export function stepRows(structure = [], { ftp = null, environment = "indoor", z
   return structure.map(block => block.steps ? { repeats: n(block.repeats, 1), note: block.note || null, steps: block.steps.map(row) } : { repeats: 1, steps: [row(block)] });
 }
 
+// Without watts, pace or heart rate an easy session is steered by breathing.
+const TALK_TEST = "Bez měřiče se řiď dechem: jeď nebo běž tak, abys zvládl mluvit v celých větách (námaha 2–4 z 10). Když mluvíš jen po slovech, zpomal.";
+
 // Where the heart-rate zone comes from, in words.
 function hrReference(model, lthr) {
   if (model === "karvonen") return "Z2 z tepové rezervy, max. a klidový tep z profilu";
@@ -176,6 +179,7 @@ export function explainWorkout(workout, { coach = {}, environment = "indoor", th
   // Without FTP an easy ride is steered by heart rate.
   const rideZ2 = (thresholds.hrZones || []).find(z => z.zone === 2);
   if (!ftp && ["recovery", "endurance"].includes(system) && rideZ2?.bpmHigh) how.push("Tep drž do " + rideZ2.bpmHigh + " bpm (" + hrReference(thresholds.hrModel, thresholds.lthr) + ").");
+  else if (!ftp && ["recovery", "endurance"].includes(system)) how.push(TALK_TEST);
   return {
     title: SYSTEM_LABEL[system] || system,
     why, how,
@@ -214,6 +218,7 @@ function explainRun(workout, structure, { coach, environment, thresholds, planne
   const lthr = thresholds.runLthr;
   const hrZ2 = (thresholds.runHrZones || []).find(z => z.zone === 2);
   if (["recovery", "endurance"].includes(system) && hrZ2?.bpmHigh) how.push("Tep drž do " + hrZ2.bpmHigh + " bpm (" + hrReference(thresholds.runHrModel, lthr) + ").");
+  else if (["recovery", "endurance"].includes(system) && !pace) how.push(TALK_TEST);
   const opts = { environment, zones: thresholds.paceZones, sport: "run", thresholdPace: pace };
   return {
     title: RUN_LABEL[system] || system,

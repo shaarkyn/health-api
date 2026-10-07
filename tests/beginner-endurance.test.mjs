@@ -91,3 +91,10 @@ test("without fitness data the week plan keeps a beginner's running under the we
   assert.ok(runs.length >= 2);
   assert.ok(runs.reduce((n, x) => n + x.minutes, 0) <= 60);
 });
+
+test("with no watts, pace or heart rate an easy session is steered by breathing", () => {
+  const easyRide = { primary_system: "endurance", duration_minutes: 60, structure_json: "[]", sport: "ride" };
+  assert.match(explainWorkout(easyRide, { thresholds: {} }).how.join(" "), /mluvit v celých větách/);
+  const easyRun = RUNNING_WORKOUTS.find(w => w.id === "run-easy-40");
+  assert.match(explainWorkout(easyRun, { sport: "run", thresholds: {} }).how.join(" "), /mluvit v celých větách/);
+});
