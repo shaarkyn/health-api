@@ -172,7 +172,36 @@ function showAiPlans(s,{pilot=false,locked=false}={}){
 {const css=document.createElement('style');css.textContent='.ai-plans-card{width:min(560px,100%);display:grid;gap:14px;max-height:calc(100vh - 32px);overflow:auto}.ai-plans-card h2{margin:0}.ai-plans-card>p{margin:0}.plan-table{width:100%;border-collapse:collapse;font-size:var(--fs-body)}.plan-table th,.plan-table td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.plan-table thead th{font-size:var(--fs-meta);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.plan-table td{text-align:center;width:64px}.plan-table thead th:not(:first-child){text-align:center}.plan-table tbody th{font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text);font-size:var(--fs-body);line-height:1.35}.plan-table thead th{padding-top:0}.plan-yes{color:var(--ok);font-weight:700}.plan-no{color:var(--muted)}.plan-price th,.plan-price td{font-weight:700;border-bottom:0}.plan-price td{font-size:var(--fs-small)}.ai-plans-actions{position:sticky;bottom:-1px;background:inherit;padding:10px 0 2px;margin:0}.ai-plans-card{padding-bottom:12px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}';document.head.append(css);}
 // Every data API requires a session; the first 401 swaps the dashboard for a login screen.
 const gateStyle='position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto';
-function showLoginGate(){if($("loginGate"))return;forgetAccount();if(new URLSearchParams(location.search).get('deleted')==='1')queueMicrotask(()=>toast('Účet a data jsou smazané.'));document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card" style="width:min(380px,100%);display:grid;gap:12px"><h2 id="loginGateTitle" style="margin:0">Přihlášení</h2><p class="small" style="margin:0">Do aplikace se přihlašuješ svým Google účtem. Přístup mají jen pozvaní uživatelé. Přihlášení slouží pouze k založení účtu; přístup ke Google Health povolíš zvlášť a dobrovolně.</p><a class="btn primary" href="/auth/google" style="text-align:center;text-decoration:none">Přihlásit přes Google</a></div></div>');}
+function showLoginGate(){if($("loginGate"))return;forgetAccount();if(new URLSearchParams(location.search).get('deleted')==='1')queueMicrotask(()=>toast('Účet a data jsou smazané.'));document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card" style="width:min(380px,100%);display:grid;gap:12px"><h2 id="loginGateTitle" style="margin:0">Přihlášení</h2><p class="small" style="margin:0">Do aplikace se přihlašuješ svým Google účtem. Přístup mají jen pozvaní uživatelé. Přihlášení slouží pouze k založení účtu; přístup ke Google Health povolíš zvlášť a dobrovolně.</p><a class="btn primary" id="googleLoginLink" href="/auth/google" style="text-align:center;text-decoration:none">Přihlásit přes Google</a></div></div>');if(nativeApp())$('googleLoginLink').onclick=e=>{e.preventDefault();nativeLogin();};}
+// ---- iPhone app (mobile/, Capacitor) ----
+// Google refuses sign-in inside an app's web view, so the app signs in in
+// Safari and comes back through loadwise://auth with a short-lived token. Only
+// this web view knows the verifier that redeems it (see src/google-login.js).
+function nativeApp(){return Boolean(window.Capacitor?.isNativePlatform?.());}
+// The app draws under the status bar and the home indicator: the page gets the
+// iPhone's safe areas (viewport-fit=cover) and the top bar and the sign-in
+// screens leave room for them. The bottom bar and sheets already do.
+if(nativeApp()){
+  document.documentElement.classList.add('native-app');
+  const viewport=document.querySelector('meta[name="viewport"]');if(viewport&&!/viewport-fit/.test(viewport.content))viewport.content+=',viewport-fit=cover';
+  const style=document.createElement('style');style.textContent='.native-app .topbar{box-sizing:content-box!important;top:0!important;padding-top:env(safe-area-inset-top)!important}.native-app #loginGate,.native-app #onboardingGate{padding-top:calc(16px + env(safe-area-inset-top))!important;padding-bottom:calc(16px + env(safe-area-inset-bottom))!important}';document.head.append(style);
+}
+let appVerifier='';
+async function nativeLogin(){
+  const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  appVerifier=b64(crypto.getRandomValues(new Uint8Array(32)));try{sessionStorage.setItem('lw-app-verifier',appVerifier);}catch{}
+  const challenge=b64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(appVerifier))));
+  try{await window.Capacitor.nativePromise('Browser','open',{url:location.origin+'/auth/google?app='+challenge});}catch(error){toast(error?.message||String(error));}
+}
+async function finishNativeLogin(url){
+  window.Capacitor.nativePromise('Browser','close').catch(()=>{});
+  let verifier=appVerifier;try{verifier||=sessionStorage.getItem('lw-app-verifier')||'';}catch{}
+  const token=new URL(url).searchParams.get('token');
+  const r=token&&verifier?await fetch('/auth/app/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,verifier})}).catch(()=>null):null;
+  if(r?.ok){try{sessionStorage.removeItem('lw-app-verifier');}catch{}location.replace('/app');}
+  else toast(uiText('Přihlášení se nepodařilo dokončit. Zkus to znovu.','Sign-in could not be completed. Please try again.'));
+}
+if(nativeApp())window.Capacitor.addListener('App','appUrlOpen',e=>{if(String(e?.url||'').startsWith('loadwise://auth'))finishNativeLogin(e.url);});
 // Complete the saved profile before opening the dashboard; providers are optional.
 function showOnboarding(){showAccountSetup().catch(error=>toast(error.message));}
 // Service cards (Google Health, Intervals.icu) with the button that connects

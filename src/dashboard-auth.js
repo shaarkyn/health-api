@@ -21,6 +21,7 @@ const PUBLIC_PATHS = new Set([
   "/app/logout",
   "/auth/google",
   "/auth/google/callback",
+  "/auth/app/session",
   "/mcp",
   "/mcp/health",
   "/automation/strength",
@@ -98,7 +99,7 @@ export async function sessionCookie(uid, exp, secret) {
   return SESSION_COOKIE+"="+payload+"."+signature+"; Path=/; Max-Age="+SESSION_SECONDS+"; HttpOnly; Secure; SameSite=Lax";
 }
 
-async function dashboardHmac(value, secret) {
+export async function dashboardHmac(value, secret) {
   const key = await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
   const sig = await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(value));
   return base64url(new Uint8Array(sig));
