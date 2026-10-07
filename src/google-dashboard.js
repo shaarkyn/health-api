@@ -10,6 +10,8 @@ export function googleHealthSummary(rows,today,zoneRows=[]){
     if(row.data_type==='daily-resting-heart-rate'){key='restingHR';value=finite(row.value_numeric)??finite(obj.beatsPerMinute);}
     if(row.data_type==='daily-heart-rate-variability'){key='hrv';value=finite(obj.averageHeartRateVariabilityMilliseconds)??finite(row.value_numeric)??finite(obj.rmssd);}
     if(row.data_type==='daily-respiratory-rate'){key='respiration';value=finite(row.value_numeric)??finite(obj.breathsPerMinute);}
+    // Skin temperature in sleep as the deviation from Google's own 30-day baseline.
+    if(row.data_type==='daily-sleep-temperature-derivations'){const t=finite(obj.nightlyTemperatureCelsius)??finite(row.value_numeric),b=finite(obj.baselineTemperatureCelsius);if(t!=null&&b!=null){key='skinTempDeviation';value=Math.round((t-b)*100)/100;const sd=finite(obj.relativeNightlyStddev30dCelsius);if(sd!=null)item.skinTempSd=sd;}}
     if(row.data_type==='daily-vo2-max'){key='vo2max';value=finite(row.value_numeric)??finite(obj.vo2Max);}
     if(row.data_type==='steps'){key='steps';value=finite(row.value_numeric)??finite(obj.count);}
     if(row.data_type==='active-energy-burned'){key='activeCalories';value=finite(row.value_numeric)??finite(obj.kcal);}
@@ -28,7 +30,7 @@ export async function googleDashboard(db,today){
   // the athlete's own 60-day baseline. Steps, energy and heart-rate zones are
   // many rows a day and only needed for the last month.
   const [data,zones]=await Promise.all([
-    db.prepare(`SELECT data_type,sample_time,start_time,end_time,value_numeric,payload_json FROM health_datapoints WHERE user_id = ? AND source_family='google-wearables' AND record_role='primary' AND ((data_type IN ('daily-resting-heart-rate','daily-heart-rate-variability','daily-respiratory-rate','daily-vo2-max') AND COALESCE(sample_time,end_time,start_time,'')>=?) OR (data_type IN ('steps','active-energy-burned') AND COALESCE(sample_time,end_time,start_time,'')>=?)) AND COALESCE(sample_time,end_time,start_time,'')<? ORDER BY id LIMIT 40000`).bind(db.userId,shift(-61),shift(-31),end).all(),
+    db.prepare(`SELECT data_type,sample_time,start_time,end_time,value_numeric,payload_json FROM health_datapoints WHERE user_id = ? AND source_family='google-wearables' AND record_role='primary' AND ((data_type IN ('daily-resting-heart-rate','daily-heart-rate-variability','daily-respiratory-rate','daily-sleep-temperature-derivations','daily-vo2-max') AND COALESCE(sample_time,end_time,start_time,'')>=?) OR (data_type IN ('steps','active-energy-burned') AND COALESCE(sample_time,end_time,start_time,'')>=?)) AND COALESCE(sample_time,end_time,start_time,'')<? ORDER BY id LIMIT 40000`).bind(db.userId,shift(-61),shift(-31),end).all(),
     db.prepare(`SELECT start_time,end_time,json_extract(payload_json,'$.timeInHeartRateZone.heartRateZoneType') AS zone FROM health_datapoints WHERE user_id = ? AND source_family='google-wearables' AND record_role='primary' AND data_type='time-in-heart-rate-zone' AND start_time>=? AND start_time<? LIMIT 20000`).bind(db.userId,shift(-31),end).all().catch(()=>({results:[]}))
   ]);
   const summary=googleHealthSummary(data.results||[],today,zones.results||[]);

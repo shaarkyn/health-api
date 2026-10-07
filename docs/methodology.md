@@ -4,7 +4,7 @@ Tento dokument popisuje, jak aplikace počítá vlastní ukazatele, z čeho vych
 
 Platí pro všechno: HRV, klidový tep, dech, spánek, tepové zóny a aktivní energii bereme ze zařízení přes Google Health a Intervals.icu. Přesnost těchto vstupů neovlivníme. Rozhoduje metoda, kterou z nich počítáme.
 
-Zdroje byly ověřené přes abstrakty a bibliografické záznamy. Před citací ve veřejném materiálu je potřeba přečíst plné znění, hlavně u položek označených „ověřit“.
+Zdroje byly ověřené přes abstrakty, bibliografické záznamy a primární dokumentaci (Google Health API discovery dokument). Plné texty několika studií nebyly z vývojového prostředí dostupné; u nich uvádíme jen to, co potvrzují abstrakty a citované úryvky. Před citací ve veřejném materiálu je vždy potřeba přečíst plné znění.
 
 ## 1. Funkce postavené na standardních metodách
 
@@ -47,7 +47,7 @@ Zdroje byly ověřené přes abstrakty a bibliografické záznamy. Před citací
 ### Šetření nohou a dávka v posilovně podle vytrvalostní zátěže
 
 - **Výpočet:** posilovna ubere objem při velké vytrvalostní únavě (forma TSB), nízké regeneraci nebo blízké klíčové jízdě. Nohy šetří, když je náročná nebo dlouhá jízda dnes či zítra, po velkých 48 hodinách nebo při TSB ≤ −25 (`src/strength-generator.js`).
-- **Zdroje:** Wilson JM et al. *Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises.* J Strength Cond Res 2012;26:2293–2307 (21 studií; interference roste s frekvencí a délkou vytrvalostního tréninku). Robineau J et al. *Specific training effects of concurrent aerobic and strength exercises depend on recovery duration.* J Strength Cond Res 2016;30:672–683 (0 h pauza nejhorší, 24 h nejlepší, doporučení aspoň 6 h).
+- **Zdroje:** Wilson JM et al. *Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises.* J Strength Cond Res 2012;26:2293–2307 (21 studií, 422 effect size). Hypertrofie: samotná síla ES 1,23, kombinace 0,85; síla 1,76 proti 1,44; výkon 0,91 proti 0,55. Interferenci působil běh, ne kolo, a rostla s frekvencí a délkou vytrvalostního tréninku. Robineau J et al. *Specific training effects of concurrent aerobic and strength exercises depend on recovery duration.* J Strength Cond Res 2016;30:672–683 (0 h pauza nejhorší, 24 h nejlepší, doporučení aspoň 6 h).
 - **Co tvrdit:** princip je podložený a konkurence ho nemá. Konkrétní prahy (TSB −25, koeficienty dávky) jsou naše kalibrace, ne výsledek studie.
 
 ## 2. Funkce přepracované podle literatury
@@ -61,6 +61,7 @@ Zdroje byly ověřené přes abstrakty a bibliografické záznamy. Před citací
   - Každá složka: osobní průměr = 70, −1 SD = 50, −2 SD = 30. Celkem 0–100; zelená ≥ 67, žlutá 34–66, červená < 34.
   - Trend: 7denní průměr lnRMSSD pod průměrem o víc než nejmenší významnou změnu (0,5 SD).
   - Dech ve spánku o ≥ 1 dech/min a 2 SD nad baseline ubere 10 bodů.
+  - Teplota kůže ve spánku o ≥ 0,5 °C a zároveň 2 noční SD nad 30denní baseline Google Health ubere 10 bodů (Google Health typ `daily-sleep-temperature-derivations`).
   - Potřebuje 14 předchozích měření.
 - **Zdroje:**
   - Plews DJ et al. Eur J Appl Physiol 2012;112:3729–3741, [PMID 22367011](https://pubmed.ncbi.nlm.nih.gov/22367011/): 7denní průměr lnRMSSD zachytil přetrénování, jednotlivé dny ne.
@@ -68,29 +69,32 @@ Zdroje byly ověřené přes abstrakty a bibliografické záznamy. Před citací
   - Plews DJ et al. Sports Med 2013;43:773–781 (přehled).
   - Buchheit M. *Monitoring training status with HR measures: do all roads lead to Rome?* Front Physiol 2014;5:73, [PMID 24578692](https://pubmed.ncbi.nlm.nih.gov/24578692/).
   - Javaloyes A et al. Int J Sports Physiol Perform 2019;14:23–32: trénink řízený HRV (7denní lnRMSSD mimo SWC → lehký den) zlepšil cyklistům 40min časovku o 7,3 %, tradiční plán ne.
-  - Kiviniemi AM et al. Eur J Appl Physiol 2007;101:743–751: trénink řízený denním HRV.
+  - Kiviniemi AM et al. Eur J Appl Physiol 2007;101:743–751: pravidlo „HRV pod 10denním průměrem − SD, nebo dva dny po sobě klesá → lehký trénink nebo volno“; skupina řízená HRV zvýšila maximální rychlost z 15,5 na 16,4 km/h a VO₂peak z 56 na 60 ml/kg/min. Naše hranice „−1 SD = žlutá“ vychází ze stejné logiky, jen s delší baseline.
+  - Smarr BL et al. Sci Rep 2020 (*Feasibility of continuous fever monitoring using wearable devices*): noční teplota kůže z prstenu Oura zachytila nástup horečky, často dřív, než lidé hlásili příznaky.
 - **Proti konkurenci:** Whoop (HRV, klidový tep, spánek, dech) a Oura (HRV balance proti 3 měsícům, klidový tep, teplota, spánek…) používají stejné vstupy, ale váhy nezveřejňují. My máme stejné jádro, zveřejněnou metodu a stejné číslo pro dashboard i trenéra. Navíc trend proti SWC, jak ho používají studie.
-- **Limity:** váhy 50/25/25 a převod z-skóre na body jsou naše volba. Literatura říká, že HRV je hlavní ukazatel, ale přesné váhy nedává. Teplotu kůže zatím nemáme.
+- **Limity:** váhy 50/25/25 a převod z-skóre na body jsou naše volba. Literatura říká, že HRV je hlavní ukazatel, ale přesné váhy nedává. Žádný výrobce svůj složený index nezveřejňuje ani nezávisle nevalidoval; proto máme vlastní ověření (bod 2.8). Bellenger 2016 (Sports Med, metaanalýza 24 studií) upozorňuje, že klidové HRV samo funkční přetížení spolehlivě nezachytí; index proto kombinuje víc signálů. Teplota v luteální fázi stoupá méně než o náš práh.
 
 ### 2.2 Spánkový index, potřeba spánku a spánkový dluh
 
 - **Výpočet:** `sleepNeedMinutes`, `sleepIndexScore`, `sleepDebtMinutes` v `src/recovery-model.js`.
-  - Potřeba spánku: 8 h (od 65 let 7,5 h), po zátěži dne ≥ 14 o 15 min a po ≥ 18 o 30 min víc, v rozmezí 7–9 h.
-  - Index: délka proti potřebě (50 bodů; nula při polovině potřeby, plný počet při splněné potřebě), efektivita spánku s plným počtem od 85 % (35) a podíl hlubokého spánku ≥ 13 % a REM ≥ 20 % (15). Bez fází se přepočítá z délky a efektivity.
-  - Dluh: součet nedospání za 7 nocí; delší noc splatí nejvýš hodinu.
+  - Potřeba spánku (`sleepNeedFor`): 8 h (od 65 let 7,5 h); po zátěži dne ≥ 14 o 15 min a po ≥ 18 o 30 min víc; při nízkém HRV statusu (7denní lnRMSSD pod baseline o víc než SWC) o 15 min; se spánkovým dluhem o čtvrtinu dluhu, nejvýš 30 min. Zdřímnutí (Google je označuje jako `nap`) potřebu sníží. Výsledek vždy 7–9 h.
+  - Index: délka proti potřebě (50 bodů; nula při polovině potřeby, plný počet při splněné potřebě); kvalita (35): když zařízení hlásí dobu usnutí a bdění, pak efektivita od 85 % (20), usnutí do 30 min (7,5) a bdění po usnutí do 20 min (7,5), jinak jen efektivita (35); podíl hlubokého spánku ≥ 13 % a REM ≥ 20 % (15). Bez fází se přepočítá.
+  - Dluh: součet nedospání za 7 dní včetně zdřímnutí; delší den spánku splatí nejvýš hodinu.
 - **Zdroje:**
   - Hirshkowitz M et al. Sleep Health 2015;1:40–43, [PMID 29073412](https://pubmed.ncbi.nlm.nih.gov/29073412/): 7–9 h pro 18–64 let, 7–8 h od 65.
   - Watson NF et al. (AASM/SRS) Sleep 2015;38:843–844: dospělí ≥ 7 h.
-  - Ohayon M et al. Sleep Health 2017;3:6–19: efektivita ≥ 85 % je znak dobrého spánku.
-  - Ohayon MM et al. Sleep 2004;27:1255–1273: podíl fází podle věku (prahy 13 % a 20 % jsou zaokrouhlené běžné hodnoty dospělých; ověřit v tabulkách).
+  - Ohayon M et al. Sleep Health 2017;3:6–19: znaky dobré kvality spánku jsou efektivita ≥ 85 %, usnutí do 30 min, bdění po usnutí do 20 min a nejvýš 1 probuzení delší než 5 min (u starších lidí mírnější hranice bdění).
+  - Carskadon MA, Dement WC. *Normal Human Sleep: An Overview* (Principles and Practice of Sleep Medicine): u mladých dospělých je hluboký spánek 13–23 % a REM 20–25 %. Naše prahy 13 % a 20 % jsou dolní hranice těchto rozmezí.
+  - Ohayon MM et al. Sleep 2004;27:1255–1273 (65 studií, 3 577 lidí): podíl hlubokého spánku a REM s věkem klesá, po 60 letech už klesá jen efektivita. Přesná čísla podle věku z tabulek studie zatím nemáme, proto prahy nepřizpůsobujeme věku.
   - Van Dongen HP et al. Sleep 2003;26:117–126: nedospání se sčítá.
-  - Walsh NP et al. Br J Sports Med 2021: sportovcům se doporučuje horní část rozmezí (ověřit přesné znění).
+  - Walsh NP et al. Br J Sports Med 2021;55:356–368 (expertní konsenzus): univerzální doporučení 7–9 h pro sportovce „pravděpodobně není ideální“, doporučuje individuální přístup, více příležitosti ke spánku při vysoké tréninkové zátěži a zdřímnutí 20–90 min. Podle toho přidáváme čas po náročném dni a se spánkovým dluhem.
+  - Whoop: potřeba spánku = základ + dluh + zátěž − zdřímnutí (složky jsou v jejich API). Garmin Sleep Coach: věk, aktivita, historie spánku, zdřímnutí a HRV status, vždy 7–9 h. Ani jeden nezveřejňuje velikost jednotlivých přídavků; naše +15 min za HRV a čtvrtina dluhu jsou kalibrace.
   - Přesnost fází z hodinek je 60–85 % proti polysomnografii, proto mají fáze nejmenší váhu.
-- **Proti konkurenci:** Garmin Sleep Coach počítá potřebu z věku, aktivity, historie spánku, zdřímnutí a HRV v rozmezí 7–9 h. Whoop z historie, zátěže, dluhu a zdřímnutí. My máme věk a zátěž; zdřímnutí a HRV do potřeby zatím nezahrnujeme.
+- **Proti konkurenci:** stejné vstupy jako Garmin Sleep Coach (věk, aktivita, historie spánku, zdřímnutí, HRV) i jeho rozmezí 7–9 h; navíc kritéria kvality spánku NSF, která Garmin ani Whoop nezveřejňují.
 
 ### 2.3 Celodenní zátěž 0–21
 
-- **Výpočet:** čas ve čtyřech tepových zónách Google Health (světlá, střední, intenzivní, špičková; Karvonenovy zóny z tepové rezervy) × váhy 2/3/4/5, tedy TRIMP podle Edwardse. Pak `21 × (1 − e^(−load/225))` (`heartRateLoad`, `strainScore`). Bez zón se použije odhad z aktivní energie a aplikace to uvede.
+- **Výpočet:** čas ve čtyřech tepových zónách Google Health × váhy 2/3/4/5, tedy TRIMP podle Edwardse. Ověřeno v oficiálním discovery dokumentu Google Health API v4: typ `time-in-heart-rate-zone` má hodnoty `LIGHT`, `MODERATE`, `VIGOROUS`, `PEAK` a zóny jsou podle Karvonena z tepové rezervy (Fitbit: střední 40–59 %, intenzivní 60–84 %, špičková ≥ 85 % tepové rezervy). Pak `21 × (1 − e^(−load/225))` (`heartRateLoad`, `strainScore`). Bez zón se použije odhad z aktivní energie a aplikace to uvede.
 - **Zdroje:**
   - Edwards S. *The Heart Rate Monitor Book.* 1993: součet minut v 5 zónách × 1–5.
   - Foster C et al. J Strength Cond Res 2001;15:109–115: session-RPE validované proti Edwardsově TRIMP.
@@ -119,6 +123,22 @@ Zdroje byly ověřené přes abstrakty a bibliografické záznamy. Před citací
   - Bell L et al. Sports Med Open 2023;9:87 (Delphi konsenzus k deloadu) a Front Sports Act Living 2022;4:1073223 (deload obvykle 5–7 dní každé 4–6 týdny).
 - **Limity:** pravidla 125 % a „tři týdny“ jsou trenérská praxe, ne výsledek kontrolované studie. Pro vytrvalostní cyklus 3:1 jsme kontrolovanou studii nenašli. Spouštěč z HRV je individuální a podložený.
 
+### 2.7 Týdenní cíl zátěže a kapacita tréninkového dne
+
+- **Výpočet:** týdenní cíl je CTL × 7 + 5 % (`weekTargets` v `src/week-planner.js`). Kapacita dne bez zadaného času je tento cíl rozpočítaný na 5 tréninkových dní a převedený na minuty lehkého tréninku (kolo IF 0,7 = 49 TSS/h, běh IF 0,83 = 69 rTSS/h a o 20 % méně času kvůli vyšší mechanické zátěži). Pak úpravy podle spánku, TSB, připravenosti, regeneračního týdne a ladění formy (`capacityMinutes` v `src/cycling-coach-v2.js`). Když CTL už roste o víc než 8 bodů týdně, cíl i kapacita jen drží CTL × 7.
+- **Odvození:** CTL je 42denní exponenciální průměr denní zátěže, takže týden na CTL × 7 kondici drží a +5 % ji zvedá asi o CTL/120 bodů za týden. To je výrazně pod 5–8 body týdně, které Joe Friel (TrainingPeaks) označuje za udržitelné; nad 8 hrozí přetížení. TSS = hodiny × IF² × 100 (Coggan).
+- **Zdroje:** Friel J., TrainingPeaks: *Why Ramp Rate Is an Important Training Metric* (trenérské doporučení, ne recenzovaná studie). Allen & Coggan (TSS, CTL).
+- **Proti konkurenci:** Garmin (Firstbeat) řídí zátěž poměrem akutní a chronické zátěže s optimem 0,8–1,4 a vzorec pro denní doporučení nezveřejňuje. TrainerRoad používá strojové učení nad dokončenými tréninky. Intervals.icu tréninky nepředepisuje. My máme veřejně odvozené pravidlo a stejné číslo v plánu týdne i v délce tréninku.
+- **Limity:** 5 tréninkových dní je výchozí předpoklad. Modelem optimalizované plány (Banister, Busso) nejsou prospektivně ověřené.
+
+### 2.8 Ověření indexu regenerace na vlastních datech
+
+- **Endpoint:** `GET /app/api/recovery-validation?days=120` (`src/recovery-validation.js`). Pro každý tréninkový den spáruje ranní skóre regenerace s průběhem tréninku:
+  - efficiency factor z Intervals.icu (výkon nebo tempo na tep) jako z-skóre v rámci sportu; očekávaná korelace je kladná,
+  - RPE očištěné o intenzitu (reziduum regrese RPE na IF); očekávaná korelace je záporná.
+- **Statistika:** u jednoho sportovce Pearsonovo r s 95% intervalem spolehlivosti (Fisherova transformace); verdikt „podporuje“ jen když interval nepřekročí nulu, pod 10 dní „málo dat“. Přes více sportovců korelace opakovaných měření (rmcorr; Bakdash JZ, Marusich LR. Front Psychol 2017;8:456), která používá jen variabilitu uvnitř člověka: `node scripts/recovery-validation-rmcorr.mjs a.json b.json …`.
+- **Proč takhle:** výrobci své indexy nezávisle nevalidují. Whoop zveřejnil analýzu 389 profesionálních golfistů, kde složený Recovery sledoval výkon lépe než jednotlivé metriky. Tohle je náš ekvivalent na vlastních uživatelích. Doporučený další krok je smíšený model (výsledek ~ skóre centrované na osobu + zátěž + náhodný sklon pro uživatele) a srovnání s prostým z-skóre HRV, aby složený index prokázal přidanou hodnotu.
+
 ### 2.6 Kalorický cíl a vývoj váhy
 
 - **Výpočet:**
@@ -130,9 +150,8 @@ Zdroje byly ověřené přes abstrakty a bibliografické záznamy. Před citací
   - Hall KD et al. Lancet 2011;378:826–837: statické pravidlo 7700 kcal/kg přeceňuje dlouhodobý úbytek. Proto bereme polovinu a strop.
 - **Proti konkurenci:** Garmin a Whoop berou výdej z hodinek. Ten má chybu přes 20 % a navíc nemá jednotný směr (O'Driscoll R et al. Br J Sports Med 2020;54:332–340). Naše smyčka podle váhy tuto systematickou chybu postupně opraví, podobně jako aplikace s adaptivním výdejem.
 
-## Kde zatím nejsme na úrovni nejlepší konkurence
+## Co zbývá
 
-- **Teplota kůže v regeneraci:** Oura ji má, my ji z Google Health zatím nenačítáme.
-- **Zdřímnutí a HRV v potřebě spánku:** Garmin je zahrnuje, my ne.
-- **Kapacita tréninkového dne z CTL** (`capacityMinutes` v `src/cycling-coach-v2.js`): vlastní heuristika (CTL × 7/5 převedené na minuty, úpravy podle spánku, TSB a připravenosti). Konkurence (Garmin, TrainerRoad) metodu nezveřejňuje, takže ji nelze přímo porovnat. Ověřit by šla jen na vlastních datech.
-- **Validace na vlastních uživatelích:** u funkcí, kde jsou prahy naše kalibrace, by tvrzení „lepší než konkurence“ potřebovalo vlastní srovnání (např. index regenerace proti hodnocení tréninku a výkonu).
+- **Výsledky ověření (bod 2.8):** nástroj je hotový, ale tvrzení „index předpovídá průběh tréninku“ lze použít až po spuštění na reálných datech (aspoň desítky tréninkových dní u více uživatelů).
+- **Normy fází spánku podle věku:** přesná čísla z tabulek Ohayon 2004 jsme z prostředí nezískali; prahy fází proto nejsou věkově upravené.
+- **Přídavky k potřebě spánku:** +15 min za nízké HRV a čtvrtina dluhu jsou naše kalibrace; Garmin ani Whoop své hodnoty nezveřejňují.

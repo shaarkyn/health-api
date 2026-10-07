@@ -1318,22 +1318,51 @@ function sleepNeedMinutes(options) {
   return Math.max(420, Math.min(540, need));
 }
 function sleepDebtMinutes(nights, date, need) {
-  const want = need || 480, end = Date.parse(date + "T12:00:00Z");
-  const recent = (nights || []).filter(s => {
+  const want = need || 480, end = Date.parse(date + "T12:00:00Z"), byDay = new Map();
+  for (const s of nights || []) {
     const d = s && (s.date || String(s.endTime || "").slice(0, 10));
     const age = d ? (end - Date.parse(d + "T12:00:00Z")) / 86400000 : NaN;
-    return age >= 0 && age <= 6 && Number(s.durationMin) > 0;
-  });
-  if (!recent.length) return null;
-  const net = recent.reduce((s, n) => s + Math.max(-60, want - Number(n.durationMin)), 0);
-  return { minutes: Math.max(0, Math.round(net)), nights: recent.length, average: recent.reduce((s, n) => s + Number(n.durationMin), 0) / recent.length, need: want };
+    if (age >= 0 && age <= 6 && Number(s.durationMin) > 0) byDay.set(d, (byDay.get(d) || 0) + Number(s.durationMin));
+  }
+  if (!byDay.size) return null;
+  const days = [...byDay.values()];
+  const net = days.reduce((s, m) => s + Math.max(-60, want - m), 0);
+  return { minutes: Math.max(0, Math.round(net)), nights: days.length, average: days.reduce((s, m) => s + m, 0) / days.length, need: want };
+}
+function hrvStatusLow(rows, date) {
+  const end = Date.parse(date + "T12:00:00Z"), start = new Date(end - 6 * 86400000).toISOString().slice(0, 10);
+  const week = (rows || []).filter(r => r && r.id >= start && r.id <= date && Number(r.hrv) > 0).map(r => Math.log(Number(r.hrv)));
+  const base = personalBaseline(rows, start, "hrv", { log: true });
+  if (week.length < 3 || base.mean == null) return false;
+  return week.reduce((s, v) => s + v, 0) / week.length < base.mean - 0.5 * Math.max(base.sd, 0.05);
+}
+function sleepNeedFor(input) {
+  const date = input.date, prev = new Date(Date.parse(date + "T12:00:00Z") - 86400000).toISOString().slice(0, 10);
+  const rows = input.rows || [], sessions = input.sessions || [];
+  const prevRow = rows.find(r => r && r.id === prev);
+  const strain = input.strain != null ? input.strain : (prevRow ? strainScore(heartRateLoad(prevRow.hrZoneMinutes)) : null);
+  const base = sleepNeedMinutes({ age: input.age, strain });
+  const hrv = hrvStatusLow(rows, prev) ? 15 : 0;
+  const debtState = sleepDebtMinutes(sessions.filter(s => (s.date || String(s.endTime || "").slice(0, 10)) <= prev), prev, sleepNeedMinutes({ age: input.age }));
+  const debt = debtState ? Math.min(30, Math.round(debtState.minutes / 4)) : 0;
+  const naps = sessions.filter(s => (s.nap || Number(s.durationMin) < 180) && (s.date || String(s.endTime || "").slice(0, 10)) === prev).reduce((t, s) => t + (Number(s.durationMin) || 0), 0);
+  const need = Math.max(420, Math.min(540, base + hrv + debt) - Math.round(naps));
+  return { need, base, hrv, debt, naps: Math.round(naps) };
 }
 function sleepIndexScore(night, need) {
   if (!night || !(Number(night.durationMin) > 0)) return null;
   const duration = Number(night.durationMin), bed = Number(night.timeInBedMin), want = need || 480;
   if (!(bed >= duration)) return null;
   const durationPoints = 50 * Math.max(0, Math.min(1, (duration / want - 0.5) / 0.5));
-  const efficiencyPoints = 35 * Math.max(0, Math.min(1, (duration / bed - 0.65) / 0.2));
+  const efficiency = Math.max(0, Math.min(1, (duration / bed - 0.65) / 0.2));
+  const latency = Number(night.latencyMin), waso = Number(night.wasoMin);
+  const hasLatency = night.latencyMin != null && Number.isFinite(latency), hasWaso = night.wasoMin != null && Number.isFinite(waso);
+  // With the device's sleep summary, 35 points split into efficiency (20),
+  // falling asleep within 30 min (7.5, none from 60) and wake after sleep
+  // onset up to 20 min (7.5, none from 50): the NSF good-quality ranges.
+  const efficiencyPoints = hasLatency && hasWaso
+    ? 20 * efficiency + 7.5 * Math.max(0, Math.min(1, (60 - latency) / 30)) + 7.5 * Math.max(0, Math.min(1, (50 - waso) / 30))
+    : 35 * efficiency;
   const deep = Number(night.stages && night.stages.DEEP), rem = Number(night.stages && night.stages.REM);
   if (!Number.isFinite(deep) || !Number.isFinite(rem)) return Math.round((durationPoints + efficiencyPoints) / 85 * 100);
   const stagePoints = 7.5 * Math.min(1, deep / duration / 0.13) + 7.5 * Math.min(1, rem / duration / 0.2);
@@ -1365,6 +1394,17 @@ function recoveryReadiness(input) {
     components.respiration = { value: Number(today.respiration), baseline: bb.mean, elevated };
     if (elevated) flags.push("respiration_elevated");
   }
+  // Skin temperature in sleep against Google's 30-day baseline: ≥ 0.5 °C and
+  // two of its nightly SDs above it is flagged and costs 10 points. Nightly
+  // skin temperature from a wearable picks up fever onset, often before
+  // symptoms (Smarr 2020); Oura counts the deviation in its readiness. The
+  // luteal phase alone raises it by less than this.
+  const dev = Number(today.skinTempDeviation);
+  if (today.skinTempDeviation != null && Number.isFinite(dev)) {
+    const sd = Number(today.skinTempSd), elevated = dev >= 0.5 && (!(sd > 0) || dev >= 2 * sd);
+    components.skinTemp = { deviation: dev, sd: sd > 0 ? sd : null, elevated };
+    if (elevated) flags.push("skin_temp_elevated");
+  }
   const nightDate = night && (night.date || String(night.endTime || "").slice(0, 10));
   if (night && nightDate === date && Number(night.durationMin) > 0) {
     const performance = Math.min(105, Number(night.durationMin) / need * 100);
@@ -1376,6 +1416,7 @@ function recoveryReadiness(input) {
   if (!(components.hrv || components.restingHR) || used.reduce((s, k) => s + weights[k], 0) < 0.5) return { score: null, zone: null, components, flags, missing };
   let score = used.reduce((s, k) => s + weights[k] * components[k].score, 0) / used.reduce((s, k) => s + weights[k], 0);
   if (components.respiration && components.respiration.elevated) score -= 10;
+  if (components.skinTemp && components.skinTemp.elevated) score -= 10;
   score = Math.round(Math.max(0, Math.min(100, score)));
   return { score, zone: score >= 67 ? "green" : score >= 34 ? "yellow" : "red", components, flags, missing };
 }
@@ -1391,8 +1432,9 @@ function strainScore(load) {
 // </recovery-model>
 // Sleep, recovery and strain come from the shared model in src/recovery-model.js
 // (copied above between the recovery-model markers). Sleep need: age from the
-// profile and the strain of the day before.
-function nightNeed(date){return sleepNeedMinutes({age:appProfile().age,strain:date?daywideStrain(dateShift(date,-1))?.score:null});}
+// profile, the strain of the day before, HRV status, sleep debt and naps
+// (sleepNeedFor).
+function nightNeed(date){return date?sleepNeedFor({date,age:appProfile().age,strain:daywideStrain(dateShift(date,-1))?.score??null,rows:vitalWellness(),sessions:state.sleep?.sessions||[]}).need:sleepNeedMinutes({age:appProfile().age});}
 function sleepIndex(night){return night?sleepIndexScore(night,nightNeed(night.date||String(night.endTime||'').slice(0,10))):null;}
 function recoveryIndex(rows,night,today){return {...recoveryReadiness({rows,date:today,night,sleepNeed:nightNeed(today)}),current:rows.find(r=>r.id===today)};}
 function correctDataPresentation(){
@@ -1448,8 +1490,9 @@ function recoverySignals(rows,last,today){
   if(c.restingHR)details.push('klidový tep '+fmt(c.restingHR.value)+' proti '+fmt(c.restingHR.baseline,1)+' bpm');
   if(c.sleep)details.push('spánek '+hm(c.sleep.minutes)+' z potřeby '+hm(c.sleep.need));
   if(c.respiration?.elevated)details.push('dech '+fmt(c.respiration.value,1)+' proti '+fmt(c.respiration.baseline,1)+' za minutu');
+  if(c.skinTemp?.elevated)details.push('teplota kůže ve spánku +'+fmt(c.skinTemp.deviation,1)+' °C nad průměrem');
   if(r.score==null)return {title:'Regenerace · čekám na dnešní měření',text:(details.length?details.join(' · ')+'. ':'')+'Pro srovnání potřebuji dnešní HRV nebo klidový tep a aspoň 14 předchozích měření.'};
-  return {title:r.zone==='red'?'Regenerace · dnes zvolni':r.zone==='yellow'?'Regenerace · slabší den':'Regenerace · obvyklé pásmo',text:details.join(' · ')+'. '+(r.zone==='red'?'Signály jsou výrazně mimo tvoje běžné pásmo. Upřednostni odpočinek nebo lehký trénink.':r.zone==='yellow'?'Část signálů je mimo tvoje běžné pásmo. Intenzitu přizpůsob pocitu únavy.':'Signály jsou v tvém běžném pásmu.')+(c.hrv?.trend==='down'&&r.zone==='green'?' HRV ale týden klesá; sleduj, jestli únava neroste.':'')+(c.respiration?.elevated?' Zvýšený dech ve spánku může předcházet nemoci.':'')};
+  return {title:r.zone==='red'?'Regenerace · dnes zvolni':r.zone==='yellow'?'Regenerace · slabší den':'Regenerace · obvyklé pásmo',text:details.join(' · ')+'. '+(r.zone==='red'?'Signály jsou výrazně mimo tvoje běžné pásmo. Upřednostni odpočinek nebo lehký trénink.':r.zone==='yellow'?'Část signálů je mimo tvoje běžné pásmo. Intenzitu přizpůsob pocitu únavy.':'Signály jsou v tvém běžném pásmu.')+(c.hrv?.trend==='down'&&r.zone==='green'?' HRV ale týden klesá; sleduj, jestli únava neroste.':'')+(c.respiration?.elevated||c.skinTemp?.elevated?' Zvýšený dech nebo teplota ve spánku mohou předcházet nemoci.':'')};
 }
 function renderTrainingClarity(){
   const days=state.week?.days||[],rows=days.map(d=>{const s=daywideStrain(d.date);return {label:dateLabel(d.date),values:[s?.score??null],title:longDate(d.date)+(s?.score!=null?' · celodenní zátěž '+fmt(s.score,1)+(s.source==='heart-rate'?' z tepových zón':' z aktivní energie'):s?' · '+s.activeCalories+' kcal aktivní energie, čekám na 7 dní baseline':' · celodenní tep ani aktivní energie nejsou dostupné')};});
@@ -1824,8 +1867,8 @@ const INFO_TEXTS={
   cardioPoints:['Kardio body','Čas v zóně se násobí její intenzitou, takže krátké tvrdé intervaly váží víc než dlouhá lehká jízda.','Pruhy ukazují, jaký podíl bodů připadá na lehkou aerobní, tvrdou aerobní a anaerobní zónu.'],
   records:['Osobní rekordy','Rekord je nejlepší výkon v období, šipka ukazuje změnu proti nejlepšímu před ním (FTP: platné na konci proti začátku období).','Když starší data chybí, porovnávám s prvním záznamem v období. U tempa je šipka dolů zlepšení.'],
   strengthTrend:['Silový progres','Nejvyšší použitá váha z dokončených pracovních sérií každého dne.','Vyšší váha sama o sobě neznamená progres, pokud se změnil počet opakování nebo technika.'],
-  sleepScore:['Spánkový index','Index 0–100: délka spánku proti tvé potřebě (50 bodů, nula při polovině potřeby), efektivita spánku, plný počet od 85 % (35) a podíl hlubokého spánku a REM proti běžným hodnotám dospělých (15).','Potřeba spánku je 8 h (od 65 let 7,5 h), po náročném dni až o 30 min víc, v rozmezí 7–9 h. Fáze spánku mají nejmenší váhu: hodinky je určují mnohem méně přesně než délku spánku.',{href:'https://pubmed.ncbi.nlm.nih.gov/29073412/',text:'NSF: doporučená délka spánku ↗'},{href:'https://doi.org/10.1016/j.sleh.2016.11.006',text:'NSF: ukazatele kvality spánku ↗'}],
-  recoveryScore:['Index regenerace','Index 0–100: HRV (50 %), klidový tep (25 %) a spánek proti potřebě (25 %). Každý ukazatel porovnávám s tvým průměrem a rozptylem za 60 dní; HRV v logaritmu (lnRMSSD), jak to dělají studie.','Tvůj běžný den je kolem 70. Hodnota o směrodatnou odchylku horší dává 50, o dvě 30. 67 a víc je zelená, 34–66 žlutá, pod 34 červená. Dech ve spánku výrazně nad průměrem ubere 10 bodů.','Šipka trendu porovnává 7denní průměr HRV s nejmenší významnou změnou (0,5 SD). Potřebuje aspoň 14 předchozích měření. Stejné číslo používá i trenér.',{href:'https://pubmed.ncbi.nlm.nih.gov/22367011/',text:'Plews 2012: 7denní průměr HRV ↗'},{href:'https://pubmed.ncbi.nlm.nih.gov/24578692/',text:'Buchheit 2014: HRV a klidový tep ↗'}],
+  sleepScore:['Spánkový index','Index 0–100: délka spánku proti tvé potřebě (50 bodů, nula při polovině potřeby), kvalita podle NSF (35: efektivita od 85 %, usnutí do 30 min a bdění během noci do 20 min) a podíl hlubokého spánku a REM proti běžným hodnotám dospělých (15).','Potřeba spánku je 8 h (od 65 let 7,5 h); po náročném dni až o 30 min víc, při nízkém HRV o 15 min, se spánkovým dluhem až o 30 min. Zdřímnutí ji sníží. Vždy v rozmezí 7–9 h. Fáze spánku mají nejmenší váhu: hodinky je určují mnohem méně přesně než délku spánku.',{href:'https://pubmed.ncbi.nlm.nih.gov/29073412/',text:'NSF: doporučená délka spánku ↗'},{href:'https://doi.org/10.1016/j.sleh.2016.11.006',text:'NSF: ukazatele kvality spánku ↗'}],
+  recoveryScore:['Index regenerace','Index 0–100: HRV (50 %), klidový tep (25 %) a spánek proti potřebě (25 %). Každý ukazatel porovnávám s tvým průměrem a rozptylem za 60 dní; HRV v logaritmu (lnRMSSD), jak to dělají studie.','Tvůj běžný den je kolem 70. Hodnota o směrodatnou odchylku horší dává 50, o dvě 30. 67 a víc je zelená, 34–66 žlutá, pod 34 červená. Dech ve spánku výrazně nad průměrem ubere 10 bodů, teplota kůže o 0,5 °C a víc nad průměrem dalších 10.','Šipka trendu porovnává 7denní průměr HRV s nejmenší významnou změnou (0,5 SD). Potřebuje aspoň 14 předchozích měření. Stejné číslo používá i trenér.',{href:'https://pubmed.ncbi.nlm.nih.gov/22367011/',text:'Plews 2012: 7denní průměr HRV ↗'},{href:'https://pubmed.ncbi.nlm.nih.gov/24578692/',text:'Buchheit 2014: HRV a klidový tep ↗'}],
   rhythm:['Spánkový rytmus','Rozptyl (SD) ukazuje, o kolik se čas usnutí typicky liší od tvého průměru. Menší rozptyl znamená pravidelnější režim, ne automaticky kvalitnější spánek.','Usnutí po půlnoci patří ke stejnému večeru. Chybějící noci se nepočítají jako nuly.'],
   water:['Pití','Počítáme vypitý objem včetně kávy, čaje a mléka. Nápoje z jídelníčku v ml se přičtou automaticky.',{href:'https://pmc.ncbi.nlm.nih.gov/articles/PMC3886980/',text:'Proč se počítá i káva ↗'}],
   energy:['Energie dne','Cíl dne vychází z profilu: klidový výdej × tvoje běžná denní aktivita, minus deficit, plus trénink. Když se hýbeš víc než obvykle, přepne se na průběžný cíl z naměřeného výdeje: bazální metabolismus + aktivní energie + trávení (10 %), minus deficit.','Celodenní aktivní výdej zahrnuje běžný pohyb i sport. Stejné aktivity ani kroky nepřičítám podruhé.','Podíl maker vychází z 4 kcal/g bílkovin a sacharidů a 9 kcal/g tuku. Energie z obalu se může lišit.'],
@@ -1896,7 +1939,7 @@ function planChips(i,date){
 }
 function weekTargetText(){
   const t=state.weekPlan?.targets;if(!t||t.status!=='ok')return '';
-  return (t.recovery?'Regenerační týden '+(t.recoveryReason==='three_weeks'?'po třech týdnech nad udržovací zátěží':t.recoveryReason==='hrv_trend'?'· HRV za poslední týden pod tvým běžným pásmem':'po náročném týdnu ('+t.lastWeekLoad+' TSS)')+' · platí i pro posilovnu · cíl ≈ '+t.target+' TSS (70 % z udržovacích '+t.base+')':'Cíl týdne ≈ '+t.target+' TSS (udržení kondice CTL '+t.ctl+' × 7 + 5 %)')+' · hotovo a v plánu '+t.committed+' TSS'+(t.shortfall?' · do cíle chybí ~'+t.shortfall+' TSS, přidej další den':'')+(t.runCap?.limited?' · běh tento týden nejvýš '+hm(t.runCap.cap)+' (+10 % proti posledním týdnům, '+hm(t.runCap.base)+'); návrhy běhu jsou kratší':'');
+  return (t.recovery?'Regenerační týden '+(t.recoveryReason==='three_weeks'?'po třech týdnech nad udržovací zátěží':t.recoveryReason==='hrv_trend'?'· HRV za poslední týden pod tvým běžným pásmem':'po náročném týdnu ('+t.lastWeekLoad+' TSS)')+' · platí i pro posilovnu · cíl ≈ '+t.target+' TSS (70 % z udržovacích '+t.base+')':'Cíl týdne ≈ '+t.target+' TSS ('+(t.rampHold?'CTL roste o víc než 8 za týden, proto jen udržení CTL '+t.ctl+' × 7':'udržení kondice CTL '+t.ctl+' × 7 + 5 %')+')')+' · hotovo a v plánu '+t.committed+' TSS'+(t.shortfall?' · do cíle chybí ~'+t.shortfall+' TSS, přidej další den':'')+(t.runCap?.limited?' · běh tento týden nejvýš '+hm(t.runCap.cap)+' (+10 % proti posledním týdnům, '+hm(t.runCap.base)+'); návrhy běhu jsou kratší':'');
 }
 // IF from load and length (TSS = h × IF² × 100); gym load has no IF.
 function intensityOf(tss,minutes){const t=num(tss),h=num(minutes)/60;return t>0&&h>0?Math.sqrt(t/(h*100)):null}
@@ -3716,7 +3759,8 @@ function openRatingSheet({date=pragueToday(),name=null}={}){
 }
 // ---- Zdraví: the tiles that matter. Sleep and weight as in Dnes, sleep debt
 // and VO₂ max instead of the averages; the long-term card is gone. ----
-function sleepDebt(sessions,date){return sleepDebtMinutes(sessions,date,nightNeed(date));}
+// Naps count toward the day's sleep, so all sessions go in, not only the nights.
+function sleepDebt(sessions,date){return sleepDebtMinutes((state.sleep?.sessions||sessions).filter(s=>(s.date||String(s.endTime||'').slice(0,10))<=date),date,sleepNeedMinutes({age:appProfile().age}));}
 function healthTile(label,value,meta,tone=''){return '<div class="metric-tile'+(tone?' tone-'+tone:'')+'"><div class="label">'+label+'</div><div class="metric-number">'+value+'</div><div class="small">'+meta+'</div></div>';}
 function renderHealthTiles(){
   const recovery=$('recovery');if(!recovery)return;

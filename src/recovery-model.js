@@ -32,20 +32,55 @@ export function sleepNeedMinutes(options) {
   return Math.max(420, Math.min(540, need));
 }
 
-// Sleep debt over the last 7 nights. Deficits add up night after night (Van
-// Dongen 2003); a long night pays back at most one hour of it.
+// Sleep debt over the last 7 days. Deficits add up night after night (Van
+// Dongen 2003); a day's naps count as sleep, as WHOOP counts them; a long day
+// of sleep pays back at most one hour.
 export function sleepDebtMinutes(nights, date, need) {
-  const want = need || 480, end = Date.parse(date + "T12:00:00Z");
-  const recent = (nights || []).filter(s => {
+  const want = need || 480, end = Date.parse(date + "T12:00:00Z"), byDay = new Map();
+  for (const s of nights || []) {
     const d = s && (s.date || String(s.endTime || "").slice(0, 10));
     const age = d ? (end - Date.parse(d + "T12:00:00Z")) / 86400000 : NaN;
-    return age >= 0 && age <= 6 && Number(s.durationMin) > 0;
-  });
-  if (!recent.length) return null;
-  const net = recent.reduce((s, n) => s + Math.max(-60, want - Number(n.durationMin)), 0);
-  return { minutes: Math.max(0, Math.round(net)), nights: recent.length, average: recent.reduce((s, n) => s + Number(n.durationMin), 0) / recent.length, need: want };
+    if (age >= 0 && age <= 6 && Number(s.durationMin) > 0) byDay.set(d, (byDay.get(d) || 0) + Number(s.durationMin));
+  }
+  if (!byDay.size) return null;
+  const days = [...byDay.values()];
+  const net = days.reduce((s, m) => s + Math.max(-60, want - m), 0);
+  return { minutes: Math.max(0, Math.round(net)), nights: days.length, average: days.reduce((s, m) => s + m, 0) / days.length, need: want };
 }
 
+// HRV status low: the 7-day lnRMSSD average up to `date` below the 60-day
+// baseline before that week by more than the smallest worthwhile change, the
+// equivalent of Garmin's "unbalanced/low" HRV status (Plews 2012).
+export function hrvStatusLow(rows, date) {
+  const end = Date.parse(date + "T12:00:00Z"), start = new Date(end - 6 * 86400000).toISOString().slice(0, 10);
+  const week = (rows || []).filter(r => r && r.id >= start && r.id <= date && Number(r.hrv) > 0).map(r => Math.log(Number(r.hrv)));
+  const base = personalBaseline(rows, start, "hrv", { log: true });
+  if (week.length < 3 || base.mean == null) return false;
+  return week.reduce((s, v) => s + v, 0) / week.length < base.mean - 0.5 * Math.max(base.sd, 0.05);
+}
+
+// Sleep need for the night that ends on `date`, from what Garmin's Sleep
+// Coach uses (age, the day's activity, sleep history, naps, HRV status) and
+// within its 7–9 h: the age baseline and the strain of the day before
+// (sleepNeedMinutes), +15 min when the HRV status is low, a quarter of the
+// 7-day sleep debt up to 30 min (more sleep opportunity under high load and
+// after restricted sleep, Walsh 2021; repaying debt, as WHOOP adds it), and
+// minus the day's naps (WHOOP and Garmin both lower the need by a nap), never
+// under 7 h. The +15 and the quarter of the debt are our calibration: neither
+// Garmin nor WHOOP publishes its amounts.
+export function sleepNeedFor(input) {
+  const date = input.date, prev = new Date(Date.parse(date + "T12:00:00Z") - 86400000).toISOString().slice(0, 10);
+  const rows = input.rows || [], sessions = input.sessions || [];
+  const prevRow = rows.find(r => r && r.id === prev);
+  const strain = input.strain != null ? input.strain : (prevRow ? strainScore(heartRateLoad(prevRow.hrZoneMinutes)) : null);
+  const base = sleepNeedMinutes({ age: input.age, strain });
+  const hrv = hrvStatusLow(rows, prev) ? 15 : 0;
+  const debtState = sleepDebtMinutes(sessions.filter(s => (s.date || String(s.endTime || "").slice(0, 10)) <= prev), prev, sleepNeedMinutes({ age: input.age }));
+  const debt = debtState ? Math.min(30, Math.round(debtState.minutes / 4)) : 0;
+  const naps = sessions.filter(s => (s.nap || Number(s.durationMin) < 180) && (s.date || String(s.endTime || "").slice(0, 10)) === prev).reduce((t, s) => t + (Number(s.durationMin) || 0), 0);
+  const need = Math.max(420, Math.min(540, base + hrv + debt) - Math.round(naps));
+  return { need, base, hrv, debt, naps: Math.round(naps) };
+}
 // Sleep index 0–100: duration against the personal need (50, from none at
 // half the need to full at the need: under 6 h is not recommended), sleep
 // efficiency with full points from 85 % (35; NSF sleep quality, Ohayon 2017)
@@ -58,7 +93,15 @@ export function sleepIndexScore(night, need) {
   const duration = Number(night.durationMin), bed = Number(night.timeInBedMin), want = need || 480;
   if (!(bed >= duration)) return null;
   const durationPoints = 50 * Math.max(0, Math.min(1, (duration / want - 0.5) / 0.5));
-  const efficiencyPoints = 35 * Math.max(0, Math.min(1, (duration / bed - 0.65) / 0.2));
+  const efficiency = Math.max(0, Math.min(1, (duration / bed - 0.65) / 0.2));
+  const latency = Number(night.latencyMin), waso = Number(night.wasoMin);
+  const hasLatency = night.latencyMin != null && Number.isFinite(latency), hasWaso = night.wasoMin != null && Number.isFinite(waso);
+  // With the device's sleep summary, 35 points split into efficiency (20),
+  // falling asleep within 30 min (7.5, none from 60) and wake after sleep
+  // onset up to 20 min (7.5, none from 50): the NSF good-quality ranges.
+  const efficiencyPoints = hasLatency && hasWaso
+    ? 20 * efficiency + 7.5 * Math.max(0, Math.min(1, (60 - latency) / 30)) + 7.5 * Math.max(0, Math.min(1, (50 - waso) / 30))
+    : 35 * efficiency;
   const deep = Number(night.stages && night.stages.DEEP), rem = Number(night.stages && night.stages.REM);
   if (!Number.isFinite(deep) || !Number.isFinite(rem)) return Math.round((durationPoints + efficiencyPoints) / 85 * 100);
   const stagePoints = 7.5 * Math.min(1, deep / duration / 0.13) + 7.5 * Math.min(1, rem / duration / 0.2);
@@ -81,7 +124,7 @@ export function recoveryComponentScore(z) {
 // Javaloyes 2019) shows the trend. A breathing
 // rate clearly above the baseline (≥ 1 breath/min and 2 SD) is an early sign of
 // illness and costs 10 points; WHOOP counts respiratory rate the same way, only
-// when it changes markedly.
+// when it changes markedly. A raised skin temperature in sleep costs 10 too.
 // Needs 14 days of baseline and at least HRV or resting HR today.
 export function recoveryReadiness(input) {
   const rows = (input && input.rows) || [], date = input && input.date, night = input && input.night, need = (input && input.sleepNeed) || 480;
@@ -106,6 +149,17 @@ export function recoveryReadiness(input) {
     components.respiration = { value: Number(today.respiration), baseline: bb.mean, elevated };
     if (elevated) flags.push("respiration_elevated");
   }
+  // Skin temperature in sleep against Google's 30-day baseline: ≥ 0.5 °C and
+  // two of its nightly SDs above it is flagged and costs 10 points. Nightly
+  // skin temperature from a wearable picks up fever onset, often before
+  // symptoms (Smarr 2020); Oura counts the deviation in its readiness. The
+  // luteal phase alone raises it by less than this.
+  const dev = Number(today.skinTempDeviation);
+  if (today.skinTempDeviation != null && Number.isFinite(dev)) {
+    const sd = Number(today.skinTempSd), elevated = dev >= 0.5 && (!(sd > 0) || dev >= 2 * sd);
+    components.skinTemp = { deviation: dev, sd: sd > 0 ? sd : null, elevated };
+    if (elevated) flags.push("skin_temp_elevated");
+  }
   const nightDate = night && (night.date || String(night.endTime || "").slice(0, 10));
   if (night && nightDate === date && Number(night.durationMin) > 0) {
     const performance = Math.min(105, Number(night.durationMin) / need * 100);
@@ -117,6 +171,7 @@ export function recoveryReadiness(input) {
   if (!(components.hrv || components.restingHR) || used.reduce((s, k) => s + weights[k], 0) < 0.5) return { score: null, zone: null, components, flags, missing };
   let score = used.reduce((s, k) => s + weights[k] * components[k].score, 0) / used.reduce((s, k) => s + weights[k], 0);
   if (components.respiration && components.respiration.elevated) score -= 10;
+  if (components.skinTemp && components.skinTemp.elevated) score -= 10;
   score = Math.round(Math.max(0, Math.min(100, score)));
   return { score, zone: score >= 67 ? "green" : score >= 34 ? "yellow" : "red", components, flags, missing };
 }
@@ -155,4 +210,4 @@ export function mergeWellnessRows(google, intervals) {
 }
 
 // The functions the dashboard client copies verbatim.
-export const RECOVERY_MODEL_FUNCTIONS = [personalBaseline, sleepNeedMinutes, sleepDebtMinutes, sleepIndexScore, recoveryComponentScore, recoveryReadiness, heartRateLoad, strainScore];
+export const RECOVERY_MODEL_FUNCTIONS = [personalBaseline, sleepNeedMinutes, sleepDebtMinutes, hrvStatusLow, sleepNeedFor, sleepIndexScore, recoveryComponentScore, recoveryReadiness, heartRateLoad, strainScore];

@@ -42,3 +42,20 @@ test('a falling 7-day HRV before the week makes it a recovery week for everythin
   assert.deepEqual(recoveryWeek({base:500,weekLoads:[400],hrvDown:true}),{recovery:true,reason:'hrv_trend'});
   assert.deepEqual(recoveryWeek({base:500,weekLoads:[400]}),{recovery:false,reason:null});
 });
+
+test('with the sleep sessions the coach uses the same night and sleep need as the dashboard',async()=>{
+  const { sleepNeedFor } = await import('../src/recovery-model.js');
+  const ctx=context({hrv:73,restingHR:50});
+  ctx.profile={age:70};ctx.sleepSessions=[{date,durationMin:400,timeInBedMin:430},{date:day(-1),durationMin:30,nap:true}];
+  const d=buildAdaptiveDecision(ctx);
+  const need=sleepNeedFor({date,age:70,rows:ctx.wellnessSeries,sessions:ctx.sleepSessions}).need;
+  assert.equal(d.recovery.sleepNeed,need);assert.equal(d.recovery.sleepMinutes,400);
+  assert.equal(d.recovery.score,recoveryReadiness({rows:ctx.wellnessSeries,date,night:ctx.sleepSessions[0],sleepNeed:need}).score);
+});
+
+test('the week target holds at maintenance when CTL already ramps over 8 a week',async()=>{
+  const { weekTargets } = await import('../src/week-planner.js');
+  const args={roles:[],ctl:60,days:[],today:'2026-10-05',weekStart:'2026-10-05',weekLoads:[400]};
+  assert.equal(weekTargets(args).target,Math.round(420*1.05));
+  const hold=weekTargets({...args,rampRate:9});assert.equal(hold.target,420);assert.equal(hold.rampHold,true);
+});

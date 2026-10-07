@@ -1,5 +1,5 @@
 import { trainingStatus } from './training-status.js';
-import { recoveryReadiness } from './recovery-model.js';
+import { recoveryReadiness, sleepNeedFor } from './recovery-model.js';
 const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 function latestRecovery(recovery,keyMatchers){
@@ -28,8 +28,14 @@ function nightDate(time){const t=String(time||"");if(!/^\d{4}-\d{2}-\d{2}/.test(
 function recoveryMetrics(context){
   const rows=context?.wellnessSeries,sleep=latestRecovery(context?.recovery,["sleep"]);
   if(Array.isArray(rows)&&rows.length&&context?.date){
-    const night=sleep?{date:nightDate(sleep.time),durationMin:sleep.value}:null,r=recoveryReadiness({rows,date:context.date,night});
-    if(r.score!=null)return {score:r.score,zone:r.zone,model:"shared",flags:r.flags,sleepMinutes:sleep?.value??null,hrv:r.components.hrv?.value??null,hrvBaseline:r.components.hrv?Math.round(r.components.hrv.baseline*10)/10:null,restingHr:r.components.restingHR?.value??null,restingHrBaseline:r.components.restingHR?Math.round(r.components.restingHR.baseline*10)/10:null};
+    // The night and the sleep need as the dashboard has them when the
+    // sessions are known; otherwise the latest sleep value.
+    const sessions=Array.isArray(context.sleepSessions)?context.sleepSessions:null;
+    const main=sessions?sessions.filter(x=>x.date===context.date&&!x.nap&&x.durationMin>=180).sort((a,b)=>b.durationMin-a.durationMin)[0]:null;
+    const night=main||(sleep?{date:nightDate(sleep.time),durationMin:sleep.value}:null);
+    const sleepNeed=sessions?sleepNeedFor({date:context.date,age:context.profile?.age??null,rows,sessions}).need:480;
+    const r=recoveryReadiness({rows,date:context.date,night,sleepNeed});
+    if(r.score!=null)return {score:r.score,zone:r.zone,model:"shared",flags:r.flags,sleepNeed,sleepMinutes:night?.durationMin??sleep?.value??null,hrv:r.components.hrv?.value??null,hrvBaseline:r.components.hrv?Math.round(r.components.hrv.baseline*10)/10:null,restingHr:r.components.restingHR?.value??null,restingHrBaseline:r.components.restingHR?Math.round(r.components.restingHR.baseline*10)/10:null};
   }
   return legacyRecoveryMetrics(context);
 }

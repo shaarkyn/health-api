@@ -48,3 +48,36 @@ test('heart-rate load weights Google zones as Edwards zones 2–5 and saturates 
   assert.equal(heartRateLoad({}),null);assert.equal(heartRateLoad(null),null);
   assert.equal(strainScore(180),11.6);assert.ok(strainScore(600)>19&&strainScore(600)<21);assert.equal(strainScore(0),0);
 });
+test('a skin temperature clearly above the baseline is flagged, a small rise is not',()=>{
+  const rows=history(20,i=>({hrv:60+(i%3),restingHR:50}));const date=day(20);
+  const r=t=>recoveryReadiness({rows:[...rows,{id:date,hrv:61,restingHR:50,...t}],date});
+  assert.ok(r({skinTempDeviation:0.8,skinTempSd:0.2}).flags.includes('skin_temp_elevated'));
+  assert.equal(r({skinTempDeviation:0.3,skinTempSd:0.1}).components.skinTemp.elevated,false);
+  assert.equal(r({skinTempDeviation:0.6,skinTempSd:0.4}).components.skinTemp.elevated,false);
+  assert.equal(r({}).score-r({skinTempDeviation:0.8,skinTempSd:0.2}).score,10);
+});
+test('sleep index uses NSF latency and wake-after-sleep-onset ranges when the device reports them',async()=>{
+  const {sleepIndexScore}=await import('../src/recovery-model.js');
+  const night={durationMin:480,timeInBedMin:540,stages:{DEEP:80,REM:110}};
+  assert.equal(sleepIndexScore({...night,latencyMin:10,wasoMin:15},480),100);
+  assert.equal(sleepIndexScore({...night,latencyMin:60,wasoMin:50},480),85);
+  assert.equal(sleepIndexScore(night,480),100);
+});
+test('sleep need: naps lower it, a low HRV status and sleep debt raise it, within 7–9 h',async()=>{
+  const {sleepNeedFor}=await import('../src/recovery-model.js');
+  const date=day(40),prev=day(39);
+  const calm=history(40,i=>({hrv:60+(i%3),restingHR:50}));
+  const nights=Array.from({length:7},(_,i)=>({date:day(33+i),durationMin:480}));
+  assert.deepEqual(sleepNeedFor({date,age:30,rows:calm,sessions:nights}),{need:480,base:480,hrv:0,debt:0,naps:0});
+  assert.equal(sleepNeedFor({date,age:30,rows:calm,sessions:[...nights,{date:prev,durationMin:40,nap:true}]}).need,440);
+  assert.equal(sleepNeedFor({date,age:30,rows:calm,sessions:[...nights,{date:prev,durationMin:120,nap:true}]}).need,420);
+  const low=calm.map((r,i)=>i>=34?{...r,hrv:45}:r);
+  assert.equal(sleepNeedFor({date,age:30,rows:low,sessions:nights}).hrv,15);
+  const short=nights.map(n=>({...n,durationMin:390}));
+  const s=sleepNeedFor({date,age:30,rows:calm,sessions:short});assert.equal(s.debt,30);assert.equal(s.need,510);
+  assert.equal(sleepNeedFor({date,age:30,strain:19,rows:low,sessions:short}).need,540);
+});
+test('sleep debt adds a day\'s naps to its night',()=>{
+  const s=[{date:day(6),durationMin:420},{date:day(6),durationMin:40,nap:true}];
+  assert.equal(sleepDebtMinutes(s,day(6),480).minutes,20);
+});

@@ -235,12 +235,15 @@ const GYM_TSS = { gym_full: 35, gym_upper: 25 };
 const SPORT_MINUTES = { ride: [30, 300], run: [20, 150] };
 const round5 = v => Math.round(v / 5) * 5;
 
-export function weekTargets({ roles = [], ctl = null, lastWeekLoad = 0, weekLoads = null, days = [], today, weekStart, hrvDown = false } = {}) {
+export function weekTargets({ roles = [], ctl = null, lastWeekLoad = 0, weekLoads = null, days = [], today, weekStart, hrvDown = false, rampRate = null } = {}) {
   const fitness = Number(ctl) > 0 ? Number(ctl) : null;
   if (!fitness) return { status: "no_fitness", items: [] };
   const base = Math.round(fitness * 7);
   const rule = recoveryWeek({ base, weekLoads: weekLoads?.length ? weekLoads : [Number(lastWeekLoad) || 0], hrvDown }), recovery = rule.recovery;
-  const target = Math.round(base * (recovery ? .7 : 1.05));
+  // +5 % raises CTL by about CTL/120 a week, well under the 5–8 a week Friel
+  // (TrainingPeaks) calls sustainable; a ramp already above 8 only holds.
+  const hold = Number(rampRate) > 8;
+  const target = Math.round(base * (recovery ? .7 : hold ? 1 : 1.05));
   const dateOf = i => new Date(Date.parse(weekStart + "T12:00:00Z") + i * 86400000).toISOString().slice(0, 10);
   const info = date => days.find(d => d.date === date) || { done: 0, planned: 0, sports: [] };
   let committed = 0;
@@ -264,7 +267,7 @@ export function weekTargets({ roles = [], ctl = null, lastWeekLoad = 0, weekLoad
     return { date: x.date, sport: x.sport, slot: x.slot || 0, role: x.role, label: x.label, tss: Math.round(minutes / 60 * intensity * intensity * 100), minutes, intensity };
   });
   const assigned = items.reduce((s, x) => s + x.tss, 0), shortfall = Math.max(0, target - committed - assigned);
-  return { status: "ok", ctl: Math.round(fitness), base, target, recovery, recoveryReason: rule.reason, weekLoads: weekLoads || null, lastWeekLoad: Math.round(lastWeekLoad), committed: Math.round(committed), items, shortfall: !recovery && shortfall > target * .15 ? Math.round(shortfall) : 0 };
+  return { status: "ok", ctl: Math.round(fitness), base, target, recovery, rampHold: hold, recoveryReason: rule.reason, weekLoads: weekLoads || null, lastWeekLoad: Math.round(lastWeekLoad), committed: Math.round(committed), items, shortfall: !recovery && shortfall > target * .15 ? Math.round(shortfall) : 0 };
 }
 // Running grows slowly: tendons and bones adapt later than heart and lungs.
 // A week's running (done, planned and proposed together) stays within 10 %

@@ -185,7 +185,16 @@ export async function buildStrengthContext(env, requestedDate = null) {
   delete context.intervalsWellness;
   try { context.strength.plannedSessions = await plannedGymSessions(env, date); } catch { context.strength.plannedSessions = []; }
   // Sex sets the muscle priorities and the starting loads without history.
-  try { const { loadEffectiveProfile } = await import("./profile-suggestions.js"); const profile = await loadEffectiveProfile(env.DB, env.USER_ID); context.profile = { sex: profile?.sex || "" }; } catch { context.profile = { sex: "" }; }
+  try { const { loadEffectiveProfile } = await import("./profile-suggestions.js"); const profile = await loadEffectiveProfile(env.DB, env.USER_ID); context.profile = { sex: profile?.sex || "", age: profile?.age ?? null }; } catch { context.profile = { sex: "" }; }
+  // The last 10 days of Google Health sleep (nights and naps): the recovery
+  // score's sleep part and the sleep need, as the dashboard computes them.
+  try {
+    const { sleepSessionFromRow } = await import("./sleep-sessions.js");
+    const since = new Date(Date.parse(date + "T12:00:00Z") - 10 * 86400000).toISOString().slice(0, 10);
+    const rows = (await env.DB.prepare("SELECT external_id,start_time,end_time,payload_json FROM health_datapoints WHERE user_id = ? AND data_type = 'sleep' AND source_family = 'google-wearables' AND COALESCE(end_time,start_time) >= ? ORDER BY COALESCE(end_time,start_time) DESC LIMIT 60").bind(env.USER_ID, since).all()).results || [];
+    const seen = new Set();
+    context.sleepSessions = rows.map(sleepSessionFromRow).filter(s => { const k = s.startTime + "|" + s.endTime; if (seen.has(k)) return false; seen.add(k); return s.durationMin > 0; });
+  } catch { context.sleepSessions = []; }
   const athleteState=await getAthleteState(env.DB);
   context.athleteState={status:athleteState.status,note:athleteState.note};
   context.nutrition = buildNutritionPlan(context, { weightTrend: context.weightTrend });

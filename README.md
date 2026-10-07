@@ -38,7 +38,7 @@ Základ cíle je osobní (`energy-profile.js`): klidový metabolismus podle Miff
 
 Věk se počítá z data narození v profilu, takže se aktualizuje sám.
 
-**Regenerace, spánek a zátěž** počítá jeden model v `src/recovery-model.js` pro dashboard i trenéry (HRV jako lnRMSSD, klidový tep a spánek proti osobní 60denní baseline; potřeba spánku podle NSF; celodenní zátěž z tepových zón Google Health jako TRIMP). Klient nese jeho přesnou kopii: po změně modulu spusť `node scripts/sync-recovery-model.mjs`, test `tests/recovery-model.test.mjs` hlídá shodu. Metody a zdroje ke každé funkci jsou v `docs/methodology.md`.
+**Regenerace, spánek a zátěž** počítá jeden model v `src/recovery-model.js` pro dashboard i trenéry (HRV jako lnRMSSD, klidový tep a spánek proti osobní 60denní baseline; potřeba spánku podle NSF; celodenní zátěž z tepových zón Google Health jako TRIMP). Klient nese jeho přesnou kopii: po změně modulu spusť `node scripts/sync-recovery-model.mjs`, test `tests/recovery-model.test.mjs` hlídá shodu. Metody a zdroje ke každé funkci jsou v `docs/methodology.md`. Jestli index regenerace u konkrétního sportovce sedí na průběh tréninků, ukáže `GET /app/api/recovery-validation` (přes více sportovců `scripts/recovery-validation-rmcorr.mjs`).
 
 **Apple Health** nemá webové API. Data z iPhonu a Apple Watch přicházejí přes Intervals.icu (aplikace IntervalsWellnessSync, Intervals Companion nebo Health Sync zapisují wellness do Intervals) nebo přes aplikaci Google Health na iPhonu (import z Apple Health). Noci, které Google Health nemá, doplní `/app/api/sleep` a trenér z wellness Intervals.icu (`intervals-sleep.js`: délka a skóre spánku, bez fází). Návod je v Nastavení u připojení.
 

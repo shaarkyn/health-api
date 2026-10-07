@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {modelContext} from './helpers/recovery-model.mjs';
 const source=readFileSync(new URL('../src/dashboard-client.js',import.meta.url),'utf8');
-const ctx=modelContext({dateShift:(d,n)=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);},appProfile:()=>({age:40}),daywideStrain:()=>null});
+const ctx=modelContext({dateShift:(d,n)=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);},appProfile:()=>({age:40}),daywideStrain:()=>null,vitalWellness:()=>[],state:{sleep:{sessions:[]}}});
 vm.runInContext(source.slice(source.indexOf('function nightNeed('),source.indexOf('function correctDataPresentation(')),ctx);
 const night={date:'2026-09-27',durationMin:513,timeInBedMin:600,stages:{DEEP:120,REM:120}};
 const day=i=>'2026-09-'+String(i).padStart(2,'0');

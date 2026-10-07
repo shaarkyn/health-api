@@ -143,19 +143,23 @@ export const CYCLING_COACH_V2_META={
   note:"Independent implementation. It does not reproduce TrainerRoad, JOIN, Xert, or any team\'s proprietary algorithms."
 };
 
-// How long the athlete can train today when no time was given: from fitness
-// (CTL ≈ average daily load), then sleep, form (TSB), readiness, a recovery
-// week and a comeback after a break.
-function capacityMinutes({ctl,tsb,sleepMinutes,readiness,recoveryWeek,returning,sport,taper=false}){
+// How long the athlete can train today when no time was given: the week's
+// load target spread over five training days, then sleep, form (TSB),
+// readiness, a recovery week and a comeback after a break.
+// The week's target is the week plan's (weekTargets): CTL is the 42-day
+// average of daily load, so CTL × 7 holds fitness and +5 % raises it by about
+// CTL/120 a week, well under the 5–8 CTL a week Friel (TrainingPeaks) calls
+// sustainable; above 8 a week the load only holds. Easy riding at IF 0.7 is
+// IF² × 100 = 49 TSS/h; easy running at IF 0.83 is 69 rTSS/h, and a run gets
+// 20 % less time for its higher mechanical load.
+function capacityMinutes({ctl,tsb,sleepMinutes,readiness,recoveryWeek,returning,sport,taper=false,ramp=null}){
   const run=sport==="run",reasons=[];
   let m;
   if(ctl==null){m=run?45:75;reasons.push("kondici (CTL) zatím neznám, beru "+m+" min");}
   else{
-    // A training day carries about 7/5 of the daily average; easy riding is
-    // ~49 TSS/h, easy running ~69 rTSS/h (and running gets a little less).
-    const dayLoad=ctl*7/5;
+    const hold=ramp!=null&&ramp>8,dayLoad=ctl*7*(hold?1:1.05)/5;
     m=run?dayLoad/69*60*.8:dayLoad/49*60;
-    reasons.push("kondice CTL "+Math.round(ctl)+" ≈ "+Math.round(dayLoad)+" TSS na tréninkový den → "+Math.round(m)+" min");
+    reasons.push("kondice CTL "+Math.round(ctl)+": týdenní cíl "+Math.round(ctl*7*(hold?1:1.05))+" TSS"+(hold?" (CTL roste o "+Math.round(ramp)+" za týden, nad 8 zátěž jen držím)":"")+" na 5 tréninkových dní ≈ "+Math.round(dayLoad)+" TSS → "+Math.round(m)+" min");
   }
   const apply=(factor,text)=>{m*=factor;reasons.push(text+" "+(factor>1?"+":"−")+Math.round(Math.abs(factor-1)*100)+" %");};
   if(sleepMinutes!=null&&sleepMinutes<360)apply(.8,"spánek pod 6 h");
@@ -264,7 +268,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   // No time given and nothing planned: the coach picks the length from the
   // athlete's usual session over the last three weeks (or CTL), see below.
   const autoLength=explicitMinutes==null;
-  let requestedMinutes=clamp(autoLength?capacityMinutes({ctl,tsb,sleepMinutes,readiness,recoveryWeek:false,returning:false,sport}).minutes:explicitMinutes,minLen,maxLen);
+  let requestedMinutes=clamp(autoLength?capacityMinutes({ctl,tsb,sleepMinutes,readiness,recoveryWeek:false,returning:false,sport,ramp}).minutes:explicitMinutes,minLen,maxLen);
   const longMinutes=sport==="run"?90:150;
   const cadence=preferences.cadence||"85–95 rpm";
   const rationale=[];
@@ -382,7 +386,7 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
   })();
   let capacity=null;
   if(autoLength){
-    capacity=capacityMinutes({ctl,tsb,sleepMinutes,readiness,recoveryWeek,returning,sport,taper:phase==="taper"});
+    capacity=capacityMinutes({ctl,tsb,sleepMinutes,readiness,recoveryWeek,returning,sport,taper:phase==="taper",ramp});
     // An easy day with room for more becomes a long ride/run – any day of the week.
     if(kind==="endurance"&&capacity.minutes>=longMinutes&&!novice){kind="long_endurance";rationale.push(sport==="run"?"Máš kapacitu na dlouhý běh – staví vytrvalost bez intenzity.":"Máš kapacitu na dlouhou aerobní jízdu – staví vytrvalost bez intenzity.");}
     const len=sessionMinutesFor(kind,capacity,sport);

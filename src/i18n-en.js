@@ -7,12 +7,12 @@ export const EN = {
 "Bez tepových zón odhad z aktivní energie proti tvému mediánu za 30 dní. Je méně přesný: hodinky se u kalorií mýlí o 20 % i víc.": "Without heart-rate zones, an estimate from active energy against your 30-day median. It is less accurate: watches are off by 20 % or more on calories.",
 "Foster 2001: TRIMP a vnímaná námaha ↗": "Foster 2001: TRIMP and perceived exertion ↗",
 "Shcherbina 2017: přesnost kalorií z hodinek ↗": "Shcherbina 2017: accuracy of watch calories ↗",
-"Index 0–100: délka spánku proti tvé potřebě (50 bodů, nula při polovině potřeby), efektivita spánku, plný počet od 85 % (35) a podíl hlubokého spánku a REM proti běžným hodnotám dospělých (15).": "A 0–100 index: sleep duration against your need (50 points, none at half the need), sleep efficiency with full points from 85 % (35) and the share of deep and REM sleep against typical adult values (15).",
-"Potřeba spánku je 8 h (od 65 let 7,5 h), po náročném dni až o 30 min víc, v rozmezí 7–9 h. Fáze spánku mají nejmenší váhu: hodinky je určují mnohem méně přesně než délku spánku.": "Sleep need is 8 h (7.5 h from age 65), up to 30 min more after a hard day, within 7–9 h. Sleep stages weigh least: watches detect them far less accurately than sleep duration.",
+"Index 0–100: délka spánku proti tvé potřebě (50 bodů, nula při polovině potřeby), kvalita podle NSF (35: efektivita od 85 %, usnutí do 30 min a bdění během noci do 20 min) a podíl hlubokého spánku a REM proti běžným hodnotám dospělých (15).": "A 0–100 index: sleep duration against your need (50 points, none at half the need), quality by NSF criteria (35: efficiency from 85 %, falling asleep within 30 min and waking during the night up to 20 min) and the share of deep and REM sleep against typical adult values (15).",
+"Potřeba spánku je 8 h (od 65 let 7,5 h); po náročném dni až o 30 min víc, při nízkém HRV o 15 min, se spánkovým dluhem až o 30 min. Zdřímnutí ji sníží. Vždy v rozmezí 7–9 h. Fáze spánku mají nejmenší váhu: hodinky je určují mnohem méně přesně než délku spánku.": "Sleep need is 8 h (7.5 h from age 65); up to 30 min more after a hard day, 15 min more with a low HRV, up to 30 min more with sleep debt. Naps lower it. Always within 7–9 h. Sleep stages weigh least: watches detect them far less accurately than sleep duration.",
 "NSF: doporučená délka spánku ↗": "NSF: recommended sleep duration ↗",
 "NSF: ukazatele kvality spánku ↗": "NSF: sleep quality indicators ↗",
 "Index 0–100: HRV (50 %), klidový tep (25 %) a spánek proti potřebě (25 %). Každý ukazatel porovnávám s tvým průměrem a rozptylem za 60 dní; HRV v logaritmu (lnRMSSD), jak to dělají studie.": "A 0–100 index: HRV (50 %), resting heart rate (25 %) and sleep against your need (25 %). Each signal is compared with your own 60-day average and spread; HRV on a log scale (lnRMSSD), as in the research.",
-"Tvůj běžný den je kolem 70. Hodnota o směrodatnou odchylku horší dává 50, o dvě 30. 67 a víc je zelená, 34–66 žlutá, pod 34 červená. Dech ve spánku výrazně nad průměrem ubere 10 bodů.": "Your usual day is about 70. One standard deviation worse gives 50, two give 30. 67 and above is green, 34–66 yellow, below 34 red. Breathing in sleep well above your average takes off 10 points.",
+"Tvůj běžný den je kolem 70. Hodnota o směrodatnou odchylku horší dává 50, o dvě 30. 67 a víc je zelená, 34–66 žlutá, pod 34 červená. Dech ve spánku výrazně nad průměrem ubere 10 bodů, teplota kůže o 0,5 °C a víc nad průměrem dalších 10.": "Your usual day is about 70. One standard deviation worse gives 50, two give 30. 67 and above is green, 34–66 yellow, below 34 red. Breathing in sleep well above your average takes off 10 points, skin temperature 0.5 °C or more above it another 10.",
 "Šipka trendu porovnává 7denní průměr HRV s nejmenší významnou změnou (0,5 SD). Potřebuje aspoň 14 předchozích měření. Stejné číslo používá i trenér.": "The trend compares the 7-day HRV average with the smallest worthwhile change (0.5 SD). It needs at least 14 previous measurements. The coach uses the same number.",
 "Plews 2012: 7denní průměr HRV ↗": "Plews 2012: 7-day HRV average ↗",
 "Buchheit 2014: HRV a klidový tep ↗": "Buchheit 2014: HRV and resting heart rate ↗",
@@ -1965,6 +1965,9 @@ export const EN_TEMPLATES = {
 
 // [regex source, replacement, flags?] applied word by word when nothing above matched.
 export const EN_PATTERNS = [
+["\\(CTL roste o víc než 8 za týden, proto jen udržení CTL", "(CTL is rising by more than 8 a week, so only maintaining CTL"],
+["teplota kůže ve spánku \\+(\\d+(?:[.,]\\d+)?) °C nad průměrem", "skin temperature in sleep +$1 °C above average"],
+[" Zvýšený dech nebo teplota ve spánku mohou předcházet nemoci\\.", " Raised breathing or temperature in sleep can come before an illness."],
 ["HRV (\\d+(?:[.,]\\d+)?) ms, tvoje běžné pásmo (\\d+)–(\\d+) ms", "HRV $1 ms, your normal range $2–$3 ms"],
 [", 7denní průměr klesá", ", 7-day average falling"],
 ["(?<!\\p{L})spánek (\\d+h \\d+m) z potřeby (\\d+h \\d+m)", "sleep $1 of $2 needed"],
