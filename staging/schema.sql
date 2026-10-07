@@ -249,4 +249,4 @@ INSERT OR IGNORE INTO d1_migrations (name) VALUES
   ('0006_assistant_chats.sql'),
   ('0007_food_logs_status.sql'),
   ('0008_strength_sets_plan_row.sql'),
-  ('0009_ai_usage.sql');
+  ('0010_ai_usage.sql');

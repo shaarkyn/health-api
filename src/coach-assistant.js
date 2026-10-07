@@ -1,3 +1,4 @@
+import {assertAIAccess} from './subscription.js';
 import { buildCyclingCoachV2, CYCLING_COACH_V2_META } from "./cycling-coach-v2.js";
 import { withFocus } from "./athlete-focus.js";
 import { COACH_ACTION_FORMAT, ACTION_INSTRUCTIONS, COACH_VISUALS } from './coach-actions.js';
@@ -251,6 +252,7 @@ export function assistantTask(message,appContext=null,history=[]) {
 // `feature` names the caller in the AI usage log (ai-usage.js), which also
 // stops a user at the daily limit before the call.
 export async function callOpenAI(env, { instructions, input, maxOutputTokens = 5000, tools = null, format = null, model = null, reasoningEffort = 'low',onText=null,feature=null }) {
+  await assertAIAccess(env);
   if (!env.OPENAI_API_KEY) throw new Error('AI není připojena.');
   await assertAiAllowance(env);
   const chosenModel=model || env.OPENAI_MODEL || 'gpt-6-sol';

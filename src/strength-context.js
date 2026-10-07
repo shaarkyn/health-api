@@ -1,3 +1,4 @@
+import {trainingSetup} from './onboarding.js';
 import { getAthleteState } from './athlete-state.js';
 import { isQualityName } from './session-intensity.js';
 import { dateFormat } from "./date-format.js";
@@ -72,6 +73,12 @@ function activityInfo(a) { return { id: String(a?.id ?? ""), date: String(a?.sta
 function eventInfo(e) { return { id: String(e?.id ?? e?.event_id ?? ""), date: String(e?.start_date_local || e?.start_date || e?.date || "").slice(0, 10), start: e?.start_date_local || e?.start_date || e?.date || null, end: e?.end_date_local || e?.end_date || null, type: e?.type || e?.activity_type || e?.category || "", name: e?.name || e?.title || "", durationHours: durationHours(e), tss: n(e?.icu_training_load ?? e?.training_load ?? e?.tss), cycling: isRide(e), intensity: isIntensity(e), payload: e }; }
 function intervalsAuth(env) { if (!env.INTERVALS_API_KEY) throw new Error("INTERVALS_API_KEY is not configured"); return intervalsAuthorization(env.INTERVALS_API_KEY); }
 async function intervalsGet(env, path) {
+  if(/\/(activities|events)\?/.test(path)){
+    const query=new URL('https://internal'+path).searchParams,type=path.includes('/events?')?'planned-workout':'activity';
+    const rows=(await env.DB.prepare("SELECT payload_json FROM health_datapoints WHERE user_id=? AND source_family IN ('intervals','local') AND data_type=? AND start_time>=? AND start_time<? AND (record_role IS NULL OR record_role!='duplicate') ORDER BY start_time").bind(env.USER_ID,type,query.get('oldest'),query.get('newest')+'T23:59:59').all()).results||[];
+    return rows.map(r=>{try{return JSON.parse(r.payload_json);}catch{return null;}}).filter(Boolean);
+  }
+  if(!env.INTERVALS_API_KEY)return [];
   const response = await fetch("https://intervals.icu/api/v1" + path, { headers: { Authorization: intervalsAuth(env), Accept: "application/json" } });
   const text = await response.text(); let data; try { data = JSON.parse(text); } catch { data = text; }
   if (!response.ok) throw new Error(`Intervals.icu HTTP ${response.status}: ${JSON.stringify(data)}`);
@@ -132,14 +139,9 @@ export async function buildStrengthContext(env, requestedDate = null) {
   const oldest = localDate(-DEFAULT_ACTIVITY_DAYS + 1), newest = localDate(DEFAULT_PLANNED_DAYS);
   let planRead;
   try { planRead = await readStrengthPlan(env, date); } catch (e) { throw new Error(`strength_context.plan_d1: ${e.message}`); }
-  // Rides and planned workouts come from Intervals.icu. Without it (or while it
-  // does not answer) the gym is planned from the strength history and recovery
-  // alone, with no rides to protect the legs for.
-  let activitiesRaw = [], eventsRaw = [], intervals = { status: env.INTERVALS_API_KEY ? "ok" : "none" };
-  if (env.INTERVALS_API_KEY) {
-    try { [activitiesRaw, eventsRaw] = await Promise.all([intervalsGet(env, `/athlete/0/activities?oldest=${oldest}&newest=${newest}`), intervalsGet(env, `/athlete/0/events?oldest=${date}&newest=${newest}`)]); }
-    catch (e) { console.error("Strength context without Intervals.icu", e.message); intervals = { status: "error", message: e.message.slice(0, 160) }; }
-  }
+  let activitiesRaw, eventsRaw;
+  try { [activitiesRaw, eventsRaw] = await Promise.all([intervalsGet(env, `/athlete/0/activities?oldest=${oldest}&newest=${newest}`), intervalsGet(env, `/athlete/0/events?oldest=${date}&newest=${newest}`)]); }
+  catch (e) { throw new Error(`strength_context.intervals: ${e.message}`); }
   let recovery;
   try { recovery = await d1Recovery(env, localDate(-7), localDate(1)); } catch (e) { throw new Error(`strength_context.recovery_d1: ${e.message}`); }
   let strengthHistory;
@@ -154,7 +156,7 @@ export async function buildStrengthContext(env, requestedDate = null) {
   const plannedStrengthWorkout = plannedStrengthRows.length
     ? { date, rows: plannedStrengthRows.map(row => [row.type, row.exercise, row.setNo, row.plannedKg, row.plannedReps]) }
     : null;
-  const context = { status: "ok", source: "live", date, intervals, cycling: { recentActivities: recent, plannedWorkouts: planned, recentRideHours: Math.round(recent.reduce((s,x)=>s+n(x.durationHours),0)*100)/100, recentRideTss: Math.round(recent.reduce((s,x)=>s+n(x.tss),0)), plannedRideHours: Math.round(planned.reduce((s,x)=>s+n(x.durationHours),0)*100)/100, plannedRideTss: Math.round(planned.reduce((s,x)=>s+n(x.tss),0)), nextRide: planned[0] || null, lastRide: recent[0] || null }, recovery, strength: { source: "d1", historyReady: true, completedSetCount: strengthHistory.length, recentCompletedSets: strengthHistory, plannedWorkout: plannedStrengthWorkout, planRead } , weightTrend: await d1WeightTrend(env,date) };
+  const context = { status: "ok", source: "stored", date, cycling: { recentActivities: recent, plannedWorkouts: planned, recentRideHours: Math.round(recent.reduce((s,x)=>s+n(x.durationHours),0)*100)/100, recentRideTss: Math.round(recent.reduce((s,x)=>s+n(x.tss),0)), plannedRideHours: Math.round(planned.reduce((s,x)=>s+n(x.durationHours),0)*100)/100, plannedRideTss: Math.round(planned.reduce((s,x)=>s+n(x.tss),0)), nextRide: planned[0] || null, lastRide: recent[0] || null }, recovery, strength: { source: "d1", historyReady: true, completedSetCount: strengthHistory.length, recentCompletedSets: strengthHistory, plannedWorkout: plannedStrengthWorkout, planRead } , weightTrend: await d1WeightTrend(env,date) };
   context.sports={recentActivities:activities.filter(x=>x.date<=date).sort((a,b)=>String(b.start).localeCompare(String(a.start)))};
   // One recovery week for everything: the gym deloads in the week the plan
   // and the ride/run coach treat as a recovery week (src/week-planner.js).
@@ -162,7 +164,7 @@ export async function buildStrengthContext(env, requestedDate = null) {
     const { recoveryWeek, weekLoadsBefore } = await import("./week-planner.js");
     const monday = new Date(Date.parse(date + "T12:00:00Z") - ((new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7) * 86400000).toISOString().slice(0, 10);
     const oldestWellness = new Date(Date.parse(monday + "T12:00:00Z") - 22 * 86400000).toISOString().slice(0, 10);
-    const wellness = intervals.status === "ok" ? await intervalsGet(env, `/athlete/0/wellness?oldest=${oldestWellness}&newest=${date}`) : [];
+    const wellness = await intervalsGet(env, `/athlete/0/wellness?oldest=${oldestWellness}&newest=${date}`);
     const rows = Array.isArray(wellness) ? wellness : [], ctl = Number([...rows].reverse().find(r => Number(r.ctl) > 0)?.ctl) || null;
     const weekLoads = weekLoadsBefore(rows, monday);
     context.recoveryWeek = { ...recoveryWeek({ base: ctl ? ctl * 7 : null, weekLoads }), weekLoads, ctl, known: Boolean(ctl && weekLoads.length) };
@@ -175,5 +177,6 @@ export async function buildStrengthContext(env, requestedDate = null) {
   context.nutrition = buildNutritionPlan(context, { weightTrend: context.weightTrend });
   const { buildAdaptiveDecision } = await import("./adaptive-engine.js");
   context.adaptive = buildAdaptiveDecision(context, null);
+  context.trainingSetup=await trainingSetup(env.DB);
   return context;
 }

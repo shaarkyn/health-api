@@ -15,12 +15,12 @@ Secret `ALLOWED_GOOGLE_EMAILS` už potřeba není.
 
 1. V aplikaci otevři **Nastavení → Uživatelé** a zadej e-mail Google účtu.
 2. Dokud Google aplikaci neověří (OAuth consent screen je ve stavu *Testing*), přidej stejný e-mail i do **Google Cloud Console → OAuth consent screen → Test users**. Bez toho Google připojení Google Health odmítne. Limit je 100 testovacích uživatelů.
-3. Pošli uživateli odkaz `https://petrfitnessdata.eu/app`. Po přihlášení ho provede průvodce nastavením ve třech krocích:
+3. Pošli uživateli odkaz `https://petrfitnessdata.eu/app`. Po přihlášení ho provede průvodce nastavením (podrobně `docs/account-workflow.md`):
    - **Propojení**: Google Health tlačítkem (souhlas na stránce Google), Intervals.icu tlačítkem, když je aplikace zaregistrovaná u Intervals.icu (`INTERVALS_CLIENT_ID`, `INTERVALS_CLIENT_SECRET`), jinak vložením API klíče z *Settings → Developer Settings* podle návodu v okně. Athlete ID není potřeba, aplikace ho zjistí z klíče.
-   - **O tobě**: pohlaví, datum narození, výška, váha, pohyb přes den, hlavní sport, cíl (a sport za týden, když není propojená žádná služba).
-   - **Hotovo**: kalorický cíl a co dál.
+   - **Profil a kalorie**: pohlaví, věk, výška, váha, pohyb přes den, sport za týden a cíl.
+   - **Tvůj trénink**: hlavní sport a cíl, zkušenost, vybavení a čas na sport pro každý den; potom obrazovka s kalorickým cílem a co dál.
 
-Propojení není povinné: stačí jedna služba, nebo žádná; uživatel pak zapisuje váhu a jídlo ručně a kalorický cíl se počítá z profilu. Průvodce jde přeskočit a znovu spustit v Nastavení → Účet; propojit služby jde kdykoli v Nastavení → Propojení.
+Propojení není povinné: stačí jedna služba, nebo žádná; uživatel pak zapisuje váhu a jídlo ručně a kalorický cíl se počítá z profilu. Průvodce jde znovu spustit v Nastavení → Účet; propojit služby jde kdykoli v Nastavení → Propojení.
 
 Silový plán (Gym) má každý uživatel vlastní. Plán dne je v databázi (tabulka `gym_plans`) a odcvičené série se ukládají do historie (`strength_sets`). Google Sheets se už nepoužívá.
 
@@ -28,7 +28,7 @@ Katalog cviků odpovídá vybavení pobočky **METAGYM Kutná Hora** (`src/gym-e
 
 ## Co zatím zůstává jen pro správce
 
-- Přístup přes MCP / ChatGPT (sdílený klíč `STRENGTH_API_KEY` pracuje s daty správce).
+- Přístup přes MCP (`/mcp` s klíčem `STRENGTH_API_KEY` pracuje s daty správce).
 - GitHub automatizace silového plánu. Synchronizace Intervals a denní výživové poznámky už běží pro každého uživatele zvlášť.
 
 ## Aktualizace databáze po nasazení

@@ -19,7 +19,7 @@ const point = (d, family, type, id, { start = null, sample = null, value = null,
   d.sqlite.prepare("INSERT INTO health_datapoints (user_id, source_family, data_type, external_id, start_time, sample_time, value_numeric, payload_json) VALUES (7, ?, ?, ?, ?, ?, ?, ?)").run(family, type, id, start, sample, value, JSON.stringify(payload));
 const profile = (d, p) => d.sqlite.prepare("INSERT INTO dashboard_profile VALUES (7, 1, ?)").run(JSON.stringify(p));
 const daily = async (d, date = "2099-01-05") => (await legacy.fetch(new Request("https://internal/analysis/daily?date=" + date), { DB: d, USER_ID: 7, CONNECTED_PROVIDERS: ["google", "intervals"] }, ctx)).json();
-const man = { sex: "male", age: 30, height: 180, activity: "light", goal: "lose_0.5" };
+const man = { sex: "male", age: 30, height: 180, activity: "light", goal: "lose_0.5", sportHours: "0" };
 
 test("every Intervals.icu sport counts once, and a Google copy of the same run is dropped", async () => {
   const d = db();
@@ -61,7 +61,7 @@ test("protein above BMI 30 uses the weight at BMI 27", async () => {
 
 test("when the safety floor holds the target up, the reason says the pace will be slower", async () => {
   const d = db();
-  profile(d, { sex: "female", age: 30, height: 160, activity: "sedentary", goal: "lose_1" });
+  profile(d, { sex: "female", age: 30, height: 160, activity: "sedentary", goal: "lose_1", sportHours: "0" });
   point(d, "manual", "weight", "w", { sample: "2098-12-30T07:00:00Z", value: 55 });
   const day = await daily(d);
   const floor = Math.round(10 * 55 + 6.25 * 160 - 5 * 30 - 161);
@@ -70,7 +70,7 @@ test("when the safety floor holds the target up, the reason says the pace will b
   assert.match(day.nutrition.reason, new RegExp(`bezpečné minimum ${floor} kcal`));
   // Maintaining stays above the floor: no message.
   const kept = db();
-  profile(kept, { sex: "female", age: 30, height: 160, activity: "sedentary", goal: "maintain" });
+  profile(kept, { sex: "female", age: 30, height: 160, activity: "sedentary", goal: "maintain", sportHours: "0" });
   point(kept, "manual", "weight", "w", { sample: "2098-12-30T07:00:00Z", value: 55 });
   const maintain = await daily(kept);
   assert.equal(maintain.nutrition.calorieBreakdown.floorApplied, false);

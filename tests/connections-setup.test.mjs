@@ -7,7 +7,6 @@ import legacy, { googleToken } from "../src/index.js";
 import { HEALTH_SCOPES, HEALTH_PERMISSIONS, EXTRA_SCOPES, healthScopes, missingHealthPermissions } from "../src/google-scopes.js";
 import { connectionStatus } from "../src/connections.js";
 import { saveConnectionSecret, connectionEnvironment } from "../src/connection-secrets.js";
-import { setupStatus, saveSetup } from "../src/account-setup.js";
 import { intervalsAuthorization } from "../src/intervals-auth.js";
 import { handleIntervalsOAuth, INTERVALS_SCOPES } from "../src/intervals-oauth.js";
 import { handleGoogleOAuth } from "../src/google-oauth.js";
@@ -143,29 +142,14 @@ test("connecting Google from the setup window returns to it; cancelling there is
   assert.equal(connectReturnUrl("setup", "unknown"), "/app#setup");
 });
 
-test("the setup window shows for a new account until it is finished or skipped", async () => {
-  const db = profileDb();
-  const env = { DB: db, USER_ID: 9, CONNECTED_PROVIDERS: [] };
-  const fresh = await setupStatus(env);
-  assert.equal(fresh.needed, true);
-  assert.deepEqual(fresh.profileMissing, ["weight", "sex", "age", "height", "activity", "goal", "sportHours"]);
-  assert.equal((await saveSetup(env, true)).needed, false);
-  assert.equal((await saveSetup(env, false)).needed, true);
-  // A complete profile and a weight need no setup window, finished or not.
-  db.sqlite.prepare("INSERT INTO dashboard_profile VALUES (9, 1, ?)").run(JSON.stringify({ sex: "female", age: 30, height: 165, activity: "light", goal: "maintain" }));
-  db.sqlite.prepare("INSERT INTO health_datapoints (user_id, data_type, sample_time, value_numeric) VALUES (9, 'weight', '2026-10-01T07:00:00Z', 61)").run();
-  assert.equal((await setupStatus({ ...env, CONNECTED_PROVIDERS: ["intervals"] })).needed, false);
-  // Another account keeps its own state.
-  assert.equal((await setupStatus({ DB: db, USER_ID: 10, CONNECTED_PROVIDERS: [] })).needed, true);
-});
-
-test("the account endpoint reports the setup state and the client opens the window from it", () => {
-  assert.match(entry, /missingProviders:missingProviders\(env\),setup,ai\}/);
-  assert.match(entry, /url\.pathname === "\/app\/api\/setup" && request\.method === "POST"/);
-  assert.match(client, /if\(setupWanted\(me\)\)showSetup\(me,0\);/);
-  for (const id of ["setupSkip", "setupLogout"]) assert.ok(client.includes('id="' + id + '"'), id);
+test("the setup window uses the service cards, returns from the providers and ends with the calorie target", () => {
+  assert.match(entry, /missingProviders:missingProviders\(env\),onboarding,ai\}/);
+  assert.match(client, /providers\.map\(p=>serviceCardHtml\(p,'setup'\)\)/);
+  assert.match(client, /wireIntervalsKey\(\$\('setupBody'\)/);
   // The provider pages return to the step the user left.
   assert.match(client, /'return='\+back/);
+  assert.match(client, /await renderSetupDone\(\$\('setupBody'\)\)/);
+  assert.match(client, /\$\('restartSetup'\)\.onclick=\(\)=>showAccountSetup\(\)/);
 });
 
 test("data kept on the device belongs to the signed-in account", async () => {
@@ -218,13 +202,13 @@ test("the gym plan does not need Intervals.icu", async () => {
   globalThis.fetch = async url => { calls.push(String(url)); return Response.json([]); };
   try {
     const context = await buildStrengthContext({ DB: scopedDb(db, 3), USER_ID: 3, CONNECTED_PROVIDERS: ["google"] }, "2026-10-07");
-    assert.equal(context.intervals.status, "none");
+    assert.equal(context.status, "ok");
     assert.deepEqual(context.cycling.recentActivities, []);
     assert.ok(!calls.some(url => url.includes("intervals.icu")), calls.join(", "));
     // A key Intervals.icu no longer accepts does not take the gym down either.
     globalThis.fetch = async url => { calls.push(String(url)); return new Response('{"error":"unauthorized"}', { status: 401 }); };
     const withBadKey = await buildStrengthContext({ DB: scopedDb(db, 3), USER_ID: 3, INTERVALS_API_KEY: "revoked", CONNECTED_PROVIDERS: ["intervals"] }, "2026-10-07");
-    assert.equal(withBadKey.intervals.status, "error");
+    assert.equal(withBadKey.status, "ok");
   } finally { globalThis.fetch = realFetch; }
 });
 
@@ -248,11 +232,9 @@ test("no calories are written to Intervals.icu; the automations only remove the 
 test("without a service the app does not offer what needs it", () => {
   // The page knows what this account has connected.
   assert.match(client, /setConnectedServices\(\['google','intervals'\]\.filter\(id=>!\(me\.missingProviders\|\|\[\]\)\.includes\(id\)\)\)/);
-  // Rides and runs go to Intervals.icu: without it nothing is written automatically,
-  // and adding one leads to Settings → Propojení instead of an error.
-  assert.match(client, /function proposalWaiting\(p\)\{return serviceConnected\('intervals'\)&&/);
-  assert.match(client, /if\(!serviceConnected\('intervals'\)\)\{toast\(uiText\('Kolo a běh se zapisují do Intervals\.icu/);
-  assert.match(client, /serviceConnected\('intervals'\)\?'Přidat do Intervals\.icu':'Připojit Intervals\.icu'/);
+  // Workouts are saved in the app; Intervals.icu is only a destination.
+  assert.match(client, /function proposalWaiting\(p\)\{return Boolean\(p\?\.workout/);
+  assert.doesNotMatch(client, /Kolo a běh se zapisují do Intervals\.icu/);
   // Food entries carry no "Google · není připojené" badge without Google Health.
   assert.match(client, /function foodExportHtml\(entry\)\{\n  if\(!serviceConnected\('google'\)\)return '';/);
 });
