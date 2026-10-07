@@ -10,9 +10,11 @@ const personal = Object.keys(Object.fromEntries([...tenancy.match(/PERSONAL_TABL
 const table = new RegExp(`\\b(${personal.join("|")})\\b`, "i");
 
 // Intentionally cross-user: listing users with connections for cron jobs,
-// the cron job that re-encrypts everyone's connection keys with CONNECTION_KEY, and
-// signing in with Apple, which finds the account by Apple's own user id.
-const allowed = [/FROM users u JOIN connection_credentials c ON c\.user_id = u\.id/, /FROM connection_credentials WHERE encrypted NOT LIKE 'v2\.%'/, /FROM user_identities i JOIN users u ON u\.id = i\.user_id WHERE i\.provider = 'apple' AND i\.subject = \?/, /^"SELECT user_id FROM user_identities WHERE provider = 'apple' AND subject = \?"$/];
+// the cron job that re-encrypts everyone's connection keys with CONNECTION_KEY,
+// and signing in with Apple or a passkey, which finds the account by Apple's
+// user id or by the passkey's id.
+const allowed = [/FROM users u JOIN connection_credentials c ON c\.user_id = u\.id/, /FROM connection_credentials WHERE encrypted NOT LIKE 'v2\.%'/, /FROM user_identities i JOIN users u ON u\.id = i\.user_id WHERE i\.provider = 'apple' AND i\.subject = \?/, /^"SELECT user_id FROM user_identities WHERE provider = 'apple' AND subject = \?"$/,
+  /^"SELECT id, user_id, user_handle, public_key, alg, sign_count FROM user_passkeys WHERE id = \?"$/];
 
 test("personal tables are known", () => {
   for (const name of ["health_datapoints", "food_logs", "dashboard_profile", "connection_credentials"]) assert.ok(personal.includes(name), name);

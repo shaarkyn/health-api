@@ -97,6 +97,9 @@ import { aiAllowance } from "./ai-usage.js";
 import { exportAccountData, deleteAccount, finishAccountDeletions, revokeGoogle } from "./account-data.js";
 import { handleIntervalsOAuth } from "./intervals-oauth.js";
 import { ensureTenancy, TenancyUpgradeInProgress, userEnv, findUser, ownerUser, usersWithProviders, listUsersAndInvites, inviteUser, removeInvite, setUserDisabled } from "./tenancy.js";
+import { handlePasskeyLogin, handlePasskeyApi, listPasskeys } from "./passkeys.js";
+import { handleEmailLogin } from "./email-login.js";
+import { emailConfigured } from "./email-sender.js";
 import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.js';
 import { englishScript } from './i18n.js';
 import { dateFormat } from "./date-format.js";
@@ -110,8 +113,8 @@ const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/
 const googleHealthFor = (env, ctx, date) => cached(env, ctx, "google-dashboard:" + date, () => googleDashboard(env.DB, date), { ttl: 120 });
 
 // Requests that read or preview only and so keep the cache.
-// Unlinking Apple (/app/api/me/apple) changes no training data.
-const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me\/apple$)/;
+// Unlinking Apple (/app/api/me/apple) and adding or removing passkeys change no training data.
+const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me\/apple$|passkeys$|passkeys\/options$)/;
 const STATIC_PATHS = new Set(['/app','/app/dashboard-client.js','/app/i18n-en.js','/manifest.webmanifest','/logo.svg','/','/privacy','/terms','/support','/mcp/health']);
 
 // Runs fn once per active user (with that user's env and credentials), for
@@ -237,6 +240,10 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
     if (googleLogin) return googleLogin;
     const appleLogin = await handleAppleLogin(request, rawEnv, url.pathname, { user: signedIn ? user : null });
     if (appleLogin) return appleLogin;
+    const passkeyLogin = await handlePasskeyLogin(request, rawEnv, url.pathname);
+    if (passkeyLogin) return passkeyLogin;
+    const emailLogin = await handleEmailLogin(request, rawEnv, url.pathname, ctx);
+    if (emailLogin) return emailLogin;
     if (url.pathname.startsWith("/app/api/")) {
       if (!user) return unauthorizedResponse();
       const response = await handleDashboardApi(request, env, ctx, url, { user, signedIn });
@@ -265,13 +272,13 @@ export default {
 
 async function staticRoute(url, request, env) {
   if (url.pathname === "/mcp/health") return Response.json({ status: "ok", service: "health-api-mcp", version: "1.1.0", endpoint: "/mcp", protocol: "2026-07-28+legacy" });
-  if (url.pathname === "/app") return dashboardPage({ clientVersion: CLIENT_VERSION, account: (await verifyDashboardSession(request, sessionSecret(env)))?.uid ?? "", signIn: { apple: appleConfigured(env) } });
+  if (url.pathname === "/app") return dashboardPage({ clientVersion: CLIENT_VERSION, account: (await verifyDashboardSession(request, sessionSecret(env)))?.uid ?? "", signIn: { apple: appleConfigured(env), email: emailConfigured(env) } });
   if (url.pathname === "/app/i18n-en.js") return englishScript(url);
   if (url.pathname === "/app/dashboard-client.js") return new Response(dashboardClient, { status: 200, headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": scriptCacheControl(url, CLIENT_VERSION) } });
   if (url.pathname === "/") return overviewPage(request);
-  if (url.pathname === "/privacy") return privacyPage(request);
+  if (url.pathname === "/privacy") return privacyPage(request, { apple: appleConfigured(env), email: emailConfigured(env) });
   if (url.pathname === "/terms") return termsPage(request);
-  if (url.pathname === "/support") return supportPage(request);
+  if (url.pathname === "/support") return supportPage(request, { apple: appleConfigured(env), email: emailConfigured(env) });
   if (url.pathname === "/logo.svg") return logoResponse();
   return Response.json({name:"Loadwise",short_name:"Loadwise",start_url:"/app",scope:"/app",display:"standalone",background_color:"#0a0d12",theme_color:"#0d131a",icons:[{src:"/logo.svg",sizes:"any",type:"image/svg+xml",purpose:"any maskable"}]},{headers:{"Content-Type":"application/manifest+json; charset=utf-8","Cache-Control":"public, max-age=3600"}});
 }
@@ -580,7 +587,12 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   if (url.pathname === "/app/api/me" && request.method === "GET") {
     const [onboarding,ai]=await Promise.all([onboardingStatus(env),session.signedIn&&env.OPENAI_API_KEY?aiAllowance(env).catch(error=>{console.error('AI usage read failed',error.message);return null;}):null]);
     const apple = appleConfigured(env) && session.user ? await appleIdentity(env.RAW_DB, session.user.id) : null;
-    return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env),onboarding,ai,apple},{headers:{"Cache-Control":"no-store"}});
+    const passkeys = session.user ? await listPasskeys(env.RAW_DB, session.user.id) : [];
+    return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env),onboarding,ai,apple,passkeys,emailLogin:emailConfigured(env)},{headers:{"Cache-Control":"no-store"}});
+  }
+  if (url.pathname.startsWith("/app/api/passkeys")) {
+    const passkeyApi = await handlePasskeyApi(request, env, url, session, ctx);
+    if (passkeyApi) return passkeyApi;
   }
   // Settings → Účet: unlinks the Apple ID (linking goes through /auth/apple?link=1).
   if (url.pathname === "/app/api/me/apple" && request.method === "DELETE") {

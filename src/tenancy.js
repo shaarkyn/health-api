@@ -44,8 +44,10 @@ export const PERSONAL_TABLES = {
   user_setup: {}, subscriptions: {}, local_workouts: {}, workout_exports: {},
   personal_recipes: {}, recipe_contributions: {}, food_contributions: {}, food_reports: {},
   user_language: {}, user_time_zone: {}, recovery_sessions: {},
-  // Accounts linked for signing in (apple-login.js), created with user_id.
-  user_identities: {}
+  // Sign-in: linked Apple IDs (apple-login.js) and passkeys (passkeys.js),
+  // created with user_id.
+  user_identities: {},
+  user_passkeys: {}
 };
 const PERSONAL_TABLE_PATTERN = new RegExp("\\b(" + Object.keys(PERSONAL_TABLES).join("|") + ")\\b", "i");
 
@@ -299,6 +301,38 @@ export async function signInGoogleUser(db, env, { sub, email, name }) {
     db.prepare("DELETE FROM user_invites WHERE email=?").bind(address)
   ]);
   return publicUser({ ...row, email: address, name: name || row.name }, env);
+}
+
+// Who may get a sign-in code by e-mail: an active user, an invited address or the owner.
+export async function mayGetEmailCode(db, env, email) {
+  const address = normalizeEmail(email);
+  if (!address) return false;
+  const [user, invite] = await Promise.all([
+    db.prepare("SELECT disabled FROM users WHERE email=?").bind(address).first(),
+    db.prepare("SELECT email FROM user_invites WHERE email=?").bind(address).first()
+  ]);
+  if (user) return !user.disabled;
+  return Boolean(invite) || address === ownerEmail(env);
+}
+
+// Signs in the owner of an e-mail address that confirmed a code: an existing
+// user, or an invited address / the owner, whose account is created now.
+export async function signInEmailUser(db, env, email) {
+  const address = normalizeEmail(email);
+  if (!address) return null;
+  let row = await db.prepare("SELECT id, email, name, role, disabled FROM users WHERE email=?").bind(address).first();
+  if (!row) {
+    const invite = await db.prepare("SELECT email FROM user_invites WHERE email=?").bind(address).first();
+    if (!invite && address !== ownerEmail(env)) return null;
+    await db.prepare("INSERT INTO users(email, role) VALUES(?, ?) ON CONFLICT(email) DO NOTHING").bind(address, address === ownerEmail(env) ? "admin" : "user").run();
+    row = await db.prepare("SELECT id, email, name, role, disabled FROM users WHERE email=?").bind(address).first();
+  }
+  if (!row || row.disabled) return null;
+  await db.batch([
+    db.prepare("UPDATE users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?").bind(row.id),
+    db.prepare("DELETE FROM user_invites WHERE email=?").bind(address)
+  ]);
+  return publicUser(row, env);
 }
 
 export async function listUsersAndInvites(db) {

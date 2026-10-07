@@ -347,7 +347,10 @@ function doc(request, path, title, html) {
     body: `<main class="wrap doc"><h1>${pick(title)}</h1>${pick(html)}</main>`});
 }
 
-export function privacyPage(request) {
+// Sign in with Apple and e-mail codes are described only once they are set up (signIn from the
+// entrypoint); passkeys need no setup and are always there.
+export function privacyPage(request, {apple = false, email = false} = {}) {
+  const methods = {en: email ? 'Google, a passkey or a one-time code sent to your email' : 'Google or a passkey', cs: email ? 'přes Google, přístupovým klíčem nebo jednorázovým kódem z e-mailu' : 'přes Google nebo přístupovým klíčem'};
   return doc(request, '/privacy', {cs: 'Zásady ochrany soukromí', en: 'Privacy Policy'}, {
     en: `<p class="muted">Last updated: ${UPDATED.en}</p>
 <p><strong>Loadwise</strong> (Petr Fitness Data, petrfitnessdata.eu) is a personal service for training, recovery and nutrition. The controller of your personal data is Petr Bouma, a private individual in the Czech Republic (the operator, “we” below). You can reach the operator at <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Loadwise is currently available only by personal invitation.</p>
@@ -358,7 +361,9 @@ export function privacyPage(request) {
 <li>You choose which services to connect. You can disconnect them, or delete your account and all its data, in the app at any time.</li>
 </ul>
 <h2>Data we collect</h2>
-<p><strong>Your account.</strong> When you sign in with Google, we receive your email address and your Google account ID. We use them to recognize you and check your invitation, and we record when you last signed in. When you sign in with Apple, we receive your Apple ID user identifier, the email address Apple shares with us (it can be a private relay address) and, the first time, your name if you choose to share it.</p>
+<p><strong>Your account.</strong> When you sign in with Google, we receive your email address and your Google account ID. We use them to recognize you and check your invitation, and we record when you last signed in.${apple ? ' When you sign in with Apple, we receive your Apple ID user identifier, the email address Apple shares with us (it can be a private relay address) and, the first time, your name if you choose to share it.' : ''}</p>
+<p><strong>Passkeys.</strong> When you add a passkey, we store its public key, its identifier, a random identifier of your account that the passkey keeps, the name of the device or password manager it was made in, and when it was added and last used. The private key stays on your device or in your password manager, and your fingerprint, face or screen lock never leaves your device.${email ? ' When you add a passkey, we send you an email about it, so you notice one you did not add.' : ''}</p>${email ? `
+<p><strong>Codes sent by email.</strong> When you ask for a sign-in code, we send a six-digit code to the address you entered, if it has access to Loadwise. We keep only a keyed hash of the code for 10 minutes, and counters that limit how many codes and attempts an address gets; these counters are deleted two days after the last code.</p>` : ''}
 <p><strong>Google Health</strong>, only if you connect it and allow it on Google’s consent screen:</p>
 <ul>
 <li>activity and fitness: steps, distance, floors, active minutes, active zone minutes, active energy burned, time in heart rate zones, sedentary periods and exercise sessions;</li>
@@ -397,7 +402,7 @@ export function privacyPage(request) {
 <li><strong>Intervals.icu</strong>, if you connect it: the workouts you plan in Loadwise, nutrition notes and calorie targets in your calendar, your weight, and every hour a copy of your daily wellness from Google Health (sleep, average sleeping heart rate, steps, resting heart rate, HRV, oxygen saturation, respiration, VO2 max and body fat). Intervals.icu handles this data under its own privacy policy.</li>
 <li><strong>Google Health</strong>: the food and drinks you log and, if you allow it, your weight.</li>
 <li><strong>OpenAI</strong> (USA), only if you allow AI features in the app and only when you use one (such as the assistant, recognizing food from a photo, label or description, plan reviews, workout reflections or exercise descriptions): the data that request needs, such as your message, the photo and related training, sleep, health and nutrition data. OpenAI processes it on our behalf, does not use data sent through its API to train its models and keeps it for up to 30 days to detect abuse.</li>
-<li><strong>Cloudflare</strong> runs Loadwise, stores its database in Europe and keeps the technical logs.</li>
+<li><strong>Cloudflare</strong> runs Loadwise, stores its database in Europe and keeps the technical logs.${email ? ' Its Email Service sends the sign-in codes and the notices about new passkeys.' : ''}</li>
 <li><strong>Open-Meteo</strong> gets only the place you enter for the weather in your training plan.</li>
 <li><strong>Authorities</strong>, only when the law requires it.</li>
 </ul>
@@ -407,17 +412,18 @@ export function privacyPage(request) {
 <ul>
 <li>Your data is stored in Loadwise’s database at Cloudflare, encrypted at rest. All connections use HTTPS.</li>
 <li>Access tokens and API keys for connected services are additionally encrypted (AES-GCM) with a key kept apart from the database.</li>
-<li>Each user sees only their own data. You sign in through Google, and your session is a signed cookie that scripts cannot read.</li>
+<li>Each user sees only their own data. You sign in with ${methods.en}, and your session is a signed cookie that scripts cannot read.</li>
 <li>Only the operator has access to the systems that run Loadwise, and does not read users’ data except as described above.</li>
 </ul>
 <h2>How long we keep data and how to delete it</h2>
 <ul>
 <li>We keep your data while you have an account. An account nobody has signed in to for two years is deleted automatically with all its data.</li>
 <li><strong>Disconnecting a service</strong> in Settings stops Loadwise from reading from and writing to it and removes the stored access; for Google, Loadwise also gives up its access at Google. Data imported so far stays in your account until you delete it or the account.</li>
-<li><strong>Deleting your account</strong> in Settings → Account immediately deletes your account and permanently deletes all its data in Loadwise (for a large account, the rest within minutes): profile, food, workouts, sleep and health data, connections and assistant history. The record of your consents is deleted with it. Loadwise also gives up its access to your Google Account and clears its copy on the device you use. Database backups are overwritten within 30 days.</li>
+<li><strong>Deleting your account</strong> in Settings → Account immediately deletes your account and permanently deletes all its data in Loadwise (for a large account, the rest within minutes): profile, food, workouts, sleep and health data, connections, passkeys and assistant history. The record of your consents is deleted with it. Loadwise also gives up its access to your Google Account and clears its copy on the device you use. Database backups are overwritten within 30 days.</li>
+<li>You can remove a passkey in Settings → Account. Loadwise then no longer accepts it; delete it from your device or password manager as well.</li>
 <li>Data that Loadwise copied to Intervals.icu or Google Health stays there; you can delete it in those services.</li>
 <li>You can also remove Loadwise’s access at any time in your Google Account under <a href="${GOOGLE_CONNECTIONS}">Third-party apps and services</a>. Loadwise then can no longer read or write your Google data.</li>
-<li>You can stop using Sign in with Apple for Loadwise in your Apple ID settings, or unlink Apple in Settings → Account.</li>
+${apple ? '<li>You can stop using Sign in with Apple for Loadwise in your Apple ID settings, or unlink Apple in Settings → Account.</li>' : ''}
 <li>Technical logs are kept for a few days, and OpenAI keeps AI requests for up to 30 days.</li>
 </ul>
 <p>The <a href="/support">Support</a> page explains step by step how to manage and delete your data.</p>
@@ -439,7 +445,9 @@ export function privacyPage(request) {
 <li>Které služby propojíš, je na tobě. Kdykoli je v aplikaci odpojíš, nebo smažeš účet i se všemi daty.</li>
 </ul>
 <h2>Jaká data získáváme</h2>
-<p><strong>Tvůj účet.</strong> Když se přihlásíš přes Google, dostaneme tvou e-mailovou adresu a ID tvého účtu Google. Podle nich tě poznáme a ověříme pozvánku. Zaznamenáváme i čas posledního přihlášení. Když se přihlásíš přes Apple, dostaneme identifikátor tvého Apple ID, e-mail, který nám Apple předá (může to být skrytá adresa od Apple), a napoprvé i jméno, pokud ho sdílíš.</p>
+<p><strong>Tvůj účet.</strong> Když se přihlásíš přes Google, dostaneme tvou e-mailovou adresu a ID tvého účtu Google. Podle nich tě poznáme a ověříme pozvánku. Zaznamenáváme i čas posledního přihlášení.${apple ? ' Když se přihlásíš přes Apple, dostaneme identifikátor tvého Apple ID, e-mail, který nám Apple předá (může to být skrytá adresa od Apple), a napoprvé i jméno, pokud ho sdílíš.' : ''}</p>
+<p><strong>Přístupové klíče (passkeys).</strong> Když si přidáš přístupový klíč, uložíme jeho veřejný klíč, jeho identifikátor, náhodný identifikátor tvého účtu, který si klíč pamatuje, název zařízení nebo správce hesel, ve kterém vznikl, a kdy byl přidaný a naposledy použitý. Soukromý klíč zůstává ve tvém zařízení nebo ve správci hesel a otisk prstu, obličej ani zámek obrazovky tvoje zařízení neopustí.${email ? ' Když si přidáš přístupový klíč, pošleme ti o tom e-mail, takže se o každém novém klíči dozvíš.' : ''}</p>${email ? `
+<p><strong>Kódy e-mailem.</strong> Když si řekneš o kód pro přihlášení, pošleme šestimístný kód na zadanou adresu, pokud má do Loadwise přístup. Uchováváme jen jeho otisk vytvořený tajným klíčem, a to 10 minut, a počítadla, která omezují, kolik kódů a pokusů adresa dostane; ta se smažou dva dny po posledním kódu.</p>` : ''}
 <p><strong>Google Health</strong>, jen když ho připojíš a povolíš na obrazovce souhlasu Google:</p>
 <ul>
 <li>aktivita a kondice: kroky, vzdálenost, patra, aktivní minuty, minuty v aktivních zónách, aktivní energie, čas v tepových zónách, období nečinnosti a tréninky;</li>
@@ -478,7 +486,7 @@ export function privacyPage(request) {
 <li><strong>Intervals.icu</strong>, když ho připojíš: tréninky, které naplánuješ v Loadwise, poznámky k výživě a cíle kalorií v kalendáři, tvoji váhu a každou hodinu kopii denních wellness údajů z Google Health (spánek, průměrný tep ve spánku, kroky, klidový tep, HRV, okysličení krve, dech, VO₂max a tělesný tuk). Intervals.icu s nimi zachází podle svých zásad ochrany soukromí.</li>
 <li><strong>Google Health</strong>: jídlo a pití, které zapíšeš, a když to povolíš, i tvoje váha.</li>
 <li><strong>OpenAI</strong> (USA), jen když v aplikaci povolíš AI funkce, a jen když nějakou použiješ (třeba asistenta, rozpoznání jídla z fotky, etikety nebo popisu, revizi plánu, zhodnocení tréninku nebo popis cviku): data, která daný požadavek potřebuje, třeba tvoji zprávu, fotku a související údaje o tréninku, spánku, zdraví a výživě. OpenAI je zpracovává naším jménem, data poslaná přes své API nepoužívá k trénování modelů a uchovává je nejvýš 30 dní kvůli odhalování zneužití.</li>
-<li><strong>Cloudflare</strong> provozuje Loadwise, ukládá jeho databázi v Evropě a uchovává technické záznamy.</li>
+<li><strong>Cloudflare</strong> provozuje Loadwise, ukládá jeho databázi v Evropě a uchovává technické záznamy.${email ? ' Jeho služba Email Service posílá kódy pro přihlášení a upozornění na nové přístupové klíče.' : ''}</li>
 <li><strong>Open-Meteo</strong> dostane jen místo, které zadáš pro počasí v plánu tréninků.</li>
 <li><strong>Úřady</strong>, jen když to vyžaduje zákon.</li>
 </ul>
@@ -488,17 +496,18 @@ export function privacyPage(request) {
 <ul>
 <li>Data jsou uložená v databázi Loadwise u Cloudflare a jsou šifrovaná. Všechna spojení používají HTTPS.</li>
 <li>Přístupové tokeny a klíče API k propojeným službám jsou navíc šifrované (AES-GCM) klíčem, který je uložený mimo databázi.</li>
-<li>Každý uživatel vidí jen svoje data. Přihlašuješ se přes Google a tvoje relace je podepsaná cookie, kterou skripty nepřečtou.</li>
+<li>Každý uživatel vidí jen svoje data. Přihlašuješ se ${methods.cs} a tvoje relace je podepsaná cookie, kterou skripty nepřečtou.</li>
 <li>K systémům, na kterých Loadwise běží, má přístup jen provozovatel a data uživatelů nečte, kromě případů popsaných výše.</li>
 </ul>
 <h2>Jak dlouho data uchováváme a jak je smazat</h2>
 <ul>
 <li>Data uchováváme, dokud máš účet. Účet, do kterého se nikdo dva roky nepřihlásil, automaticky smažeme i se všemi daty.</li>
 <li><strong>Odpojení služby</strong> v Nastavení zastaví čtení i zápis do ní a smaže uložený přístup; u Googlu se Loadwise vzdá přístupu i přímo u Googlu. Data, která se do té doby načetla, zůstanou v tvém účtu, dokud je nesmažeš, nebo nesmažeš účet.</li>
-<li><strong>Smazání účtu</strong> v Nastavení → Účet okamžitě smaže tvůj účet a natrvalo všechna data v Loadwise (u velkého účtu zbytek do několika minut): profil, jídla, tréninky, spánek a zdravotní data, připojení služeb i historii asistenta. Smaže se i záznam o tvých souhlasech. Loadwise se zároveň vzdá přístupu k tvému účtu Google a smaže svou kopii v zařízení, ve kterém účet mažeš. Zálohy databáze se přepíšou do 30 dní.</li>
+<li><strong>Smazání účtu</strong> v Nastavení → Účet okamžitě smaže tvůj účet a natrvalo všechna data v Loadwise (u velkého účtu zbytek do několika minut): profil, jídla, tréninky, spánek a zdravotní data, připojení služeb, přístupové klíče i historii asistenta. Smaže se i záznam o tvých souhlasech. Loadwise se zároveň vzdá přístupu k tvému účtu Google a smaže svou kopii v zařízení, ve kterém účet mažeš. Zálohy databáze se přepíšou do 30 dní.</li>
+<li>Přístupový klíč odebereš v Nastavení → Účet. Loadwise ho pak už nepřijme; smaž ho i ze zařízení nebo ze správce hesel.</li>
 <li>Co Loadwise zkopíroval do Intervals.icu nebo Google Health, tam zůstane; smazat to můžeš v těchto službách.</li>
 <li>Přístup Loadwise můžeš kdykoli odebrat i ve svém účtu Google v části <a href="${GOOGLE_CONNECTIONS}">Aplikace a služby třetích stran</a>. Loadwise pak už tvoje data z Googlu nepřečte ani nezapíše.</li>
-<li>Přihlašování přes Apple pro Loadwise ukončíš v nastavení svého Apple ID, nebo Apple odpojíš v Nastavení → Účet.</li>
+${apple ? '<li>Přihlašování přes Apple pro Loadwise ukončíš v nastavení svého Apple ID, nebo Apple odpojíš v Nastavení → Účet.</li>' : ''}
 <li>Technické záznamy se uchovávají několik dní a OpenAI uchovává požadavky AI nejvýš 30 dní.</li>
 </ul>
 <p>Na stránce <a href="/support">Podpora</a> najdeš postup krok za krokem, jak data spravovat a smazat.</p>
@@ -522,11 +531,17 @@ export function termsPage(request) {
   });
 }
 
-export function supportPage(request) {
+export function supportPage(request, {apple = false, email = false} = {}) {
   return doc(request, '/support', {cs: 'Podpora', en: 'Support'}, {
     en: `<p>Loadwise is currently available only by personal invitation. If something does not work, write to <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> what went wrong, roughly when, and the error message the app showed. Never send passwords, API keys or other secrets.</p>
 <h2>Signing in</h2>
-<p>Sign in with the Google account your invitation was sent to. If you also see Sign in with Apple, you can use an Apple ID with the same email address. If you hide your email from Apple, sign in with Google first and link Apple in Settings → Account. If the app says your account is not invited, ask the operator to invite the address you use.</p>
+<p>Sign in with the Google account your invitation was sent to.${apple ? ' If you also see Sign in with Apple, you can use an Apple ID with the same email address. If you hide your email from Apple, sign in with Google first and link Apple in Settings → Account.' : ''}${email ? ' Without a Google account, enter the invited address under “or with a code by email”: you get a six-digit code that is valid for 10 minutes.' : ''} If the app says your account is not invited, ask the operator to invite the address you use.</p>
+<h2>Passkeys</h2>
+<ul>
+<li>Once you are signed in, open <strong>Settings → Account</strong> and choose <strong>Add</strong> next to Passkeys. Your phone or computer saves the passkey, usually in its password manager.</li>
+<li>Next time, choose <strong>Sign in with a passkey</strong> and unlock it with your fingerprint, face or screen lock. A passkey saved in iCloud Keychain or Google Password Manager works on your other devices too.</li>
+<li>To remove a passkey, choose <strong>Remove</strong> next to it in Settings → Account, then delete it from your device or password manager as well.</li>
+</ul>
 <h2>Connecting and disconnecting services</h2>
 <ul>
 <li>In the app, open <strong>Settings → Connections</strong>. Google Health and Intervals.icu each have a card with a button to connect them and, once connected, to disconnect them.</li>
@@ -546,10 +561,16 @@ export function supportPage(request) {
 <li>If you want to keep a copy, first choose <strong>Download my data</strong>.</li>
 <li>Choose <strong>Delete account</strong>, type SMAZAT to confirm and choose <strong>Delete account permanently</strong>.</li>
 </ol>
-<p>Loadwise immediately and permanently deletes your account and all its data: profile, food, workouts, sleep and health data, connections and assistant history. It also gives up its access to your Google Account and clears its copy on your device. Database backups are overwritten within 30 days. Data already in Intervals.icu or Google Health stays there. More in the <a href="/privacy">Privacy Policy</a>.</p>`,
+<p>Loadwise immediately and permanently deletes your account and all its data: profile, food, workouts, sleep and health data, connections, passkeys and assistant history. It also gives up its access to your Google Account and clears its copy on your device. Database backups are overwritten within 30 days. Data already in Intervals.icu or Google Health stays there. More in the <a href="/privacy">Privacy Policy</a>.</p>`,
     cs: `<p>Loadwise je zatím dostupný jen na osobní pozvánku. Když něco nefunguje, napiš na <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, co nefungovalo, přibližně kdy to bylo a jakou chybu aplikace ukázala. Nikdy neposílej hesla, klíče API ani jiná tajemství.</p>
 <h2>Přihlášení</h2>
-<p>Přihlas se účtem Google, na který ti přišla pozvánka. Pokud vidíš i Přihlásit se přes Apple, můžeš použít Apple ID se stejnou e-mailovou adresou. Když před Apple e-mail skrýváš, přihlas se nejdřív přes Google a Apple si připoj v Nastavení → Účet. Když aplikace hlásí, že účet není pozvaný, požádej provozovatele, ať pozve adresu, kterou používáš.</p>
+<p>Přihlas se účtem Google, na který ti přišla pozvánka.${apple ? ' Pokud vidíš i Přihlásit se přes Apple, můžeš použít Apple ID se stejnou e-mailovou adresou. Když před Apple e-mail skrýváš, přihlas se nejdřív přes Google a Apple si připoj v Nastavení → Účet.' : ''}${email ? ' Bez účtu Google zadej pozvanou adresu pod „nebo kódem z e-mailu“: přijde ti šestimístný kód, který platí 10 minut.' : ''} Když aplikace hlásí, že účet není pozvaný, požádej provozovatele, ať pozve adresu, kterou používáš.</p>
+<h2>Přístupové klíče (passkeys)</h2>
+<ul>
+<li>Po přihlášení otevři <strong>Nastavení → Účet</strong> a u Přístupových klíčů zvol <strong>Přidat</strong>. Telefon nebo počítač si klíč uloží, obvykle do správce hesel.</li>
+<li>Příště zvol <strong>Přihlásit se přístupovým klíčem</strong> a odemkni ho otiskem prstu, obličejem nebo zámkem obrazovky. Klíč uložený v Klíčence na iCloudu nebo ve Správci hesel Google funguje i na tvých dalších zařízeních.</li>
+<li>Klíč odebereš tlačítkem <strong>Odebrat</strong> u něj v Nastavení → Účet; pak ho smaž i ze zařízení nebo ze správce hesel.</li>
+</ul>
 <h2>Připojení a odpojení služeb</h2>
 <ul>
 <li>V aplikaci otevři <strong>Nastavení → Propojení</strong>. Google Health i Intervals.icu tam mají kartu s tlačítkem pro připojení a po připojení i pro odpojení.</li>
@@ -569,6 +590,6 @@ export function supportPage(request) {
 <li>Jestli si chceš data nechat, nejdřív zvol <strong>Stáhnout moje data</strong>.</li>
 <li>Zvol <strong>Smazat účet</strong>, pro potvrzení napiš SMAZAT a zvol <strong>Smazat účet natrvalo</strong>.</li>
 </ol>
-<p>Loadwise okamžitě a natrvalo smaže tvůj účet a všechna data: profil, jídla, tréninky, spánek a zdravotní data, připojení služeb i historii asistenta. Zároveň se vzdá přístupu k tvému účtu Google a smaže svou kopii ve tvém zařízení. Zálohy databáze se přepíšou do 30 dní. Co už je v Intervals.icu nebo Google Health, tam zůstane. Víc v <a href="/privacy">Zásadách ochrany soukromí</a>.</p>`
+<p>Loadwise okamžitě a natrvalo smaže tvůj účet a všechna data: profil, jídla, tréninky, spánek a zdravotní data, připojení služeb, přístupové klíče i historii asistenta. Zároveň se vzdá přístupu k tvému účtu Google a smaže svou kopii ve tvém zařízení. Zálohy databáze se přepíšou do 30 dní. Co už je v Intervals.icu nebo Google Health, tam zůstane. Víc v <a href="/privacy">Zásadách ochrany soukromí</a>.</p>`
   });
 }

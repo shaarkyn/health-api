@@ -39,6 +39,19 @@ Tlačítko „Přihlásit se přes Apple“ se ukáže, až jsou nastavené vše
 
 Pozvánky fungují stejně jako u Googlu: účet vznikne, když Apple potvrdí pozvaný e-mail. Kdo u Apple zvolí *Skrýt můj e-mail*, dostane aplikace jinou adresu; takový uživatel se přihlásí přes Google a Apple si připojí v **Nastavení → Účet → Připojit Apple** (nebo pozvi přímo tu skrytou adresu). Propojená Apple ID jsou v tabulce `user_identities`.
 
+## Přístupové klíče (passkeys)
+
+Fungují hned, nic se nenastavuje (`src/passkeys.js`, ověřování v `src/webauthn.js`). Přihlášený uživatel si v **Nastavení → Účet → Přístupové klíče → Přidat** uloží klíč do telefonu, počítače nebo správce hesel a příště zvolí **Přihlásit se přístupovým klíčem**. Klíč odemyká otisk prstu, obličej nebo zámek obrazovky (aplikace ověření uživatele vyžaduje). Server má jen veřejný klíč (tabulka `user_passkeys`), výzvy k podpisu platí 5 minut a jdou použít jednou (`auth_challenges`). Klíč patří k doméně, na které vznikl: klíče z testovací kopie na živé aplikaci nefungují a naopak.
+
+## Přihlášení kódem z e-mailu (volitelné)
+
+Pro pozvané bez účtu Google: zadají e-mail a přijde jim šestimístný kód (platí 10 minut, 5 pokusů, nejvýš 1 kód za minutu a 10 denně na adresu; `src/email-login.js`). Kód dostanou jen aktivní uživatelé, pozvané adresy a správce, ostatním aplikace odpoví stejně, ale nic nepošle. E-maily posílá Cloudflare Email Service přes binding `EMAIL` ve `wrangler.jsonc` (v plánu Workers Paid je 3 000 e-mailů měsíčně v ceně). Zapnutí:
+
+1. **Cloudflare → Compute → Email Service → Email Sending → Onboard Domain**: vyber `petrfitnessdata.eu` a nech Cloudflare přidat DNS záznamy (SPF, DKIM, DMARC a MX `cf-bounce`).
+2. Worker `health-api` → **Settings → Variables and Secrets**: secret `EMAIL_FROM` = adresa odesílatele na té doméně, např. `noreply@petrfitnessdata.eu`. Pro testovací kopii totéž u `health-api-staging`.
+
+Bez `EMAIL_FROM` se formulář s kódem na přihlašovací obrazovce neukáže. Když je e-mail zapnutý, dostane uživatel e-mail i ve chvíli, kdy si přidá přístupový klíč.
+
 ## Smazání účtu
 
 Každý uživatel kromě správce si může v **Nastavení → Účet** stáhnout všechna svoje data a smazat účet (`src/account-data.js`, podrobně v [account-workflow.md](account-workflow.md)). Smazání nejdřív vrátí Googlu souhlas k Google Health, pak smaže řádky účtu ve všech osobních tabulkách (`PERSONAL_TABLES` v `src/tenancy.js`, včetně propojených Apple ID v `user_identities`) a nakonec samotného uživatele. Nová tabulka se sloupcem `user_id` proto patří do `PERSONAL_TABLES`, jinak ji stažení i smazání vynechá. Co už bylo zkopírované do Intervals.icu nebo Google Health, tam zůstane. Odpojení Google Health v Nastavení přístup u Googlu taky zruší.

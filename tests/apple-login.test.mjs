@@ -150,7 +150,7 @@ test("a signed-in user links their Apple ID in Settings, even with a hidden e-ma
 test("the app page asks for the Apple button only when Apple is set up, and Settings can link Apple", () => {
   const entry = readFileSync(new URL("../src/entrypoint.js", import.meta.url), "utf8");
   const client = readFileSync(new URL("../src/dashboard-client.js", import.meta.url), "utf8");
-  assert.match(entry, /dashboardPage\(\{ clientVersion: CLIENT_VERSION, account: .*, signIn: \{ apple: appleConfigured\(env\) \} \}\)/);
+  assert.match(entry, /dashboardPage\(\{ clientVersion: CLIENT_VERSION, account: .*, signIn: \{ apple: appleConfigured\(env\), email: emailConfigured\(env\) \} \}\)/);
   assert.match(entry, /handleAppleLogin\(request, rawEnv, url\.pathname, \{ user: signedIn \? user : null \}\)/);
   assert.match(client, /href="\/auth\/apple\?link=1"/);
   assert.match(client, /fetch\('\/app\/api\/me\/apple',\{method:'DELETE'/);

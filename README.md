@@ -72,12 +72,15 @@ Nastavují se v Cloudflare (`wrangler secret put NAZEV`), ne v repozitáři.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Přihlášení přes Google a připojení Google Health. |
 | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Volitelně přihlášení přes Apple: Services ID, Team ID, Key ID a obsah souboru `.p8`. Bez nich se tlačítko Apple nezobrazí. Nastavení popisuje [docs/multi-user-setup.md](docs/multi-user-setup.md). |
 | `APPLE_DOMAIN_ASSOCIATION` | Jen když ho Apple při nastavení domény chce: obsah souboru, který aplikace vrátí na `/.well-known/apple-developer-domain-association.txt`. |
+| `EMAIL_FROM` | Volitelně přihlášení kódem z e-mailu: adresa odesílatele na doméně přidané v Cloudflare Email Service (např. `noreply@petrfitnessdata.eu`). Bez ní se přihlášení kódem nezobrazí. Postup v [docs/multi-user-setup.md](docs/multi-user-setup.md). |
 | `INTERVALS_API_KEY` | Intervals.icu správce (ostatní uživatelé si klíč ukládají v aplikaci). |
 | `INTERVALS_CLIENT_ID`, `INTERVALS_CLIENT_SECRET` | Volitelné: aplikace zaregistrovaná u Intervals.icu. S nimi se Intervals.icu připojuje jedním tlačítkem (OAuth, `intervals-oauth.js`), bez nich vložením osobního API klíče. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Asistent trenéra a čtení fotek jídla (volitelně `OPENAI_VISION_MODEL`, jinak `OPENAI_LIGHT_MODEL`). |
 | `AI_MONTHLY_LIMIT_USD` | Volitelný měsíční rozpočet na AI pro jednoho uživatele v USD (výchozí 5; `0` vypne AI všem kromě správce). Uživatel vidí útratu v Nastavení. Správce limit nemá. |
 | `AI_DAILY_LIMIT_USD` | Volitelný denní limit útraty za AI na jednoho uživatele v USD (výchozí 1; `0` vypne AI všem kromě správce). Správce limit nemá. |
 | `OWNER_EMAIL` | Správce aplikace (ve `wrangler.jsonc`). |
+
+Přihlášení: Google (`google-login.js`), přístupové klíče (passkeys, `passkeys.js` a `webauthn.js`, bez knihovny), volitelně jednorázový kód z e-mailu (`email-login.js`, Cloudflare Email Service) a Apple (`apple-login.js`). Všechny končí stejnou podepsanou cookie (`dashboard-auth.js`) a pustí dovnitř jen existující uživatele, pozvané adresy a správce.
 
 Google OAuth: přihlášení žádá jen `openid email` (`google-login.js`), připojení jen scopes Google Health (`google-scopes.js`). Před stránkou souhlasu Google aplikace sama ukáže, jaká data čte a zapisuje, k čemu a kdo je dostane, a chce zaškrtnutý souhlas (vyžadují to zásady Google Health API); přímá návštěva `/oauth/google` vrátí uživatele na tento dialog. Tlačítko „Rozšířit oprávnění Google“ v Nastavení si zvlášť vyžádá zápis váhy (`googlehealth.health_metrics_and_measurements.writeonly`) a datum narození (`user.birthday.read`, People API); obojí musí být povolené na OAuth consent screen a People API zapnuté v Google Cloud. Udělená oprávnění se ukládají k připojení uživatele. Na souhlasové obrazovce Googlu jde jednotlivá oprávnění odškrtnout: token se pak žádá jen pro udělená (`healthScopes`), data bez oprávnění zůstanou prázdná a Nastavení → Propojení ukáže, co chybí, s tlačítkem „Povolit chybějící“.
 
