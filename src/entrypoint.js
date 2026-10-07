@@ -1508,7 +1508,11 @@ async function handlePlannedCaloriesAutomation(request, rawEnv) {
       const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND data_type IN ('weight','weight-written') AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first().catch(()=>null);
       const thresholds=await athleteThresholds(env).catch(()=>({}));
       const weightKg=Number(row?.value_numeric);
-      return syncPlannedEventCalories(env,{oldest:body?.oldest,newest:body?.newest,weightKg:Number.isFinite(weightKg)&&weightKg>30?weightKg:undefined,ftp:thresholds.ftp||undefined});
+      // The estimates go into the user's own Intervals.icu calendar, so they come
+      // from their own weight (and FTP for rides without power), never from the
+      // defaults: someone without a weight gets none, without an FTP none for those rides.
+      if(!(Number.isFinite(weightKg)&&weightKg>30))return {status:'skipped',reason:'Bez zapsané váhy'};
+      return syncPlannedEventCalories(env,{oldest:body?.oldest,newest:body?.newest,weightKg,ftp:thresholds.ftp||0});
     });
     return Response.json({status:"ok",users});
   } catch (error) { return Response.json({status:"error",step:"planned_calories",message:error.message},{status:500}); }

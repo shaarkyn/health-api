@@ -209,3 +209,12 @@ test("the gym plan does not need Intervals.icu", async () => {
     assert.equal(withBadKey.intervals.status, "error");
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("planned-workout calories go to Intervals.icu only from the user's own weight and FTP", async () => {
+  assert.match(entry, /if\(!\(Number\.isFinite\(weightKg\)&&weightKg>30\)\)return \{status:'skipped'/);
+  assert.match(entry, /weightKg,ftp:thresholds\.ftp\|\|0\}/);
+  const { estimateEventCalories } = await import("../src/intervals-calories.js");
+  // A ride known only by its intensity has no estimate without an FTP.
+  assert.equal(estimateEventCalories({ type: "Ride", moving_time: 3600, icu_intensity: 0.7 }, { weightKg: 60, ftp: 0 }), 0);
+  assert.ok(estimateEventCalories({ type: "Ride", moving_time: 3600, icu_intensity: 0.7 }, { weightKg: 60, ftp: 200 }) > 0);
+});
