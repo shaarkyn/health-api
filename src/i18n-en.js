@@ -1673,6 +1673,10 @@ export const EN = {
 "Průvodce tě znovu provede propojením služeb a profilem.": "The guide takes you through connecting services and your profile again.",
 "Spustit průvodce nastavením": "Run the setup guide",
 "Vyměnit API klíč": "Replace the API key",
+"Kolo a běh se do kalendáře a hodinek zapisují přes Intervals.icu.": "Rides and runs reach your calendar and watch through Intervals.icu.",
+"Kolo a běh se do kalendáře zapisují přes Intervals.icu; připojíš ho v Nastavení → Propojení.": "Rides and runs reach your calendar through Intervals.icu; connect it in Settings → Connections.",
+"Jen s Google Health": "Only with Google Health",
+"kolo a běh: připoj Intervals.icu": "rides and runs: connect Intervals.icu",
 };
 
 export const EN_TEMPLATES = {
@@ -1861,6 +1865,7 @@ export const EN_TEMPLATES = {
 "Průběžný cíl podle naměřeného výdeje, během dne se mění · deficit {n} kcal.": "Running target from measured expenditure; it changes during the day · deficit {n} kcal.",
 "Krok {n} ze {n}": "Step {n} of {n}",
 "Zadej váhu mezi {n} a {n} kg.": "Enter a weight between {n} and {n} kg.",
+"{n} v aplikaci": "{n} in the app",
 };
 
 // [regex source, replacement, flags?] applied word by word when nothing above matched.

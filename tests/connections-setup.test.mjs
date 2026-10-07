@@ -218,3 +218,15 @@ test("planned-workout calories go to Intervals.icu only from the user's own weig
   assert.equal(estimateEventCalories({ type: "Ride", moving_time: 3600, icu_intensity: 0.7 }, { weightKg: 60, ftp: 0 }), 0);
   assert.ok(estimateEventCalories({ type: "Ride", moving_time: 3600, icu_intensity: 0.7 }, { weightKg: 60, ftp: 200 }) > 0);
 });
+
+test("without a service the app does not offer what needs it", () => {
+  // The page knows what this account has connected.
+  assert.match(client, /setConnectedServices\(\['google','intervals'\]\.filter\(id=>!\(me\.missingProviders\|\|\[\]\)\.includes\(id\)\)\)/);
+  // Rides and runs go to Intervals.icu: without it nothing is written automatically,
+  // and adding one leads to Settings → Propojení instead of an error.
+  assert.match(client, /function proposalWaiting\(p\)\{return serviceConnected\('intervals'\)&&/);
+  assert.match(client, /if\(!serviceConnected\('intervals'\)\)\{toast\(uiText\('Kolo a běh se zapisují do Intervals\.icu/);
+  assert.match(client, /serviceConnected\('intervals'\)\?'Přidat do Intervals\.icu':'Připojit Intervals\.icu'/);
+  // Food entries carry no "Google · není připojené" badge without Google Health.
+  assert.match(client, /function foodExportHtml\(entry\)\{\n  if\(!serviceConnected\('google'\)\)return '';/);
+});
