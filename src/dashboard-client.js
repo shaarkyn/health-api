@@ -122,20 +122,54 @@ function populateWeekSelectors(weekId,dayId,days){
 // A modal dialog covers the page, so messages and tips move into it while open.
 function overlayHost(){try{return document.querySelector('dialog:modal')||document.body}catch{return document.body}}
 function toast(msg){const t=$("toast"),host=overlayHost();if(t.parentNode!==host)host.appendChild(t);t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600)}
-async function jsonFetch(path,options={}){const r=await fetch(path,{credentials:"same-origin",...options,headers:{...options.headers,"X-Interface-Language":document.documentElement.lang||"cs"}});const d=await r.json().catch(()=>({message:"Invalid response"}));if(r.status===401)showLoginGate();if(r.status===409&&d.status==="onboarding")showOnboarding(d.missingProviders||[]);if(!r.ok)throw new Error(d.message||"HTTP "+r.status);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate|\/assistant/.test(path))markDataChanged(path);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate/.test(path)&&typeof clearLibraryCache==='function')clearLibraryCache();if(options.method&&options.method!=='GET'&&!/\/assistant|\/sync|\/athlete-state|\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/(?:generate|schedule)|\/estimate|\/week-plan|\/planned\//.test(path))scheduleCoachRefresh();return d}
+async function jsonFetch(path,options={}){if(typeof aiIntroBefore==='function')await aiIntroBefore(path,options);const r=await fetch(path,{credentials:"same-origin",...options,headers:{...options.headers,"X-Interface-Language":document.documentElement.lang||"cs"}});const d=await r.json().catch(()=>({message:"Invalid response"}));if(r.status===401)showLoginGate();if(r.status===402&&typeof showAiPlans==='function')subscriptionInfo().then(s=>showAiPlans(s,{locked:true})).catch(()=>{});if(!r.ok)throw new Error(d.message||"HTTP "+r.status);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate|\/assistant/.test(path))markDataChanged(path);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate/.test(path)&&typeof clearLibraryCache==='function')clearLibraryCache();if(options.method&&options.method!=='GET'&&!/\/assistant|\/sync|\/athlete-state|\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/(?:generate|schedule)|\/estimate|\/week-plan|\/planned\//.test(path))scheduleCoachRefresh();return d}
+// ---- AI plan: the comparison of Free and AI ----
+// During the pilot everything is free; the first use of an AI feature shows
+// once what will belong to the AI plan (remembered per account on the server).
+// Once the paid split is on, a locked AI feature (HTTP 402) shows it each time.
+// Paying is not live yet: the button only says so.
+const AI_PATHS=['/app/api/assistant','/app/api/coach/week','/app/api/coach/review','/app/api/gym/adjust','/app/api/food/ai-lookup','/app/api/food/photo'];
+let subscriptionPromise=null;
+function subscriptionInfo(){return subscriptionPromise||(subscriptionPromise=fetch('/app/api/subscription',{credentials:'same-origin'}).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status))).catch(error=>{subscriptionPromise=null;throw error;}));}
+async function aiIntroBefore(path,options={}){
+  if(String(options.method||'GET').toUpperCase()!=='POST'||!AI_PATHS.includes(String(path).split('?')[0]))return;
+  let s;try{s=await subscriptionInfo();}catch{return;}
+  if(s.mode!=='pilot'||s.introSeen)return;
+  s.introSeen=true;
+  fetch('/app/api/subscription/intro',{method:'POST',credentials:'same-origin'}).catch(()=>{});
+  await showAiPlans(s,{pilot:true});
+}
+// compact: the free features as one line, so the pop-up fits a phone screen.
+function aiPlansHtml(s,{compact=false}={}){
+  const free=(s.features||[]).filter(f=>!f.ai);
+  const shown=compact?[{name:'Základ aplikace: profil a kalorie, ruční záznamy, potraviny, plánování tréninků a propojení služeb',ai:false},...(s.features||[]).filter(f=>f.ai)]:(s.features||[]);
+  if(compact&&!free.length)shown.shift();
+  const rows=shown.map(f=>'<tr><th scope="row">'+esc(f.name)+'</th><td>'+(f.ai?'<span class="plan-no">—</span>':'<span class="plan-yes">✓</span>')+'</td><td><span class="plan-yes">✓</span></td></tr>').join('');
+  return '<table class="plan-table"><thead><tr><th scope="col"><span class="sr-only">Funkce</span></th><th scope="col">Free</th><th scope="col">AI</th></tr></thead><tbody>'+rows+'<tr class="plan-price"><th scope="row">Cena</th><td>Zdarma</td><td>Bude oznámena</td></tr></tbody></table>';
+}
+function showAiPlans(s,{pilot=false,locked=false}={}){
+  if($('aiPlans'))return Promise.resolve();
+  return new Promise(resolve=>{
+    document.body.insertAdjacentHTML('beforeend','<div id="aiPlans" role="dialog" aria-modal="true" aria-labelledby="aiPlansTitle" style="'+gateStyle+'"><div class="card ai-plans-card"><div class="eyebrow">'+(pilot?'Pilot · AI zdarma':'AI předplatné')+'</div><h2 id="aiPlansTitle">'+(locked?'Tahle funkce je v AI předplatném':'Používáš AI funkci')+'</h2><p class="small">'+(pilot?'Během pilotu máš všechno zdarma. Až spustíme předplatné, AI funkce budou v placeném tarifu a základ aplikace zůstane zdarma.':'Základ aplikace je zdarma. AI trenér, rozpoznání jídla z fotky a další AI funkce jsou v předplatném.')+'</p>'+aiPlansHtml(s,{compact:true})+'<p class="small" id="aiPlansNote" role="status"></p><div class="setup-actions ai-plans-actions"><button class="btn" type="button" id="aiPlansClose">'+(pilot?'Pokračovat zdarma':'Zavřít')+'</button><button class="btn primary" type="button" id="aiPlansBuy">Předplatit AI</button></div></div></div>');
+    const close=()=>{$('aiPlans')?.remove();resolve();};
+    $('aiPlansClose').onclick=close;
+    $('aiPlansBuy').onclick=()=>{$('aiPlansNote').textContent=pilot?'Platby zatím nejsou spuštěné. Během pilotu máš AI zdarma, nic platit nemusíš.':'Platby zatím nejsou spuštěné. Dáme vědět, až půjde předplatné objednat.';};
+    $('aiPlansClose').focus({preventScroll:true});
+  });
+}
+{const css=document.createElement('style');css.textContent='.ai-plans-card{width:min(560px,100%);display:grid;gap:14px;max-height:calc(100vh - 32px);overflow:auto}.ai-plans-card h2{margin:0}.ai-plans-card>p{margin:0}.plan-table{width:100%;border-collapse:collapse;font-size:14px}.plan-table th,.plan-table td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.plan-table thead th{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.plan-table td{text-align:center;width:64px}.plan-table thead th:not(:first-child){text-align:center}.plan-table tbody th{font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text);font-size:14px;line-height:1.35}.plan-table thead th{padding-top:0}.plan-yes{color:var(--ok);font-weight:700}.plan-no{color:var(--muted)}.plan-price th,.plan-price td{font-weight:700;border-bottom:0}.plan-price td{font-size:13px}.ai-plans-actions{position:sticky;bottom:-1px;background:inherit;padding:10px 0 2px;margin:0}.ai-plans-card{padding-bottom:12px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}';document.head.append(css);}
 // Every data API requires a session; the first 401 swaps the dashboard for a login screen.
 const gateStyle='position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto';
 // The sign-in buttons come from the page (<template id="signInButtons">), which knows which
 // providers are set up and draws them by Google's and Apple's branding rules.
-function showLoginGate(){if($("loginGate"))return;forgetAccount();document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card login-card"><img class="login-logo" src="/logo.svg" alt="" width="48" height="48"><h2 id="loginGateTitle">Přihlášení do Loadwise</h2><p class="small">Přístup mají jen pozvaní uživatelé. Přihlas se účtem, na který ti přišla pozvánka.</p><div class="sign-in-buttons">'+($("signInButtons")?.innerHTML||'')+'</div><p class="small">Přihlášením souhlasíš s podmínkami použití.</p><p class="small login-links"><a href="/terms">Podmínky použití</a><span aria-hidden="true">·</span><a href="/privacy">Ochrana soukromí</a></p></div></div>');}
-// Until Google Health and Intervals.icu are connected the dashboard shows only the setup steps.
-// Connections are optional: the user may continue with manual entries.
-function onboardingSkipped(){try{return localStorage.getItem('onboardingSkipped')==='1';}catch{return false;}}
-function showOnboarding(missing){if($("loginGate")||$("onboardingGate"))return;const need=id=>missing.includes(id);document.body.insertAdjacentHTML("beforeend",'<div id="onboardingGate" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle" style="'+gateStyle+'"><div class="card" style="width:min(520px,100%);display:grid;gap:14px"><div><div class="eyebrow">Vítej</div><h2 id="onboardingTitle" style="margin:4px 0 6px">Připoj svoje data</h2><p class="small" style="margin:0">Propoj Google Health a Intervals.icu a data se budou načítat sama. Můžeš pokračovat i bez nich: váhu a jídlo pak zapisuješ ručně a kalorický cíl spočítáme z profilu. Každý uživatel vidí jen svoje vlastní data.</p></div><div class="notice"><strong>1. Google Health</strong> '+(need("google")?'<span class="pill">Nepřipojeno</span><p class="small">Spánek, aktivity, hmotnost a jídlo. Budeš přesměrován na souhlas Google.</p><a class="btn primary" href="/oauth/google" style="display:inline-block;text-decoration:none">Připojit Google Health</a>':'<span class="pill good">Připojeno</span>')+'</div><div class="notice"><strong>2. Intervals.icu</strong> '+(need("intervals")?'<span class="pill">Nepřipojeno</span><p class="small">API klíč najdeš v Intervals.icu → Settings → Developer Settings. Athlete ID zadávat nemusíš.</p><form id="onboardingIntervals" class="select-row"><input id="onboardingIntervalsKey" type="password" autocomplete="off" placeholder="API klíč Intervals.icu" aria-label="API klíč Intervals.icu" required style="background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;min-width:0;flex:1"><button class="btn primary" type="submit">Ověřit a připojit</button></form><div class="small" id="onboardingIntervalsResult" aria-live="polite"></div>':'<span class="pill good">Připojeno</span>')+'</div><button class="btn primary" id="onboardingSkip" type="button">Pokračovat bez propojení</button><button class="btn" id="onboardingLogout" type="button">Odhlásit</button></div></div>');$("onboardingSkip").onclick=()=>{try{localStorage.setItem('onboardingSkipped','1');}catch{}$("onboardingGate").remove();load();toast('Propojit služby můžeš kdykoli v Nastavení.');};const form=$("onboardingIntervals");if(form)form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector("button");b.disabled=true;try{await jsonFetch("/app/api/connections",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:"intervals",key:$("onboardingIntervalsKey").value.trim()})});location.reload();}catch(error){$("onboardingIntervalsResult").textContent=error.message;b.disabled=false;}};$("onboardingLogout").onclick=logout;}
+function showLoginGate(){if($("loginGate"))return;forgetAccount();if(new URLSearchParams(location.search).get('deleted')==='1')queueMicrotask(()=>toast('Účet a data jsou smazané.'));document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card login-card"><img class="login-logo" src="/logo.svg" alt="" width="48" height="48"><h2 id="loginGateTitle">Přihlášení do Loadwise</h2><p class="small">Přístup mají jen pozvaní uživatelé. Přihlas se účtem, na který ti přišla pozvánka.</p><p class="small">Přihlášení slouží pouze k založení účtu; přístup ke Google Health povolíš zvlášť a dobrovolně.</p><div class="sign-in-buttons">'+($("signInButtons")?.innerHTML||'')+'</div><p class="small">Přihlášením souhlasíš s podmínkami použití.</p><p class="small login-links"><a href="/terms">Podmínky použití</a><span aria-hidden="true">·</span><a href="/privacy">Ochrana soukromí</a></p></div></div>');}
+// Complete the saved profile before opening the dashboard; providers are optional.
+function showOnboarding(){showAccountSetup().catch(error=>toast(error.message));}
 // Google Health data policy: before Google's consent screen the app says which data it reads and
 // writes, what for and who else gets it, and the user agrees with a box that is never pre-ticked.
-// Every link to /oauth/google opens this first; the server sends direct visits back here too.
-function googleHealthConsent(extra){$('googleConsent')?.remove();const d=document.createElement('dialog');d.id='googleConsent';d.className='consent-dialog';d.setAttribute('aria-labelledby','googleConsentTitle');
+// Every link to /oauth/google opens this first and keeps its parameters (extra=1, return=setup);
+// the server sends direct visits back here too.
+function googleHealthConsent(href){$('googleConsent')?.remove();const target=new URL(href,location.origin),extra=target.searchParams.get('extra')==='1';const d=document.createElement('dialog');d.id='googleConsent';d.className='consent-dialog';d.setAttribute('aria-labelledby','googleConsentTitle');
   const item=(label,text)=>'<li><strong>'+label+'</strong> '+text+'</li>';
   d.innerHTML='<h3 id="googleConsentTitle">'+(extra?'Rozšířit oprávnění Google':'Připojení Google Health')+'</h3><p class="small">Než tě pošleme na souhlas Google, shrneme, co Loadwise s daty udělá.</p><ul class="consent-list">'+
     (extra?item('Co navíc čteme:','Datum narození z tvého Google účtu, aby se věk v profilu doplnil sám.')+item('Co navíc zapisujeme:','Do Google Health váhu, kterou zapíšeš tady nebo v Intervals.icu.')
@@ -147,11 +181,92 @@ function googleHealthConsent(extra){$('googleConsent')?.remove();const d=documen
   document.body.appendChild(d);d.addEventListener('close',()=>d.remove());
   $('googleConsentAgree').onchange=e=>{$('googleConsentGo').disabled=!e.target.checked;};
   $('googleConsentCancel').onclick=()=>d.close();
-  $('googleConsentGo').onclick=()=>{if($('googleConsentAgree').checked)location.href='/oauth/google?consent=1'+(extra?'&extra=1':'');};
+  $('googleConsentGo').onclick=()=>{if(!$('googleConsentAgree').checked)return;target.searchParams.set('consent','1');location.href=target.pathname+target.search;};
   d.showModal();}
-document.addEventListener('click',e=>{const a=e.target.closest?.('a[href^="/oauth/google"]');if(!a)return;e.preventDefault();googleHealthConsent(/[?&]extra=1/.test(a.getAttribute('href')));});
-// /oauth/google without the consent above lands here as /app?connect=google (or google-extra).
-function openRequestedConsent(){const c=new URLSearchParams(location.search).get('connect');if(c!=='google'&&c!=='google-extra')return;history.replaceState(null,'',location.pathname+location.hash);googleHealthConsent(c==='google-extra');}
+document.addEventListener('click',e=>{const a=e.target.closest?.('a[href^="/oauth/google"]');if(!a)return;e.preventDefault();googleHealthConsent(a.getAttribute('href'));});
+// /oauth/google without the consent above lands here as /app?connect=google (or google-extra, plus return=setup).
+function openRequestedConsent(){const params=new URLSearchParams(location.search),c=params.get('connect');if(c!=='google'&&c!=='google-extra')return;const back=params.get('return')==='setup'?'return=setup':'';params.delete('connect');params.delete('return');history.replaceState(null,'',location.pathname+(params.toString()?'?'+params:'')+location.hash);googleHealthConsent('/oauth/google?'+(c==='google-extra'?'extra=1&':'')+back);}
+// Service cards (Google Health, Intervals.icu) with the button that connects
+// each, shared by the setup window and Settings → Propojení. Connecting goes to
+// the provider's page, which sends the user back (/app?connected=…).
+const ACTIVITY_OPTIONS=[['sedentary','Sedavá práce, málo chůze'],['light','Lehce aktivní: hodně chůze, práce vestoje'],['active','Aktivní: většinu dne v pohybu'],['heavy','Fyzicky náročná práce']];
+const SPORT_HOURS_OPTIONS=[['0','Žádný'],['1-3','1–3 hodiny'],['3-6','3–6 hodin'],['6-10','6–10 hodin'],['10+','Víc než 10 hodin']];
+const GOAL_OPTIONS=[['lose_0.25','Hubnout 0,25 kg týdně'],['lose_0.5','Hubnout 0,5 kg týdně'],['lose_0.75','Hubnout 0,75 kg týdně'],['lose_1','Hubnout 1 kg týdně'],['maintain','Udržovat váhu']];
+const GOOGLE_PERMISSION_LABELS={activity:'aktivity a kroky',metrics:'tep, HRV a váha',sleep:'spánek',nutritionRead:'čtení jídla',nutritionWrite:'zápis jídla'};
+// Texts put together from parts (a list of names): the page translator only
+// knows whole texts, so these pick the language themselves.
+function uiText(cs,en){return document.documentElement.lang==='en'?en:cs;}
+// Which services this account has connected (from /app/api/me, refreshed with
+// the connection cards). Until it is known everything counts as connected, so
+// nothing flickers away for existing users.
+let connectedServices=null;
+function serviceConnected(id){return !connectedServices||connectedServices.has(id);}
+function setConnectedServices(ids){connectedServices=new Set(ids);}
+function optionsHtml(options,value,empty='Vyber'){return '<option value="">'+esc(empty)+'</option>'+options.map(([v,t])=>'<option value="'+esc(v)+'"'+(String(value??'')===v?' selected':'')+'>'+esc(t)+'</option>').join('');}
+// One service: what it brings, its state and the button that connects it.
+// back is where the provider's page returns: the wizard or Settings.
+function serviceCardHtml(p,back,{cls='service-card',more=''}={}){
+  const google=p.id==='google',connect=p.connectUrl?p.connectUrl+(p.connectUrl.includes('?')?'&':'?')+'return='+back:null;
+  const brings=google?'Spánek včetně fází, kroky, tep, HRV, váha a jídlo z aplikace Google Health (Fitbit, Pixel Watch, iPhone přes import z Apple Health).':'Tréninky z Garminu, Wahoo, COROS, Polaru, Suunta a dalších, plánované tréninky, kondice, únava a forma. Wellness i z Apple Health.';
+  const missing=(p.missingPermissions||[]).map(k=>GOOGLE_PERMISSION_LABELS[k]||k);
+  let action='',warning='';
+  if(p.connected){
+    if(missing.length){warning='<p class="small service-warning"><span>Google nepovolil:</span> '+missing.map(m=>'<span>'+esc(m)+'</span>').join(', ')+'. <span>Tahle data chybí, dokud je nepovolíš.</span></p>';if(connect)action='<a class="btn" href="'+esc(connect)+'">Povolit chybějící</a>';}
+  }else if(google){
+    action=connect?'<a class="btn primary" href="'+esc(connect)+'">Připojit Google Health</a>':'<p class="small">Připojení Google Health není na serveru nastavené.</p>';
+  }else if(connect){
+    action='<a class="btn primary" href="'+esc(connect)+'">Připojit Intervals.icu</a>';
+  }else{
+    action='<button class="btn primary" type="button" data-intervals-key>Připojit Intervals.icu</button>'+intervalsKeyFormHtml(p);
+  }
+  const buttons=action+more;
+  return '<article class="'+cls+'" data-provider="'+esc(p.id)+'"><div class="service-head"><h3>'+esc(p.name)+'</h3>'+(p.connected?'<span class="pill good">Připojeno</span>':'<span class="pill">Nepřipojeno</span>')+'</div><p class="small">'+esc(brings)+'</p>'+warning+(buttons?'<div class="service-action">'+buttons+'</div>':'')+'</article>';
+}
+// Connecting Intervals.icu with a personal API key, step by step.
+function intervalsKeyFormHtml(p){return '<form class="intervals-key-form" hidden><ol class="small key-steps"><li>Otevři v Intervals.icu <a href="'+esc(p.keyUrl||'https://intervals.icu/settings')+'" target="_blank" rel="noopener noreferrer">Settings</a> a sjeď dolů na Developer Settings.</li><li>Zkopíruj API Key (Athlete ID nepotřebuješ).</li><li>Vlož ho sem. Ověříme ho u Intervals a uložíme zašifrovaný.</li></ol><div class="select-row"><input type="password" autocomplete="off" required placeholder="API klíč Intervals.icu" aria-label="API klíč Intervals.icu" class="food-input"><button class="btn primary" type="submit">Ověřit a připojit</button></div><div class="small" aria-live="polite" data-key-result></div></form>';}
+// The API key form inside a service card; onConnected runs after Intervals accepted the key.
+function wireIntervalsKey(root,onConnected){
+  root.querySelectorAll('[data-intervals-key]').forEach(b=>b.onclick=()=>{const form=b.nextElementSibling;b.hidden=true;form.hidden=false;form.querySelector('input').focus();});
+  root.querySelectorAll('.intervals-key-form').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const input=form.querySelector('input'),button=form.querySelector('button'),out=form.querySelector('[data-key-result]');button.disabled=true;out.textContent='Ověřuji klíč…';
+    try{const r=await jsonFetch('/app/api/connections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'intervals',key:input.value.trim()})});input.value='';out.textContent=r.message;toast(r.message);await onConnected();}
+    catch(error){out.textContent=error.message;}finally{button.disabled=false;}});
+}
+// Back from a provider's page: say what happened and drop it from the address.
+function connectedNotice(){
+  const params=new URLSearchParams(location.search),event=params.get('connected');if(!event)return;
+  params.delete('connected');history.replaceState(null,'',location.pathname+(params.toString()?'?'+params:'')+location.hash);
+  const messages={google:'Google Health je připojené.','google-cancelled':'Připojení Google Health bylo zrušeno.',intervals:'Intervals.icu je připojené.','intervals-cancelled':'Připojení Intervals.icu bylo zrušeno.','intervals-failed':'Intervals.icu se nepodařilo připojit. Zkus to znovu, nebo vlož API klíč.'};
+  if(messages[event])toast(messages[event]);
+}
+connectedNotice();
+// ---- Nastavení: a list of sections, one open at a time ----
+// Each line shows what is set; links elsewhere in the app open the right section
+// (openSettings('connections'), data-open-section, #settings-connections).
+function lineIcon(name){const paths=(typeof window!=='undefined'&&window.LW_ICONS||{})[name];return paths?'<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'+paths+'</svg>':'';}
+function settingsSectionHtml(key,icon,title,summary,body,hidden=false){return '<details class="settings-section" id="settings-'+key+'" name="settings"'+(hidden?' hidden':'')+'><summary><span class="settings-icon">'+lineIcon(icon)+'</span><span class="settings-label"><strong>'+esc(title)+'</strong><small data-settings-summary="'+key+'">'+esc(summary)+'</small></span></summary><div class="settings-body" id="settingsBody-'+key+'">'+body+'</div></details>';}
+function settingsSection(key){return $('settings-'+key)||$('settings');}
+function settingsBody(key){return $('settingsBody-'+key)||$('settings');}
+function setSettingsSummary(key,text){const el=document.querySelector('[data-settings-summary="'+key+'"]');if(el&&text)el.textContent=text;}
+function openSettings(key,focusId){
+  activate('settings');const section=$('settings-'+key);if(!section)return;
+  section.hidden=false;section.open=true;
+  requestAnimationFrame(()=>($(focusId)||section).scrollIntoView({behavior:'smooth',block:'start'}));
+}
+// The profile line: what the calorie target still needs, or that it is complete.
+function renderProfileSummary(){
+  const p={...suggestedProfile(),...Object.fromEntries(Object.entries(savedProfile()).filter(([,v])=>v!==null&&v!==''))};
+  const missing=[['sex','pohlaví','sex'],['age','datum narození','birth date'],['height','výška','height'],['activity','pohyb přes den','daily activity'],['goal','cíl','goal']].filter(([k])=>k==='age'?!(p.birthDate||p.age):!p[k]).map(([,cs,en])=>uiText(cs,en));
+  const sport=p.mainSport?uiText(MAIN_SPORT_OPTIONS.find(([v])=>v===p.mainSport)?.[1]||'',{cycling:'Cycling',running:'Running',triathlon:'Triathlon',strength:'Strength training',general:'General fitness'}[p.mainSport]||''):'';
+  setSettingsSummary('profile',missing.length?uiText('Chybí: ','Missing: ')+missing.join(', '):uiText('Vyplněno','Complete')+(sport?' · '+sport:''));
+}
+{const css=document.createElement('style');css.textContent='.settings-list{display:grid;gap:10px}.settings-section{border:1px solid var(--line);border-radius:18px;background:var(--panel);overflow:hidden}.settings-section>summary{display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer;list-style:none}.settings-section>summary::-webkit-details-marker{display:none}.settings-section>summary::after{content:"";margin-left:auto;flex:none;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .2s}.settings-section[open]>summary::after{transform:rotate(45deg)}.settings-section>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}.settings-icon{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--primary-surface);color:var(--primary-text)}.settings-icon .icon{width:20px;height:20px}.settings-label{display:grid;gap:2px;min-width:0}.settings-label strong{font-size:16px}.settings-label small{color:var(--muted);font-size:13px;overflow-wrap:anywhere}.settings-body{display:grid;gap:12px;padding:0 14px 14px}.settings-body>.card{margin:0}.settings-body .grid2{margin:0}'+
+  '.setup-card{width:min(560px,100%);display:grid;gap:16px}#setupBody{display:grid;gap:12px}#setupBody>*{margin:0}.setup-card h2{margin:0}.setup-progress{display:flex;gap:6px;margin:0;padding:0;list-style:none;flex-wrap:wrap}.setup-progress li{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}.setup-progress li+li::before{content:"";width:16px;height:1px;background:var(--line)}.setup-dot{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);font-size:12px}.setup-progress li.current{color:var(--text);font-weight:600}.setup-progress li.current .setup-dot{background:var(--primary);border-color:var(--primary);color:var(--primary-ink)}.setup-progress li.done .setup-dot{background:var(--primary-surface);border-color:var(--primary-line);color:var(--primary-text)}'+
+  '.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}.btn.danger:hover{background:color-mix(in srgb,var(--bad) 12%,transparent)}'+
+  '.service-list{display:grid;gap:10px}.service-card{border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:8px;background:color-mix(in srgb,var(--text) 3%,var(--panel))}.service-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.service-head h3{margin:0;font-size:16px}.service-card p{margin:0}.service-action{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.service-action .intervals-key-form{flex-basis:100%}.service-action .btn{text-decoration:none}.service-warning{color:var(--warn)}.intervals-key-form{display:grid;gap:8px;width:100%}.intervals-key-form .select-row{display:flex;gap:8px;flex-wrap:wrap}.intervals-key-form .food-input{flex:1;min-width:0}.key-steps{margin:0;padding-left:18px;display:grid;gap:4px}'+
+  '.setup-form label small{display:block;margin-top:4px}.setup-actions{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.setup-actions .btn.primary:only-child{margin-left:auto}.setup-foot{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:10px}.setup-target{padding:14px;border-radius:14px;background:var(--primary-surface)}.setup-target strong{display:block;font-size:28px;letter-spacing:-.03em;margin:2px 0 4px}.setup-target p{margin:0}.setup-services,.setup-next{margin:0;padding-left:0;list-style:none;display:grid;gap:6px}.setup-next{padding-left:18px;list-style:disc}';
+  document.head.append(css);}
+// #settings-connections (back from a provider's page) or #settings-profile opens that section.
+{const m=location.hash.match(/^#settings-(\w+)$/);if(m)queueMicrotask(()=>openSettings(m[1]));}
 async function logout(){forgetAccount();await fetch("/app/logout",{method:"POST",credentials:"same-origin"}).catch(()=>{});location.href="/app";}
 function activate(view){if(!$(view)?.classList.contains('view'))return;try{localStorage.setItem('pfd-active-view',view);}catch{}document.querySelectorAll(".navbtn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===view));const title=document.querySelector('.navbtn[data-view="'+view+'"] span')?.textContent;if(title&&$('topTitle'))$('topTitle').textContent=title;window.scrollTo({top:0,behavior:'instant'});}
 // Open coach proposals (the assistant's action cards read them).
@@ -242,14 +357,17 @@ function renderOverview(){
   $("oMacros").innerHTML='<div class="macro-line"><b class="ink" style="--c:#60a5fa">P</b><span>'+fmt(f.protein_g)+' / '+fmt(m.protein)+' g</span></div><div class="macro-line"><b class="ink" style="--c:#f59e0b">C</b><span>'+fmt(f.carbs_g)+' / '+fmt(m.carbs)+' g</span></div><div class="macro-line"><b class="ink" style="--c:#a78bfa">F</b><span>'+fmt(f.fat_g)+' / '+fmt(m.fat)+' g</span></div>';
   const days=state.week?.days||[];
   const fw=(state.fitness?.wellness||[]).filter(r=>r.id<=selectedHistoryDate),latest=fw[fw.length-1]||{},prev=fw[fw.length-8]||{};
-  $("oFitness").innerHTML=(measured(latest.ctl)?fmt(latest.ctl):"—")+trendArrow(latest.ctl,prev.ctl,false,"");
-  $("oForm").innerHTML=formText(latest.tsb)+trendArrow(latest.tsb,prev.tsb,false,"");
+  // Fitness and form come only from Intervals.icu; without it the cards say so.
+  const ownLoad=serviceConnected('intervals');
+  $("oFitness").innerHTML=ownLoad?(measured(latest.ctl)?fmt(latest.ctl):"—")+trendArrow(latest.ctl,prev.ctl,false,""):"—";
+  $("oForm").innerHTML=ownLoad?formText(latest.tsb)+trendArrow(latest.tsb,prev.tsb,false,""):"—";
   const wr=(d.weight?.records||[]).filter(x=>x.value_numeric!=null&&String(x.sample_time).slice(0,10)<=selectedHistoryDate).sort((a,b)=>String(a.sample_time).localeCompare(String(b.sample_time)));
   const currentW=wr.length?Number(wr[wr.length-1].value_numeric):selectedHistoryDate===pragueToday()?Number(d.weight?.current):NaN;
   const startW=wr[0];
   const weightDelta=Number.isFinite(currentW)&&startW?currentW-num(startW.value_numeric):null;
   const weightTrend=weightDelta==null||Math.abs(weightDelta)<.05?"":'<div class="trend '+(weightDelta<0?"good":"bad")+'">'+(weightDelta>0?"↑ +":"↓ ")+fmt(weightDelta,1)+' kg od počáteční váhy</div>';
-  const targetW=Number(d.nutrition?.targetWeightKg||80),remainingW=Number.isFinite(currentW)?currentW-targetW:null; $("oWeight").innerHTML=Number.isFinite(currentW)?fmt(currentW,1)+" kg"+weightTrend:"—"; $("oWeightMeta").textContent=Number.isFinite(remainingW)?"Aktuálně · cíl "+fmt(targetW,1)+" kg · zbývá "+fmt(Math.max(0,remainingW),1)+" kg":"aktuálně · cíl "+fmt(targetW,1)+" kg";
+  // Without a target weight in the profile there is no goal line.
+  const targetW=Number(d.nutrition?.targetWeightKg)||null,remainingW=targetW&&Number.isFinite(currentW)?currentW-targetW:null; $("oWeight").innerHTML=Number.isFinite(currentW)?fmt(currentW,1)+" kg"+weightTrend:"—"; $("oWeightMeta").textContent=!targetW?"aktuálně":Number.isFinite(remainingW)?"Aktuálně · cíl "+fmt(targetW,1)+" kg · zbývá "+fmt(Math.max(0,remainingW),1)+" kg":"aktuálně · cíl "+fmt(targetW,1)+" kg";
   macroChart("calChart",days);
   renderMealDiary();
 }
@@ -455,7 +573,7 @@ async function generateFocusedGym(){
   state.gymDate=day;button.disabled=true;button.textContent='Generuji…';
   $('gymFocusStatus').textContent='Sestavuji trénink podle zvolených partií a dostupné zátěže…';
   try{
-    const result=await jsonFetch('/app/api/gym/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:gymDay(),focusMuscles:[...selectedGymMuscles],durationMinutes:Number($('gymFocusDuration').value)})});
+    const result=await jsonFetch('/app/api/gym/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:gymDay(),focusMuscles:[...selectedGymMuscles],durationMinutes:Number($('gymFocusDuration').value),userInitiated:true})});
     await loadGym();
     $('gymFocusStatus').textContent=result.rationale||'Cílený plán je připraven.';
     toast('Cílený plán vygenerován');reloadWeek();openTrainingDetail({kind:'gym',date:day,sport:'gym'});
@@ -556,12 +674,13 @@ function renderWorkoutLibrary(result){
 function renderScheduledWorkouts(rows){
   const el=$("scheduledWorkouts"),today=pragueToday();
   el.innerHTML=rows.length?rows.map(w=>{
+    const local=w.intervals_event_id?.startsWith('local-');
     const reviewed=Boolean(w.feedback_id),paired=w.status==='completed'||w.completed_percent!=null,due=w.scheduled_date<=today;
     const done=w.completed_percent!=null?' · dokončeno '+Math.round(num(w.completed_percent))+' %':'';
-    const status=reviewed?'Hodnoceno · RPE '+(w.feedback_rpe!=null?fmt(w.feedback_rpe,1):'—')+done:paired?'Spárováno s aktivitou v Intervals.icu'+done:due?'Čekám na aktivitu z Intervals.icu':'Naplánováno';
+    const status=reviewed?'Hodnoceno · RPE '+(w.feedback_rpe!=null?fmt(w.feedback_rpe,1):'—')+done:paired?(local?'Dokončeno v aplikaci':'Spárováno s aktivitou v Intervals.icu')+done:due?(local?'Potvrď dokončení nebo zapiš skutečnou délku':'Čekám na aktivitu z Intervals.icu'):'Naplánováno';
     const note=reviewed&&(state.coachNotes||[]).find(r=>r.workoutId===w.workout_id&&r.date===w.scheduled_date);
     return '<article class="scheduled-workout" data-id="'+esc(w.workout_id)+'" data-date="'+esc(w.scheduled_date)+'"><div><strong>'+esc(w.name)+'</strong><div class="small">'+esc(longDate(w.scheduled_date))+' · '+esc(capabilityLabel(w.primary_system,w.sport))+' · '+num(w.duration_minutes)+' min · '+status+'</div>'+(note?'<p class="coach-note-inline">💬 '+esc(note.text)+'</p>':'')+'</div>'+
-      (reviewed?'<span class="small">✓ Uloženo</span>':due?'<form class="workout-feedback rpe-form"><label><span class="small">RPE 1–10 <button type="button" class="info-tip" data-info="rpe" aria-label="Vysvětlivka: RPE">i</button></span><input name="rpe" type="number" min="1" max="10" step="1" required></label><label><span class="small">Pocit / poznámka (volitelně)</span><input name="notes" type="text" maxlength="300" placeholder="např. těžké nohy, horko"></label><button class="btn primary" type="submit">Uložit RPE</button></form>':'<span class="small">'+(w.sport==='run'?'Čeká na běh':'Čeká na jízdu')+'</span>')+(!paired&&!reviewed&&w.intervals_event_id?'<button type="button" class="btn" data-delete-event="'+esc(w.intervals_event_id)+'" data-name="'+esc(w.name)+'">Smazat</button>':'')+'</article>';
+      (reviewed?'<span class="small">✓ Uloženo</span>':due?'<form class="workout-feedback rpe-form">'+(local?'<label>Skutečná délka · min<input name="minutes" type="number" min="1" max="1440" required value="'+num(w.duration_minutes)+'"></label><label><input name="manualComplete" type="checkbox" required> Trénink jsem dokončil/a</label>':'')+'<label><span class="small">RPE 1–10 <button type="button" class="info-tip" data-info="rpe" aria-label="Vysvětlivka: RPE">i</button></span><input name="rpe" type="number" min="1" max="10" step="1" required></label><label><span class="small">Pocit / poznámka (volitelně)</span><input name="notes" type="text" maxlength="300" placeholder="např. těžké nohy, horko"></label><button class="btn primary" type="submit">Uložit RPE</button></form>':'<span class="small">'+(w.sport==='run'?'Čeká na běh':'Čeká na jízdu')+'</span>')+(!paired&&!reviewed&&w.intervals_event_id?'<button type="button" class="btn" data-delete-event="'+esc(w.intervals_event_id)+'" data-name="'+esc(w.name)+'">Smazat</button>':'')+'</article>';
   }).join(''):'<div class="small">Zatím není naplánovaný žádný workout.</div>';
 }
 async function loadScheduledWorkouts(){
@@ -614,14 +733,14 @@ async function scheduleLibraryWorkout(id,dateOverride=null,environment=null){
   const replace=state.replaceEvent;
   const pending=showPendingAdd(row||{id,name},date,row?.sport||workoutSport());
   try{const r=await jsonFetch("/app/api/workouts/schedule",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({workoutId:id,date,confirm:true,environment:environment||$("workoutEnvironment")?.value||"outdoor"})});settlePendingAdd(pending,r.status!=='already_scheduled',r.eventId);
-    if(replace&&r.status!=='already_scheduled'){state.replaceEvent=null;deletePlanned(replace.id,replace.name,false);}toast(r.status==='already_scheduled'?'Workout už je na tento den naplánovaný.':r.workout.name+' je na '+longDate(r.date)+' i v Intervals.icu.')}
-  catch(e){settlePendingAdd(pending,false);toast("Zápis do Intervals.icu selhal: "+e.message)}
+    if(replace&&r.status!=='already_scheduled'){state.replaceEvent=null;deletePlanned(replace.id,replace.name,false);}toast(r.status==='already_scheduled'?'Workout už je na tento den naplánovaný.':r.workout.name+' je v plánu na '+longDate(r.date)+(r.sync?.status==='synced'?' a odeslaný do Intervals.icu.':r.sync?.status==='error'?'. Export se nepodařil; trénink zůstává uložený.':'.'))}
+  catch(e){settlePendingAdd(pending,false);toast("Uložení tréninku selhalo: "+e.message)}
 }
 async function saveWorkoutFeedback(form){
   const row=form.closest('.scheduled-workout'),button=form.querySelector('button[type=submit]');
   button.disabled=true;
   try{
-    const body={workoutId:row.dataset.id,scheduledDate:row.dataset.date,rpe:Number(form.elements.rpe.value),notes:form.elements.notes.value};
+    const body={workoutId:row.dataset.id,scheduledDate:row.dataset.date,rpe:Number(form.elements.rpe.value),notes:form.elements.notes.value,manualComplete:form.elements.manualComplete?.checked===true,minutes:form.elements.minutes?Number(form.elements.minutes.value):undefined};
     const r=await jsonFetch('/app/api/workouts/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     toast(r.intervals?.status==='ok'?'RPE je uložené i u aktivity v Intervals.icu.':r.intervals?.status==='error'?'RPE je uložené; zápis do Intervals.icu selhal: '+r.intervals.message:'RPE je uložené.');await loadScheduledWorkouts();if(r.reflection==='pending'){toast('Uloženo. Kouč teď připravuje zpětnou vazbu…');awaitReflection(body.scheduledDate);}
   }catch(error){toast('Hodnocení se neuložilo: '+error.message);button.disabled=false}
@@ -718,6 +837,13 @@ function forgetDashboard(){try{localStorage.removeItem('lw-dashboard-ready');loc
 // device: the profile (the server keeps it) and the open chat go with the last
 // day, so the next person on this browser does not start with them.
 function forgetAccount(){forgetDashboard();try{for(const key of ['fitnessProfile','fitnessProfileSuggested','pfd-assistant-chat'])localStorage.removeItem(key);}catch{}}
+// What this device keeps belongs to the account that saved it. The page says
+// who is signed in (meta lw-account); signing in as someone else on the same
+// browser drops the previous account's last day, profile and chat before
+// anything is shown or saved with them.
+const PAGE_ACCOUNT=document.querySelector('meta[name="lw-account"]')?.content||'';
+function bindDeviceToAccount(){try{if(PAGE_ACCOUNT&&localStorage.getItem('lw-account')!==PAGE_ACCOUNT){forgetAccount();localStorage.setItem('lw-account',PAGE_ACCOUNT);}}catch{}}
+bindDeviceToAccount();
 function renderLoadedData(key){
   const renderers=key==='coaches'?[renderCoachCouncil]:key==='gym'?[renderGym]:key==='nutrition'?[renderNutrition]:key==='athleteState'?[renderAthleteStatus,renderCoachMemories,renderToday]:
     key==='week'?[renderTraining,renderToday]:key==='sleep'?[renderOverview,renderRecovery,renderHealth,renderToday]:key==='fitness'?[renderOverview,renderTraining,renderRecovery,renderHealth,renderToday]:
@@ -742,16 +868,19 @@ async function loadDashboardData(){
     state[key]=key==='athleteState'?result.state:result;loadedAt[key]=Date.now();if(key==='week')loadedWeek=shownWeek;renderLoadedData(key);
   }));
   if(revision!==dashboardLoadRevision)return;
-  const failed=results.filter(r=>r.status==='rejected').length;
+  const failures=jobs.map(([key],i)=>results[i].status==='rejected'?{key,message:results[i].reason?.message||''}:null).filter(Boolean),failed=failures.length;
   if(date===pragueToday())saveDashboardSnapshot();
   loadInbox().catch(()=>{});
   $('topStatus').textContent=failed===0?'Live · '+new Date().toLocaleTimeString('cs-CZ'):failed<jobs.length?'Částečně načteno':'Data nejsou dostupná';
   $('topStatus').className=failed===0?'status-label small':failed<jobs.length?'status-label small status-partial':'status-label small status-error';
-  if(failed)toast('Některá datová služba není dostupná.');
+  // Which part did not load and why, so the message says what to fix.
+  if(failed){for(const f of failures)console.warn('Dashboard part failed',f.key,f.message);const en=document.documentElement.lang==='en';toast((en?'Could not load: ':'Nepodařilo se načíst: ')+failures.map(f=>(LOAD_PART_LABELS[f.key]||[f.key,f.key])[en?1:0]).join(', ')+(failures[0].message?' ('+failures[0].message.slice(0,140)+')':''));}
 }
+// Czech and English names of the parts loadDashboardData reads.
+const LOAD_PART_LABELS={athleteState:['stav','status'],daily:['přehled dne','day overview'],coaches:['doporučení','recommendations'],fitness:['kondice','fitness'],week:['týden','week'],weight:['váha','weight'],activities:['aktivity','activities'],nutrition:['jídlo z Google Health','food from Google Health'],sleep:['spánek','sleep'],gym:['posilovna','gym']};
 document.querySelectorAll(".navbtn").forEach(b=>b.onclick=()=>{activate(b.dataset.view);if(b.dataset.view==="workouts")openWorkouts();});
 // Empty states link to the place where the missing data is set up.
-document.addEventListener('click',e=>{const go=e.target.closest('[data-open-view]');if(go){e.preventDefault();activate(go.dataset.openView);}});
+document.addEventListener('click',e=>{const go=e.target.closest('[data-open-view]');if(go){e.preventDefault();if(go.dataset.openSection)openSettings(go.dataset.openSection);else activate(go.dataset.openView);}});
 $("searchWorkouts").onclick=loadWorkoutLibrary;
 document.querySelectorAll('.sport-switch [data-sport]').forEach(b=>b.onclick=()=>{setWorkoutSport(b.dataset.sport);if(state.workoutSport==='gym')loadGym().catch(e=>toast(e.message));else loadScheduledWorkouts()});
 {let saved='ride';try{saved=localStorage.getItem('pfdWorkoutSport')||'ride'}catch{}setWorkoutSport(saved);}
@@ -871,7 +1000,7 @@ function renderStrengthTrend(){
   metricDetail('detail-strength',selectedStrengthExercise||'Progres cviku',[...days.values()],'kg','#ffc15c');
   $('strengthExercise').onchange=e=>{selectedStrengthExercise=e.target.value;renderStrengthTrend();};
 }
-function renderSourceCoverage(){const w=state.fitness?.wellness||[],latest=w.at(-1);$('sourceCoverage').innerHTML='<div class="label">Dostupnost signálů</div>'+[['Spánek',primarySleepSessions(state.sleep?.sessions).length+' nocí'],['HRV',w.filter(r=>measured(r.hrv)).length+' měření'],['Klidový tep',w.filter(r=>measured(r.restingHR)).length+' měření'],['Wellness z Intervals',latest?.id||'Bez dat']].map(([name,value])=>'<div class="metric-line"><span>'+name+'</span><strong>'+esc(value)+'</strong></div>').join('')+'<button class="btn" id="openSources">Spravovat zdroje dat →</button>';$('openSources').onclick=()=>activate('settings');}
+function renderSourceCoverage(){const w=state.fitness?.wellness||[],latest=w.at(-1);$('sourceCoverage').innerHTML='<div class="label">Dostupnost signálů</div>'+[['Spánek',primarySleepSessions(state.sleep?.sessions).length+' nocí'],['HRV',w.filter(r=>measured(r.hrv)).length+' měření'],['Klidový tep',w.filter(r=>measured(r.restingHR)).length+' měření'],['Wellness z Intervals',latest?.id||'Bez dat']].map(([name,value])=>'<div class="metric-line"><span>'+name+'</span><strong>'+esc(value)+'</strong></div>').join('')+'<button class="btn" id="openSources">Spravovat zdroje dat →</button>';$('openSources').onclick=()=>openSettings('connections');}
 // Apple Health has no web API: its data reaches the app through Intervals.icu
 // or the Google Health app on the iPhone.
 function appleHealthGuideHtml(providers){
@@ -881,7 +1010,7 @@ function appleHealthGuideHtml(providers){
     '<li><strong>Přes Google Health.</strong> Na iPhonu nainstaluj aplikaci Google Health, v profilu otevři Partnerské aplikace (Partner apps) a povol import z Apple Health. Tady pak připoj Google Health. HRV se touto cestou zatím nepřenáší.'+(on('google')?' <span class="pill good">Google Health je připojené</span>':'')+'</li></ol>'+
     '<p class="small">Spánek z Intervals.icu má jen délku a skóre, ne fáze spánku. Když jsou připojené obě služby, má přednost Google Health.</p></details></article>';
 }
-async function loadConnections(){try{const data=await jsonFetch('/app/api/connections');$('connectionCards').innerHTML=data.providers.map(p=>'<article class="card connection-card" data-provider="'+esc(p.id)+'"><div class="detail-heading"><h3>'+esc(p.name)+'</h3><span class="pill '+(p.connected?'good':'')+'">'+(p.connected?'Připojeno':p.configured?'Vyžaduje připojení':'Vyžaduje nastavení')+'</span></div><div class="connection-metrics">'+p.metrics.map(m=>'<span class="pill">'+esc(m)+'</span>').join('')+'</div><p class="small">'+esc(p.note)+'</p>'+(p.id==='google'&&p.connectUrl?'<a class="btn" href="'+esc(p.connectUrl)+'">'+(p.connected?'Obnovit oprávnění':'Připojit '+esc(p.name))+'</a>':'')+(p.id==='google'&&p.connected&&p.extrasUrl?googleExtrasHtml(p):'')+(p.id==='intervals'?'<a class="btn" href="'+esc(p.connectUrl)+'" target="_blank" rel="noopener noreferrer">Otevřít nastavení Intervals</a>':'')+(p.connected?' <button class="btn" type="button" data-disconnect="'+esc(p.id)+'">Odpojit</button>':'')+'</article>').join('')+appleHealthGuideHtml(data.providers);document.querySelectorAll('[data-disconnect]').forEach(b=>b.onclick=async()=>{if(!confirm('Opravdu odpojit '+b.closest('.connection-card').querySelector('h3').textContent+'? Bez obou připojení se data nezobrazí.'))return;try{await jsonFetch('/app/api/connections',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:b.dataset.disconnect})});location.reload();}catch(error){toast(error.message);}});}catch(e){$('connectionCards').innerHTML='<div class="notice">Nastavení nelze načíst: '+esc(e.message)+'</div>';}}
+async function loadConnections(){try{const data=await jsonFetch('/app/api/connections');setConnectedServices(data.providers.filter(p=>p.connected).map(p=>p.id));$('connectionCards').innerHTML=data.providers.map(p=>serviceCardHtml(p,'settings',{cls:'card connection-card service-card',more:(p.id==='google'&&p.connected&&p.extrasUrl?googleExtrasHtml(p):'')+(p.id==='intervals'&&p.connected&&p.via==='key'?'<button class="btn" type="button" data-intervals-key>Vyměnit API klíč</button>'+intervalsKeyFormHtml(p):'')+(p.connected?'<button class="btn" type="button" data-disconnect="'+esc(p.id)+'">Odpojit</button>':'')})).join('')+appleHealthGuideHtml(data.providers);setSettingsSummary('connections',data.providers.map(p=>p.name+': '+(p.connected?uiText('připojeno','connected'):uiText('nepřipojeno','not connected'))).join(' · '));wireIntervalsKey($('connectionCards'),async()=>{await loadConnections();await load();});document.querySelectorAll('[data-disconnect]').forEach(b=>b.onclick=async()=>{const name=b.closest('.connection-card').querySelector('h3').textContent;if(!confirm(uiText('Opravdu odpojit '+name+'? Data z této služby se přestanou načítat.','Disconnect '+name+'? Data from this service will stop loading.')))return;try{await jsonFetch('/app/api/connections',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:b.dataset.disconnect})});location.reload();}catch(error){toast(error.message);}});}catch(e){$('connectionCards').innerHTML='<div class="notice">Nastavení nelze načíst: '+esc(e.message)+'</div>';}}
 function installDetailViews(){
   const style=document.createElement('style');style.textContent='#detail-strength{margin-top:14px}.detail-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.detail-heading h3{margin:4px 0 15px;font-size:18px}.range-tabs{display:flex;gap:3px}.range-tabs .btn{font-size:12px;padding:6px 8px}.range-tabs .selected{background:var(--primary-surface);border-color:var(--primary)}.detail-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:15px 0}.detail-stats span,.detail-stats small{display:block;color:color-mix(in srgb,var(--muted) 93%,var(--bg));font-size:12px}.detail-stats strong{display:block;font-size:26px;letter-spacing:-.04em;margin:4px 0}.detail-chart{width:100%;height:280px;display:block}.chart-readout{min-height:24px;color:color-mix(in srgb,var(--muted) 26%,var(--text));font-size:12px}.sleep-composition{display:flex;height:26px;border-radius:8px;overflow:hidden;margin:18px 0}.stage-details{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.stage-details span,.stage-details strong,.stage-details small{display:block}.stage-details strong{font-size:22px;margin:5px 0}.stage-details small{font-size:12px;color:color-mix(in srgb,var(--muted) 93%,var(--bg))}.stage-details i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.connection-metrics{display:flex;flex-wrap:wrap;gap:6px}.connection-card .btn{display:inline-block;text-decoration:none}.metric-link{cursor:pointer}.metric-link:hover{border-color:var(--primary)}.view-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}@media(max-width:700px){.detail-stats{gap:12px;grid-template-columns:1fr}.detail-stats strong{font-size:24px}.view-detail-grid{grid-template-columns:1fr}.stage-details{grid-template-columns:1fr 1fr}.detail-chart{height:auto}.detail-heading{align-items:flex-start;flex-direction:column}}';document.head.appendChild(style);
   $('recovery').insertAdjacentHTML('beforeend','<div class="section">Podrobnosti a osobní baseline</div><div class="card" id="sleepSummary"></div><div class="card" id="sleepBreakdown" style="margin-top:12px"></div><div class="card" id="detail-sleep" style="margin-top:12px"></div><div class="view-detail-grid"><div class="card" id="detail-hrv"></div><div class="card" id="detail-rhr"></div></div><div class="card" id="detail-weight" style="margin-top:12px"></div><div class="card" id="sourceCoverage" style="margin-top:12px"></div>');
@@ -890,7 +1019,16 @@ function installDetailViews(){
   // Gym statistics live in Trénink; the gym builder is part of Workouty.
   $('gymHistory').closest('.card').insertAdjacentHTML('beforebegin','<div class="card" id="gymInsights" style="margin-bottom:12px"></div>');
   $('gymHistory').closest('.card').insertAdjacentHTML('afterend','<div class="section">Silový progres'+infoTip('strengthTrend','silový progres')+'</div><div class="card"><div class="select-row"><label for="strengthExercise" class="small">Vyber cvik</label><select id="strengthExercise"></select></div><div id="detail-strength"></div></div>');
-  document.querySelector('.content').insertAdjacentHTML('beforeend','<section class="view" id="settings"><div class="hero section-hero"><div><div class="eyebrow">Zdroje dat</div><h1>Nastavení a propojení</h1></div></div><div class="card theme-card"><div><h3>Vzhled</h3><p class="small">Řídí se zařízením, dokud nezvolíš jinak.</p></div><div class="theme-choices" role="group" aria-label="Vzhled"><button class="btn" type="button" data-theme-choice="light">Světlý</button><button class="btn" type="button" data-theme-choice="dark">Tmavý</button></div></div><div class="card theme-card"><div><h3>Jazyk</h3><p class="small">Řídí se jazykem zařízení, dokud nezvolíš jinak.</p></div><div class="theme-choices" role="group" aria-label="Jazyk"><button class="btn" type="button" data-lang-choice="cs" lang="cs" data-no-i18n>Čeština</button><button class="btn" type="button" data-lang-choice="en" lang="en" data-no-i18n>English</button></div></div><div class="grid2" id="connectionCards"><div class="notice">Načítám propojení…</div></div></section>');
+  // Settings as a list of sections that open one at a time (Propojení, Profil
+  // a cíl, Trénink, Vzhled a jazyk, Účet, Uživatelé); each line says what is set.
+  document.querySelector('.content').insertAdjacentHTML('beforeend','<section class="view" id="settings"><div class="hero section-hero"><div><div class="eyebrow">Účet, data a aplikace</div><h1>Nastavení</h1></div></div><div class="settings-list">'+
+    settingsSectionHtml('connections','device','Propojení','Google Health a Intervals.icu','<div class="grid2" id="connectionCards"><div class="notice">Načítám propojení…</div></div>')+
+    settingsSectionHtml('profile','scale','Profil a cíl','Pohlaví, věk, výška, pohyb a cíl','')+
+    settingsSectionHtml('training','bike','Trénink','FTP, zóny a časové možnosti','')+
+    settingsSectionHtml('appearance','moon','Vzhled a jazyk','Světlý nebo tmavý vzhled, čeština nebo angličtina','<div class="card theme-card"><div><h3>Vzhled</h3><p class="small">Řídí se zařízením, dokud nezvolíš jinak.</p></div><div class="theme-choices" role="group" aria-label="Vzhled"><button class="btn" type="button" data-theme-choice="light">Světlý</button><button class="btn" type="button" data-theme-choice="dark">Tmavý</button></div></div><div class="card theme-card"><div><h3>Jazyk</h3><p class="small">Řídí se jazykem zařízení, dokud nezvolíš jinak.</p></div><div class="theme-choices" role="group" aria-label="Jazyk"><button class="btn" type="button" data-lang-choice="cs" lang="cs" data-no-i18n>Čeština</button><button class="btn" type="button" data-lang-choice="en" lang="en" data-no-i18n>English</button></div></div>')+
+    settingsSectionHtml('account','sliders','Účet','Přihlášení a průvodce nastavením','<div class="card" id="accountCard"><div class="small">Načítám účet…</div></div>')+
+    settingsSectionHtml('users','chat','Uživatelé','Pozvánky a přístupy','',true)+
+    '</div></section>');
 // Light / dark: the lw-theme cookie (read again before paint in the page head) or the system setting.
 // Without the lw-theme cookie the device decides; picking the device's own theme clears the cookie.
 function systemTheme(){return window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}
@@ -911,7 +1049,6 @@ document.querySelectorAll('[data-lang-choice]').forEach(b=>{const on=b.dataset.l
     document.cookie=choice===document.documentElement.dataset.deviceLang?'lw-lang=; path=/; max-age=0; samesite=lax':'lw-lang='+choice+'; path=/; max-age=31536000; samesite=lax';location.reload();};});
 if(window.matchMedia)matchMedia('(prefers-color-scheme: light)').addEventListener?.('change',syncThemeUi);
 syncThemeUi();
-  $('connectionCards').insertAdjacentHTML('beforebegin','<div class="card" id="accountCard" style="margin-bottom:12px"><div class="small">Načítám účet…</div></div>');
   // Keep the summary first, metric details next, and raw history last.
   const recovery=$('recovery'),history=recovery.querySelector('.recovery-history');
   recovery.querySelectorAll('.section').forEach(el=>{if(el.textContent==='Podrobnosti a osobní baseline')el.remove();});
@@ -927,7 +1064,6 @@ syncThemeUi();
   document.querySelectorAll('#overview .score-orb span,#recovery .score-orb span').forEach(el=>el.textContent='spánek');
   document.querySelectorAll('.quick-grid .card').forEach((card,i)=>{card.classList.add('metric-link');card.tabIndex=0;card.setAttribute('role','button');const open=()=>{activate(i<2?'recovery':'training');};card.onclick=open;card.onkeydown=e=>{if(e.key==='Enter')open();};});
 }
-const previousConnections=loadConnections;loadConnections=async()=>{await previousConnections();const card=[...document.querySelectorAll('.connection-card')].find(el=>el.querySelector('h3')?.textContent==='Intervals.icu');if(!card)return;card.insertAdjacentHTML('beforeend','<form id="intervalsConnect" style="margin-top:15px"><label class="small" for="intervalsKey">Připojit nebo aktualizovat API klíč</label><div class="select-row" style="margin-top:6px"><input id="intervalsKey" type="password" autocomplete="off" placeholder="Osobní API klíč" required style="background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;max-width:100%;min-width:0"><button class="btn primary" type="submit">Ověřit a připojit</button></div><div class="small" id="intervalsResult" aria-live="polite"></div></form>');$('intervalsConnect').onsubmit=async e=>{e.preventDefault();const input=$('intervalsKey'),b=e.currentTarget.querySelector('button');b.disabled=true;try{const result=await jsonFetch('/app/api/connections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'intervals',key:input.value.trim()})});input.value='';$('intervalsResult').textContent=result.message;toast(result.message);await loadConnections();await load();}catch(error){$('intervalsResult').textContent=error.message;}finally{b.disabled=false;}};};
 const previousLoad=load;load=async()=>{await previousLoad();renderDetails();};
 const previousRenderGym=renderGym;renderGym=()=>{previousRenderGym();renderGymInsights();renderStrengthTrend();};
 let foodCandidates=[],foodSelected=null,foodLibraryPromises={};
@@ -1246,7 +1382,7 @@ function recoverySignals(rows,last,today){
 }
 function renderTrainingClarity(){
   const days=state.week?.days||[],rows=days.map(d=>{const s=daywideStrain(d.date);return {label:dateLabel(d.date),values:[s?.score??null],title:longDate(d.date)+(s?.score!=null?' · celodenní zátěž '+fmt(s.score,1):s?' · '+s.activeCalories+' kcal aktivní energie, čekám na 7 dní baseline':' · celodenní aktivní energie není dostupná')};});
-  const chart=$('loadChart'),card=chart.parentElement;card.querySelector('h3').innerHTML='Celodenní zátěž · vybraný týden'+infoTip('allDayLoad','celodenní zátěž');chart.outerHTML='<div id="loadChart">'+(rows.some(r=>r.values[0]!=null)?experienceBars(rows,{max:21,height:290,colors:['#a99bff']}):'<div class="empty-state">Za tento týden chybí celodenní aktivní energie. Zátěž se spočítá z Google Health, jakmile bude připojený a bude mít aspoň 7 dní historie. <button type="button" class="link-btn" data-open-view="settings">Zkontrolovat propojení</button></div>')+'</div>';
+  const chart=$('loadChart'),card=chart.parentElement;card.querySelector('h3').innerHTML='Celodenní zátěž · vybraný týden'+infoTip('allDayLoad','celodenní zátěž');chart.outerHTML='<div id="loadChart">'+(rows.some(r=>r.values[0]!=null)?experienceBars(rows,{max:21,height:290,colors:['#a99bff']}):'<div class="empty-state">Za tento týden chybí celodenní aktivní energie. Zátěž se spočítá z Google Health, jakmile bude připojený a bude mít aspoň 7 dní historie. <button type="button" class="link-btn" data-open-view="settings" data-open-section="connections">Zkontrolovat propojení</button></div>')+'</div>';
   const selected=days.find(d=>d.date===selectedHistoryDate)||days.find(d=>d.date===pragueToday())||days[0],activities=(selected?.daily?.training?.completed||[]).filter(a=>!isNutritionItem(a));
   $('trainingActivityTable').innerHTML='<div class="notice">Vybraný den: <strong>'+esc(selected?longDate(selected.date):'—')+'</strong></div>'+(activities.length?'<div class="scroll"><table><thead><tr><th>Aktivita</th><th>Délka</th><th>Stav</th></tr></thead><tbody>'+activities.map(a=>'<tr><td>'+esc(a.name||'Aktivita')+'</td><td>'+hm(num(a.durationHours)*60)+'</td><td><span class="pill good">Dokončeno</span></td></tr>').join('')+'</tbody></table></div>':'<p class="small">Zatím žádná dokončená aktivita.</p>');
 }
@@ -1257,13 +1393,19 @@ function renderRequestedExperience(done,latest,vo2,daily){
   $('healthspan').querySelector('.healthspan-title').textContent='Kondice a dlouhodobý trend';
   note.innerHTML='<strong>VO₂ max · '+(measured(vo2)?fmt(vo2,1)+' ml/kg/min':'bez měření')+'</strong><p>'+(vo2Reading?esc(vo2Reading.source)+' · '+esc(vo2Reading.date)+'. ':'')+'Intervals.icu využívám pro jízdy a tréninkovou zátěž; samotné Wahoo aktivity nejsou přímé měření VO₂ max. Kondiční věk z jediné hodnoty nevyvozuji.</p>';
 }
+// Why the target is not exactly profile minus goal: the safety floor, or the weight trend.
+function calorieTargetNotes(n){const b=n?.calorieBreakdown||{},notes=[];
+  if(b.floorApplied)notes.push('Cíl drží bezpečné minimum '+Math.round(b.minTarget)+' kcal, takže hubnutí půjde pomaleji než zvolené tempo.');
+  if(b.trendAdjustment)notes.push(b.trendAdjustment<0?'Podle vývoje váhy ubírám '+Math.abs(b.trendAdjustment)+' kcal denně.':'Podle vývoje váhy přidávám '+b.trendAdjustment+' kcal denně.');
+  return notes.map(t=>'<p class="small calorie-note">'+esc(t)+'</p>').join('');}
 function renderFuelingBreakdown(daily){
   const profile=appProfile(),done=(daily.training?.completed||[]).filter(a=>!isNutritionItem(a));
   const weight=Number(daily.weight?.current??daily.nutrition?.currentWeight),bmr=weight>0&&profile.age&&profile.height&&profile.sex?10*weight+6.25*Number(profile.height)-5*Number(profile.age)+(profile.sex==='male'?5:-161):null;
   const today=googleWellness().find(r=>r.id===selectedHistoryDate)||{},active=measured(today.activeCalories)?Number(today.activeCalories):null,steps=measured(today.steps)?fmt(today.steps):'—';
   const budget=daily.nutrition?.energyBudget;
   if(budget)$('nutritionBalance').insertAdjacentHTML('beforeend','<p class="small">'+(budget.basis==='profile'?'Cíl podle profilu':'Průběžný cíl podle naměřeného výdeje, během dne se mění')+(budget.deficit>0?' · deficit '+fmt(budget.deficit)+' kcal':'')+'.</p>');
-  $('nutritionBalance').insertAdjacentHTML('beforeend','<div class="experience-stats"><div><span>Dnešní cíl</span><strong>'+fmt(daily.nutrition?.calorieTarget)+' kcal</strong></div><div><span title="Výpočet Mifflin–St Jeor z hmotnosti, věku, výšky a referenčního pohlaví">Bazální metabolismus</span>'+(bmr?'<strong>'+fmt(bmr)+' kcal</strong>':'<strong class="is-empty"><button type="button" class="link-btn" data-open-view="settings">Doplň profil v Nastavení</button></strong>')+'</div><div><span>Aktivní výdej · celý den</span>'+(active==null?'<strong class="is-empty">Čeká na data z Google Health</strong>':'<strong>'+fmt(active)+' kcal</strong>')+'</div><div><span>Kroky dnes</span>'+(steps==='—'?'<strong class="is-empty">Bez měření</strong>':'<strong>'+steps+'</strong>')+'</div></div><p class="small">'+done.map(a=>esc(a.name)+esc(activityEnergyLabel(a)||' · výdej chybí')).join(' · ')+'</p>'+(active==null?'<p class="small">Dnešní energie z Googlu zatím chybí, cíl vychází z tréninkového plánu.</p>':''));
+  $('nutritionBalance').insertAdjacentHTML('beforeend',calorieTargetNotes(daily.nutrition));
+  $('nutritionBalance').insertAdjacentHTML('beforeend','<div class="experience-stats"><div><span>Dnešní cíl</span><strong>'+fmt(daily.nutrition?.calorieTarget)+' kcal</strong></div><div><span title="Výpočet Mifflin–St Jeor z hmotnosti, věku, výšky a referenčního pohlaví">Bazální metabolismus</span>'+(bmr?'<strong>'+fmt(bmr)+' kcal</strong>':'<strong class="is-empty"><button type="button" class="link-btn" data-open-view="settings" data-open-section="profile">Doplň profil v Nastavení</button></strong>')+'</div><div><span>Aktivní výdej · celý den</span>'+(active==null?'<strong class="is-empty">'+(serviceConnected('google')?'Čeká na data z Google Health':'Jen s Google Health')+'</strong>':'<strong>'+fmt(active)+' kcal</strong>')+'</div><div><span>Kroky dnes</span>'+(steps==='—'?'<strong class="is-empty">Bez měření</strong>':'<strong>'+steps+'</strong>')+'</div></div><p class="small">'+done.map(a=>esc(a.name)+esc(activityEnergyLabel(a)||' · výdej chybí')).join(' · ')+'</p>'+(active==null?'<p class="small">Dnešní energie z Googlu zatím chybí, cíl vychází z tréninkového plánu.</p>':''));
 }
 function installRequestedExperience(){
   $('foodProductName').required=false;
@@ -1279,7 +1421,7 @@ function installRequestedExperience(){
   $('ingredientAdd').onclick=()=>{syncIngredient();editingIngredient=-1;$('foodEditor').hidden=true;foodSelected=null;$('foodQuery').value='';$('foodBarcode').value='';$('foodQuery').focus();foodMessage('Přidej další surovinu. Celý seznam zapíšeš najednou.');};
   $('basketClear').onclick=()=>{ingredients=[];editingIngredient=-1;foodSelected=null;$('foodEditor').hidden=true;drawBasket();};
   $('basketSave').onclick=async()=>{const button=$('basketSave');button.disabled=true;try{if(!ingredients.length)return;const totals=ingredients.reduce((s,a)=>{for(const k of ['calories','protein_g','carbs_g','fat_g'])s[k]+=num(a[k]);return s;},{calories:0,protein_g:0,carbs_g:0,fat_g:0}),meal=$('foodMeal').selectedOptions[0].textContent,name=$('basketName').value.trim()||meal;await jsonFetch('/app/api/food/log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:{name,calories_100g:totals.calories,protein_100g:totals.protein_g,carbs_100g:totals.carbs_g,fat_100g:totals.fat_g,nutrition_basis:'portion',source:'composed'},quantity:1,unit:'portion',date:$('foodDate').value,mealType:$('foodMeal').value,ingredients:ingredients.map(a=>({name:a.name,amount:a.amount,unit:a.unit}))})});for(const a of ingredients)if(a.product)await rememberAiFood(a.product);ingredients=[];drawBasket();foodMessage('Celé jídlo je uložené jednou, včetně seznamu surovin.');await load();await loadEnteredFood();}catch(e){foodMessage(e.message);}finally{button.disabled=false;}};
-  $('settings').insertAdjacentHTML('beforeend','<article class="card" style="margin-top:16px"><h3>Profil pro vlastní výpočty'+infoTip('profile','profil')+'</h3><p class="small">Vyplň pohlaví, datum narození a cíl. Ostatní doplníme automaticky.</p><form id="fitnessProfileForm" class="food-editor-grid"><label>Referenční pohlaví<select class="food-input" id="profileSex"><option value="">Vyber</option><option value="male">Muž</option><option value="female">Žena</option></select></label><label>Věk<input id="profileAge" class="food-input" type="number" min="18" max="100"></label><label>Výška · cm<input id="profileHeight" class="food-input" type="number" min="100" max="230"></label><label>Maximální tep · bpm<input id="profileHrmax" class="food-input" type="number" min="100" max="230"></label><button class="btn primary">Uložit profil</button></form></article>');
+  settingsBody('profile').insertAdjacentHTML('beforeend','<article class="card"><h3>Profil pro vlastní výpočty'+infoTip('profile','profil')+'</h3><p class="small">Vyplň pohlaví, datum narození a cíl. Ostatní doplníme automaticky.</p><form id="fitnessProfileForm" class="food-editor-grid"><label>Referenční pohlaví<select class="food-input" id="profileSex"><option value="">Vyber</option><option value="male">Muž</option><option value="female">Žena</option></select></label><label>Věk<input id="profileAge" class="food-input" type="number" min="18" max="100"></label><label>Výška · cm<input id="profileHeight" class="food-input" type="number" min="100" max="230"></label><label>Maximální tep · bpm<input id="profileHrmax" class="food-input" type="number" min="100" max="230"></label><button class="btn primary">Uložit profil</button></form></article>');
   const profile=savedProfile();for(const [id,key]of [['profileSex','sex'],['profileAge','age'],['profileHeight','height'],['profileHrmax','hrmax']])$(id).value=profile[key]||'';
   $('fitnessProfileForm').onsubmit=e=>{e.preventDefault();localStorage.setItem('fitnessProfile',JSON.stringify({...savedProfile(),sex:$('profileSex').value,age:$('profileAge').value,height:$('profileHeight').value,hrmax:$('profileHrmax').value}));renderExperience();toast('Profil uložen.');};
   $('foodEntry').insertAdjacentHTML('beforeend','<div style="margin-top:18px"><h3>Z kuchařky podle stránky</h3><div class="food-controls"><input id="recipeRequest" class="food-input" placeholder="Měl jsem 1 porci ze stránky 70"><button class="btn" id="recipeLookup" type="button">Načíst recept</button></div><p class="small">Také k fotce můžeš zadat „strana 65“. Načtení receptu nahradí návrh z fotografie; nezapisuje ho podruhé.</p></div>');
@@ -1357,7 +1499,7 @@ async function openActivityProfile(activity){
   const id=activity.payload?.id||activity.externalId||activity.sourceId||String(activity.id||'').replace(/^intervals[:_-]/,'');
   try{const result=await jsonFetch('/app/api/activity-detail?id='+encodeURIComponent(id));state.lastActivityDetail={id,result};const a=result.activity||{},streams=result.streams||[],np=a.icu_normalized_watts??a.icu_weighted_average_watts;
     el.innerHTML='<div class="experience-heading"><h3>'+esc(a.name||activity.name)+'</h3><span class="pill">Intervals.icu · naměřené hodnoty</span></div><div class="experience-stats">'+[['Vzdálenost',measured(a.distance)?fmt(a.distance/1000,1)+' km':'—'],['Převýšení',measured(a.total_elevation_gain)?fmt(a.total_elevation_gain)+' m':'—'],['Normalizovaný výkon',measured(np)?fmt(np)+' W':'—']].map(([label,value])=>'<div><span>'+label+'</span><strong>'+value+'</strong></div>').join('')+'</div>'+activityRouteSvg(streams.find(s=>s.type==='latlng'))+'<div class="experience-grid"><div>'+activityStreamChart(streams.find(s=>s.type==='watts'),'#83e9c3','Výkon','W')+'</div><div>'+activityStreamChart(streams.find(s=>s.type==='heartrate'),'#ff9c97','Tep','bpm')+'</div></div><p class="small">Průběh je zmenšený na nejvýše přibližně 1200 bodů na signál. Nejde o automatické hodnocení jednotlivých intervalů.</p>';
-  }catch(error){el.innerHTML='<h3>'+esc(activity.name||'Detail aktivity')+'</h3><div class="data-gap">'+esc(error.message)+'</div><button class="btn" id="profileSettings" style="margin-top:12px">Přejít do Nastavení</button>';$('profileSettings').onclick=()=>activate('settings');}
+  }catch(error){el.innerHTML='<h3>'+esc(activity.name||'Detail aktivity')+'</h3><div class="data-gap">'+esc(error.message)+'</div><button class="btn" id="profileSettings" style="margin-top:12px">Přejít do Nastavení</button>';$('profileSettings').onclick=()=>openSettings('profile');}
 }
 function installFoodEntry(){
   const style=document.createElement('style');style.textContent='.food-controls{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.food-controls input{flex:1;min-width:150px}.food-input{background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;max-width:100%;font:inherit}.food-actions{display:flex;gap:8px;flex-wrap:wrap}.food-result{display:block;text-align:left;width:100%;background:color-mix(in srgb,var(--cyan) 9%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--muted) 27%,var(--bg));border-radius:10px;padding:12px;margin:7px 0}.food-result strong,.food-result span{display:block}.food-editor-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}.food-editor-grid label{display:grid;gap:5px;color:color-mix(in srgb,var(--muted) 93%,var(--text));font-size:12px}.food-editor-grid input,.food-editor-grid select{width:100%;min-width:0}.food-upload{display:inline-block;cursor:pointer}.food-ocr-text{width:100%;min-height:130px;resize:vertical}.food-result:hover{border-color:var(--primary)}@media(max-width:700px){.food-editor-grid{grid-template-columns:1fr 1fr}.food-actions .btn{flex:1}.food-controls{flex-direction:column}}';document.head.appendChild(style);
@@ -1389,7 +1531,7 @@ function installDataCorrections(){
   $('foodBasis').addEventListener('change',()=>{if($('foodBasis').value==='portion'){$('foodUnit').value='portion';$('foodGrams').value='1';}else if($('foodUnit').value==='portion'){$('foodUnit').value=$('foodBasis').value;$('foodGrams').value='100';}updateFoodPreview();$('foodGrams').dispatchEvent(new Event('input',{bubbles:true}));});
   const saveBasket=$('basketSave').onclick;$('basketSave').onclick=async()=>{try{if(!$('foodEditor').hidden){const p=foodEditorProduct();if(['calories_100g','protein_100g','carbs_100g','fat_100g'].some(k=>p[k]==null||!Number.isFinite(p[k])||p[k]<0))throw new Error('Doplň energii a všechna makra. Nula je platná hodnota.');foodIntake(p,$('foodGrams').value,$('foodUnit').value,{pieceAmount:$('foodPieceAmount').value,pieceUnit:$('foodPieceUnit').value,density:$('foodDensity').value});$('foodGrams').dispatchEvent(new Event('input',{bubbles:true}));if(!$('basketName').value.trim()&&$('basketRows').querySelectorAll('[data-edit-ingredient]').length===1)$('basketName').value=p.name;}await saveBasket();}catch(e){foodMessage(e.message);}};
   const css=document.createElement('style');css.textContent='#calChart,#nutritionChart{width:100%;display:block}.experience-stats{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.macro-line{gap:4px 12px;flex-wrap:wrap}.pulse-card{min-width:0}.pulse-card h3{font-size:19px}.pulse-card p{overflow-wrap:anywhere}.stack-chart{max-width:none!important}';document.head.append(css);
-  $('profileHrmax').parentElement.insertAdjacentHTML('afterend','<label>Klidový tep · bpm<input id="profileRhr" class="food-input" type="number" min="25" max="120" placeholder="Automaticky z Googlu"></label>');$('profileRhr').value=savedProfile().rhr||'';
+  $('profileHrmax').parentElement.insertAdjacentHTML('afterend','<label>Klidový tep · bpm<input id="profileRhr" class="food-input" type="number" min="25" max="120" placeholder="Automaticky z dat"></label>');$('profileRhr').value=savedProfile().rhr||'';
   const saveProfile=$('fitnessProfileForm').onsubmit;$('fitnessProfileForm').onsubmit=async e=>{saveProfile(e);localStorage.setItem('fitnessProfile',JSON.stringify({...savedProfile(),rhr:$('profileRhr').value}));try{await jsonFetch('/app/api/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(savedProfile())});await load();toast('Profil uložen a výpočty aktualizované.');}catch(error){toast('Profil je pouze v prohlížeči: '+error.message);}renderExperience();correctDataPresentation();};
   $('foodSaveButton').insertAdjacentHTML('beforebegin','<button type="button" class="btn" id="savePersonalFood">Uložit potravinu pro příště</button>');$('savePersonalFood').onclick=async()=>{try{await jsonFetch('/app/api/food/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(foodEditorProduct())});foodMessage('Potravina je uložená v tvojí databázi. Příště ji najdeš podle názvu i podobného zadání.');}catch(e){foodMessage(e.message);}};
   const selectWithSource=selectFoodProduct;selectFoodProduct=function(p){selectWithSource(p);if(p.source==='personal')$('foodSource').textContent='Moje databáze · tvoje uložené nutriční hodnoty';};
@@ -1566,28 +1708,28 @@ function wireRunProfile(d){
   wirePaceBoundsEditor(d.resolved?.runThresholdPace);
 }
 // Account, onboarding and (for admins) user management.
-// Deleting the account and every piece of data in the app (Google Health data policy, GDPR).
-// The owner's account holds the app itself, so it cannot be deleted here.
-const accountFieldStyle='background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;min-width:0;flex:1 1 220px';
-function accountDeletionHtml(user){if(!user)return '';if(user.isOwner)return '<p class="small account-delete-note">Ostatní uživatelé si tady mohou smazat účet i se všemi daty. Účet správce smazat nejde.</p>';
-  return '<details class="account-delete"><summary>Smazat účet</summary><p class="small">Smaže tvůj účet a všechna data v Loadwise: profil, jídla, tréninky, spánek a zdravotní data, připojení služeb i historii asistenta. Loadwise zároveň ztratí přístup k tvému Google účtu. Co už je v Intervals.icu nebo Google Health, tam zůstane. Smazání nejde vrátit.</p><form id="deleteAccountForm" class="select-row"><input id="deleteAccountEmail" type="email" required autocomplete="off" placeholder="Pro potvrzení napiš svůj e-mail" aria-label="Pro potvrzení napiš svůj e-mail" style="'+accountFieldStyle+'"><button class="btn danger" type="submit">Smazat natrvalo</button></form></details>';}
-// The English dictionary for text the page cannot translate itself, like a confirm() question.
-const say=text=>(window.LW_EN&&window.LW_EN[text])||text;
-// A plain fetch: jsonFetch would queue refreshes that then run without a session. The id loginGate keeps
-// the sign-in screen from covering the confirmation when something else gets a 401 afterwards.
-function installAccountDeletion(user){const form=$('deleteAccountForm');if(!form||!user)return;form.onsubmit=async e=>{e.preventDefault();const typed=$('deleteAccountEmail').value.trim();if(typed.toLowerCase()!==String(user.email||'').toLowerCase()){toast('Napiš e-mail, kterým se přihlašuješ.');return;}if(!confirm(say('Opravdu smazat účet a všechna data? Tohle nejde vrátit.')))return;const b=form.querySelector('button');b.disabled=true;try{const r=await fetch('/app/api/me',{method:'DELETE',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Interface-Language':document.documentElement.lang||'cs'},body:JSON.stringify({email:typed})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||'HTTP '+r.status);try{localStorage.clear();}catch{}document.body.insertAdjacentHTML('beforeend','<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="accountDeletedTitle" style="'+gateStyle+'"><div class="card login-card"><h2 id="accountDeletedTitle">Účet je smazaný</h2><p class="small">Smazali jsme tvůj účet a všechna data v Loadwise.</p><a class="btn primary" href="/">Na úvodní stránku</a></div></div>');}catch(error){toast(error.message);b.disabled=false;}};}
 // Sign in with Apple, once it is set up: Apple can hide the real e-mail, so the Apple ID is linked here.
 function appleSignInHtml(apple){if(!apple)return '';return '<div class="metric-line apple-sign-in"><span>Přihlášení přes Apple<br><small>'+(apple.linked?'<span>Připojeno</span>'+(apple.email?' · '+esc(apple.email):''):'Nepřipojeno')+'</small></span>'+(apple.linked?'<button class="btn" type="button" id="appleUnlink">Odpojit</button>':'<a class="btn" href="/auth/apple?link=1">Připojit Apple</a>')+'</div>';}
 function installAppleSignIn(){const b=$('appleUnlink');if(!b)return;b.onclick=async()=>{b.disabled=true;try{const r=await fetch('/app/api/me/apple',{method:'DELETE',credentials:'same-origin'});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).message||'HTTP '+r.status);b.closest('.apple-sign-in').outerHTML=appleSignInHtml({linked:false});}catch(error){toast(error.message);b.disabled=false;}};}
-async function loadAccount(){const me=await jsonFetch('/app/api/me');const card=$('accountCard');if(card){card.innerHTML='<div class="detail-heading"><h3>Účet</h3><button class="btn" type="button" id="logoutBtn">Odhlásit</button></div><p class="small" style="margin:0">Přihlášen jako <strong>'+esc(me.user?.email||'')+'</strong>'+(me.user?.isAdmin?' · správce':'')+'</p>'+appleSignInHtml(me.apple)+accountDeletionHtml(me.user);$('logoutBtn').onclick=logout;installAppleSignIn();installAccountDeletion(me.user);}if(me.missingProviders?.length&&!onboardingSkipped())showOnboarding(me.missingProviders);if(!$('trainingProfileCard')&&$('settings')){$('connectionCards').insertAdjacentHTML('afterend','<article class="card" id="trainingProfileCard" style="margin-top:12px"><h3>FTP a zóny</h3><div class="small">Načítám…</div></article>');loadTrainingProfile();}if(me.user?.isAdmin)installAdmin();return me;}
-function installAdmin(){if($('adminCard'))return;$('settings').insertAdjacentHTML('beforeend','<article class="card" id="adminCard" style="margin-top:12px"><h3>Uživatelé</h3><p class="small">Přihlásit se přes Google mohou jen pozvaní. Pozvi e-mail Google účtu a pošli uživateli odkaz na aplikaci. Připojení Google Health a Intervals si každý nastaví sám.</p><form id="inviteForm" class="select-row"><input id="inviteEmail" type="email" required placeholder="email@gmail.com" aria-label="E-mail pozvaného uživatele" style="background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;min-width:0;flex:1"><button class="btn primary" type="submit">Pozvat</button></form><p class="small">Dokud Google aplikaci neověří, připojí Google Health nejvýš 100 lidí. Když je projekt v Google Cloud v testovacím režimu, přidej každého i mezi Test users a souhlas mu po 7 dnech vyprší. Po zveřejnění projektu stačí, když uživatel potvrdí varování, že aplikace není ověřená.</p><div id="adminUsers" class="small">Načítám…</div></article>');$('inviteForm').onsubmit=async e=>{e.preventDefault();try{const r=await jsonFetch('/app/api/admin/invites',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('inviteEmail').value})});$('inviteEmail').value='';toast(r.message);loadAdmin();}catch(error){toast(error.message);}};loadAdmin();}
+// Your data: a download of everything, and deleting the account with it.
+function accountDataHtml(user){return '<h3 style="margin-top:16px">Tvoje data</h3><p class="small">Stáhni si všechno, co o tobě aplikace ukládá (soubor JSON). Smazání účtu odstraní profil, záznamy, tréninky i propojení a zruší přístup ke Google Health; nejde vrátit.</p><div class="select-row"><a class="btn" href="/app/api/account/export" download>Stáhnout moje data</a>'+(user?.isOwner?'':'<button class="btn danger" type="button" id="deleteAccount">Smazat účet</button>')+'</div>';}
+function confirmDeleteAccount(){
+  openSheet('Smazat účet','<p>Smaže se tvůj účet a všechna data v aplikaci: profil, váha, jídlo, tréninky, chat i propojení. Přístup aplikace ke Google Health se zruší. Data v Intervals.icu a Google Health zůstanou u nich.</p><p class="small">Chceš je mít? Nejdřív si je <a href="/app/api/account/export" download>stáhni</a>.</p><form id="deleteAccountForm" style="display:grid;gap:10px"><label>Pro potvrzení napiš SMAZAT<input class="food-input" id="deleteAccountConfirm" autocomplete="off" required></label><button class="btn danger" type="submit">Smazat účet natrvalo</button><p class="small" id="deleteAccountResult" role="alert"></p></form>');
+  $('deleteAccountForm').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('button');b.disabled=true;
+    try{await jsonFetch('/app/api/account/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:$('deleteAccountConfirm').value})});forgetAccount();try{localStorage.clear();}catch{}location.href='/app?deleted=1';}
+    catch(error){$('deleteAccountResult').textContent=error.message;b.disabled=false;}};
+}
+// Today's AI spending against the daily limit (ai-usage.js); the owner has none.
+function aiUsageHtml(ai){if(!ai)return '';const usd=v=>Number(v||0).toFixed(2);return '<p class="small" id="aiUsage">'+(ai.limitUsd==null?'AI dnes: '+usd(ai.spentUsd)+' USD · bez limitu':ai.limitUsd>0?'AI dnes: '+usd(ai.spentUsd)+' USD z '+usd(ai.limitUsd)+' USD':'AI funkce nejsou pro tento účet zapnuté.')+'</p>';}
+async function loadAccount(){const me=await jsonFetch('/app/api/me');setConnectedServices(['google','intervals'].filter(id=>!(me.missingProviders||[]).includes(id)));const card=$('accountCard');if(card){card.innerHTML='<div class="detail-heading"><h3>Účet</h3><button class="btn" type="button" id="logoutBtn">Odhlásit</button></div><p class="small" style="margin:0">Přihlášen jako <strong>'+esc(me.user?.email||'')+'</strong>'+(me.user?.isAdmin?' · správce':'')+'</p>'+appleSignInHtml(me.apple)+aiUsageHtml(me.ai)+'<p class="small">Průvodce tě znovu provede propojením služeb, profilem a tréninkem.</p><button class="btn" type="button" id="restartSetup">Spustit průvodce nastavením</button>'+accountDataHtml(me.user);$('logoutBtn').onclick=logout;installAppleSignIn();$('restartSetup').onclick=()=>showAccountSetup({edit:true}).catch(error=>toast(error.message));if($('deleteAccount'))$('deleteAccount').onclick=confirmDeleteAccount;setSettingsSummary('account',me.user?.email||'');}accountSetup=me.onboarding;if(me.onboarding?.profile)localStorage.setItem('fitnessProfile',JSON.stringify({...me.onboarding.profile,mainSport:me.onboarding.savedProfile?.mainSport||''}));if(!me.onboarding?.completed)showOnboarding();if(!$('trainingProfileCard')&&$('settings')){settingsBody('training').insertAdjacentHTML('afterbegin','<article class="card" id="trainingProfileCard"><h3>FTP a zóny</h3><div class="small">Načítám…</div></article>');loadTrainingProfile();}if(me.user?.isAdmin)installAdmin();return me;}
+function installAdmin(){if($('adminCard'))return;settingsSection('users').hidden=false;settingsBody('users').insertAdjacentHTML('beforeend','<article class="card" id="adminCard"><h3>Uživatelé</h3><p class="small">Přihlásit se přes Google mohou jen pozvaní. Pozvi e-mail Google účtu a pošli uživateli odkaz na aplikaci. Připojení Google Health a Intervals si každý nastaví sám.</p><form id="inviteForm" class="select-row"><input id="inviteEmail" type="email" required placeholder="email@gmail.com" aria-label="E-mail pozvaného uživatele" style="background:color-mix(in srgb,var(--violet) 3%,var(--bg));color:var(--text);border:1px solid color-mix(in srgb,var(--lilac) 24%,var(--bg));border-radius:9px;padding:10px;min-width:0;flex:1"><button class="btn primary" type="submit">Pozvat</button></form><p class="small">Dokud Google aplikaci neověří, připojí Google Health nejvýš 100 lidí. Když je projekt v Google Cloud v testovacím režimu, přidej každého i mezi Test users a souhlas mu po 7 dnech vyprší. Po zveřejnění projektu stačí, když uživatel potvrdí varování, že aplikace není ověřená.</p><div id="adminUsers" class="small">Načítám…</div></article>');$('inviteForm').onsubmit=async e=>{e.preventDefault();try{const r=await jsonFetch('/app/api/admin/invites',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('inviteEmail').value})});$('inviteEmail').value='';toast(r.message);loadAdmin();}catch(error){toast(error.message);}};loadAdmin();}
 async function loadAdmin(){try{const d=await jsonFetch('/app/api/admin/users');const users=d.users.map(u=>'<div class="metric-line"><span>'+esc(u.email)+(u.role==='admin'?' · správce':'')+(u.disabled?' · zablokovaný':'')+'<br><small>'+(u.last_login_at?'Naposledy '+esc(new Date(u.last_login_at+'Z').toLocaleString('cs-CZ')):'Zatím se nepřihlásil')+'</small></span>'+(u.role==='admin'?'':'<button class="btn" type="button" data-user="'+u.id+'" data-disabled="'+(u.disabled?0:1)+'">'+(u.disabled?'Obnovit přístup':'Zablokovat')+'</button>')+'</div>').join('');const invites=d.invites.map(i=>'<div class="metric-line"><span>'+esc(i.email)+' · pozvánka čeká</span><button class="btn" type="button" data-invite="'+esc(i.email)+'">Zrušit</button></div>').join('');$('adminUsers').innerHTML=users+(invites||'');document.querySelectorAll('[data-user]').forEach(b=>b.onclick=async()=>{try{const r=await jsonFetch('/app/api/admin/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:Number(b.dataset.user),disabled:b.dataset.disabled==='1'})});toast(r.message);loadAdmin();}catch(error){toast(error.message);}});document.querySelectorAll('[data-invite]').forEach(b=>b.onclick=async()=>{try{const r=await jsonFetch('/app/api/admin/invites',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:b.dataset.invite})});toast(r.message);loadAdmin();}catch(error){toast(error.message);}});}catch(e){$('adminUsers').textContent=e.message;}}
 installDataCorrections();installSimpleFoodEditor();installCompactFoodEditor();{// A device that opened the dashboard before asks for the data together with the
-// account check instead of after it; the first visit waits for the check (onboarding).
+// account check instead of after it; the first visit waits for the check (setup).
 let ready=false;try{ready=localStorage.getItem('lw-dashboard-ready')==='1';}catch{}
 // After the rest of this file has run: later parts extend load().
-if(ready)queueMicrotask(()=>{showDashboardSnapshot();load();});
-loadAccount().then(me=>{loadConnections();openRequestedConsent();const open=!me.missingProviders?.length||onboardingSkipped();try{if(open)localStorage.setItem('lw-dashboard-ready','1');else forgetDashboard();}catch{}if(open&&!ready)load();}).catch(()=>{});}
+// Wait for identity before restoring any account's cached dashboard.
+loadAccount().then(me=>{loadConnections();openRequestedConsent();const open=me.onboarding?.completed===true;try{if(open)localStorage.setItem('lw-dashboard-ready','1');else forgetDashboard();}catch{}if(open){if(ready)showDashboardSnapshot();load();pollAccountImport();}}).catch(()=>{});}
 
 // ---- Workouts hub: info tips, week overview with weather, weekly planner ----
 // A small (i) button; the text lives in INFO_TEXTS so screens stay short.
@@ -2838,7 +2980,8 @@ function techniqueHtml(t){
   const video=t.video?'<div class="tech-video"><iframe src="https://www.youtube-nocookie.com/embed/'+esc(t.video.id)+'?rel=0&playsinline=1" title="Video: '+esc(t.exercise)+'" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div><p class="small tech-video-note">'+(t.video.source==='own'?'Tvoje video':'Ukázka techniky'+(t.video.title?' · '+esc(t.video.title):''))+'</p>':(t.ownUrl?'<a class="btn" href="'+esc(t.ownUrl)+'" target="_blank" rel="noopener">▶ Tvoje video</a>':'');
   const meta=[t.muscles.join(', '),t.station].filter(Boolean).join(' · ');
   const feel=(t.feel||[]).length?'<h4>Kde to cítit</h4><ul class="tech-feel">'+t.feel.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'';
-  const body=t.steps.length?(t.setup.length?'<h4>Nastavení</h4>'+list(t.setup):'')+'<h4>Provedení</h4>'+list(t.steps)+feel+(t.mistakes.length?'<h4>Časté chyby</h4>'+list(t.mistakes,'ul'):'')+(t.breathing?'<h4>Dýchání</h4><p>'+esc(t.breathing)+'</p>':'')+(t.source==='ai'?'<p class="small">Tento cvik není v katalogu: popis napsala AI při jeho prvním použití a je uložený. Ber ho jako vodítko.</p>':''):'<p class="small">Popis techniky k tomuto cviku zatím chybí.</p>'+(t.note?'<p>'+esc(t.note)+'</p>':'');
+  const sourceNote=t.source==='library'?'<p class="small">Připravený návod z katalogu. Zobrazení nevolá AI.</p>':'';
+  const body=t.steps.length?(t.setup.length?'<h4>Nastavení</h4>'+list(t.setup):'')+sourceNote+'<h4>Provedení</h4>'+list(t.steps)+feel+(t.mistakes.length?'<h4>Časté chyby</h4>'+list(t.mistakes,'ul'):'')+(t.breathing?'<h4>Dýchání</h4><p>'+esc(t.breathing)+'</p>':'')+(t.source==='ai'?'<p class="small">AI doplnila chybějící techniku pro cvik mimo katalog. Návod je uložený a společný; zobrazení jej znovu negeneruje. Pro vlastní úpravy se zeptej AI trenéra.</p>':''):'<p class="small">Popis techniky k tomuto cviku zatím chybí.</p>'+(t.note?'<p>'+esc(t.note)+'</p>':'');
   return '<div class="technique">'+(meta?'<p class="small tech-meta">'+esc(meta)+'</p>':'')+video+body+
     '<div class="tech-actions"><a class="btn" href="'+esc(t.searchUrl)+'" target="_blank" rel="noopener">Další videa na YouTube ↗</a><button type="button" class="btn" data-tech="ai">✦ Zeptat se AI trenéra</button></div>'+
     '<details class="tech-own"'+(t.ownUrl?' open':'')+'><summary>Vlastní video ke cviku</summary><p class="small">Odkaz z YouTube se přehraje přímo tady, jiný odkaz se otevře v prohlížeči.</p><input id="techOwnUrl" type="url" inputmode="url" placeholder="https://youtu.be/…" value="'+esc(t.ownUrl||'')+'"><div class="tech-own-actions"><button type="button" class="btn primary" data-tech="save">Uložit</button>'+(t.ownUrl?'<button type="button" class="btn" data-tech="remove">Odebrat</button>':'')+'</div></details></div>';
@@ -2931,7 +3074,7 @@ async function generateWeekProposals(items){
       renderWeekHub();queueProposalPush();
     }
     const open=Object.values(state.proposals).filter(proposalWaiting).length;
-    $('plannerStatus').innerHTML='Hotovo · připraveno '+done.ok+(done.failed.length?' · nepovedlo se '+done.failed.length+' <button type="button" class="btn" id="proposeRetry">Zkusit znovu</button>':'')+(open?' <button type="button" class="btn" id="proposeAddAll">Zapsat do Intervals.icu hned ('+open+')</button>':'');
+    $('plannerStatus').innerHTML='Hotovo · připraveno '+done.ok+(done.failed.length?' · nepovedlo se '+done.failed.length+' <button type="button" class="btn" id="proposeRetry">Zkusit znovu</button>':'')+(open?' <button type="button" class="btn" id="proposeAddAll">Uložit do plánu hned ('+open+')</button>':'');
     const all=$('proposeAddAll');if(all)all.onclick=addAllProposals;
     const again=$('proposeRetry');if(again)again.onclick=()=>generateWeekProposals(done.failed);
     renderDeploySteps();
@@ -2974,12 +3117,12 @@ async function pushApprovedProposals(all=false){
   if(statusPausesTraining()){for(const p of Object.values(state.proposals||{}))if(proposalWaiting(p))p.skip=true;renderWeekHub();return renderDeploySteps();}
   const keys=Object.keys(state.proposals||{}).filter(k=>proposalWaiting(state.proposals[k])&&(all||state.proposals[k].pushAt<=Date.now()+250));
   for(const k of keys){const pr=state.proposals[k];pr.deploying=true;renderDeploySteps();
-    try{await deployProposal(k);}catch(error){pr.skip=true;pr.deployError=error.message;toast('Zápis do Intervals.icu selhal: '+error.message);}
+    try{await deployProposal(k);}catch(error){pr.skip=true;pr.deployError=error.message;toast('Uložení tréninku selhalo: '+error.message);}
     finally{pr.deploying=false;}
   }
   renderWeekHub();queueProposalPush();
 }
-async function addAllProposals(){await pushApprovedProposals(true);const live=Object.values(state.proposals||{}).filter(p=>p.scheduled&&!p.existing).length;$('plannerStatus').textContent='✓ '+live+' v Intervals.icu';}
+async function addAllProposals(){await pushApprovedProposals(true);const live=Object.values(state.proposals||{}).filter(p=>p.scheduled&&!p.existing).length;$('plannerStatus').textContent='✓ '+live+' v plánu aplikace';}
 window.addEventListener('pagehide',()=>{if(Object.values(state.proposals||{}).some(proposalWaiting))pushApprovedProposals(true);});
 // Where a plan stands: generated, approved, in Intervals.icu. Shown under the
 // week plan and in the assistant's answer, updated as it goes.
@@ -2991,7 +3134,7 @@ function deployStepsHtml(keys=null){
   return '<ol class="deploy-steps" role="status" aria-live="polite">'+
     (busy?step('active','Generuji',ready+' z '+list.length):step(ready?'done':'fail',ready?'✓ Vygenerováno':'Vygenerováno',ready+' z '+list.length+(failed?' · '+failed+' se nepovedlo':'')))+
     (gymOpen?step('active','Ke schválení',gymOpen+' gym · otevři návrh a potvrď'):step(ready?'done':'',ready?'✓ Schváleno':'Schváleno',ready?'automaticky':''))+
-    (waiting||deploying?step('active','Nasazuji',deploying?'zapisuji do Intervals.icu…':'do Intervals.icu do 15 s · '+waiting):live?step('done','✓ Nasazeno',live+' v Intervals.icu'+(kept?' · '+kept+' nezapsáno':'')):step(kept?'fail':'','Nasazeno',kept?kept+' nezapsáno':''))+
+    (waiting||deploying?step('active','Nasazuji',deploying?'ukládám do aplikace…':'do plánu aplikace do 15 s · '+waiting):live?step('done','✓ Nasazeno',live+' v plánu aplikace'+(kept?' · '+kept+' nezapsáno':'')):step(kept?'fail':'','Nasazeno',kept?kept+' nezapsáno':''))+
   '</ol>';
 }
 function renderDeploySteps(){document.querySelectorAll('[data-deploy-steps]').forEach(el=>{el.innerHTML=deployStepsHtml(el.dataset.deploySteps?el.dataset.deploySteps.split(','):null);});}
@@ -3003,7 +3146,7 @@ function installProposals(){
     const key=proposalKey(b.dataset.date,b.dataset.sport||'gym',b.dataset.slot),pr=state.proposals?.[key];
     if(b.dataset.proposal==='retry'&&pr?.item){await generateWeekProposals([pr.item]);return}
     if(b.dataset.proposal==='keep'&&pr){pr.skip=true;renderWeekHub();queueProposalPush();return;}
-    if(b.dataset.proposal==='add'&&pr){b.disabled=true;pr.skip=false;pr.deployError=null;try{pr.deploying=true;renderDeploySteps();await deployProposal(key);toast((pr.workout?.name||'Posilovna')+' je v Intervals.icu.');}catch(error){toast('Zápis selhal: '+error.message);b.disabled=false;}finally{pr.deploying=false;renderWeekHub();renderDeploySteps();}}
+    if(b.dataset.proposal==='add'&&pr){b.disabled=true;pr.skip=false;pr.deployError=null;try{pr.deploying=true;renderDeploySteps();await deployProposal(key);toast((pr.workout?.name||'Posilovna')+' je v plánu aplikace.');}catch(error){toast('Zápis selhal: '+error.message);b.disabled=false;}finally{pr.deploying=false;renderWeekHub();renderDeploySteps();}}
     if(b.dataset.proposal==='open'){state.generatedVariant=0;await openDailyRecommendation({date:b.dataset.date,sport:b.dataset.sport,generated:{...pr.result,existing:pr.existing},title:'Návrh na '+longDate(b.dataset.date)});}
     if(b.dataset.proposal==='gym'){if(pr?.gymPreview)openGymPreview(b.dataset.date,pr);else openTrainingDetail({kind:'gym',date:b.dataset.date,sport:'gym'});}
   },true);
@@ -3143,9 +3286,9 @@ function installEnergyProfile(){
   const form=$('fitnessProfileForm');if(!form)return;
   const select=(id,label,options)=>'<label>'+label+'<select class="food-input" id="'+id+'"><option value="">Vyber</option>'+options.map(([v,t])=>'<option value="'+v+'">'+esc(t)+'</option>').join('')+'</select></label>';
   form.querySelector('button.primary').insertAdjacentHTML('beforebegin',
-    select('profileActivity','Pohyb přes den mimo trénink (práce, chůze, venčení psa)',[['sedentary','Sedavá práce, málo chůze'],['light','Lehce aktivní: hodně chůze, práce vestoje'],['active','Aktivní: většinu dne v pohybu'],['heavy','Fyzicky náročná práce']])+
-    select('profileSportHours','Sport za týden (jen bez propojení Google/Intervals)',[['0','Žádný'],['1-3','1–3 hodiny'],['3-6','3–6 hodin'],['6-10','6–10 hodin'],['10+','Víc než 10 hodin']])+
-    select('profileGoal','Cíl',[['lose_0.25','Hubnout 0,25 kg týdně'],['lose_0.5','Hubnout 0,5 kg týdně'],['lose_0.75','Hubnout 0,75 kg týdně'],['lose_1','Hubnout 1 kg týdně'],['maintain','Udržovat váhu']])+
+    select('profileActivity','Pohyb přes den mimo trénink (práce, chůze, venčení psa)',ACTIVITY_OPTIONS)+
+    select('profileSportHours','Sport za týden · nepovinný odhad',[['auto','Automaticky z historie'],...SPORT_HOURS_OPTIONS])+
+    select('profileGoal','Cíl',GOAL_OPTIONS)+
     '<label>Cílová váha · kg<input id="profileTargetWeight" class="food-input" type="number" min="35" max="250" step="0.1"></label>');
   $('profileAge').parentElement.insertAdjacentHTML('beforebegin','<label>Datum narození<input id="profileBirthDate" class="food-input" type="date"></label>');
   // With a birth date the age is computed (and stays current); the age field shows it.
@@ -3160,12 +3303,15 @@ function installEnergyProfile(){
     // What the app works out itself stays automatic (it is refreshed daily) and
     // shows as the placeholder of an empty field; a typed value overrides it.
     const s=r?.suggestions||{};
+    const sportAuto=$('profileSportHours').querySelector('option[value=auto]'),history=s.trainingHistory;
+    sportAuto.disabled=!history?.automaticSportAvailable;sportAuto.textContent=history?.automaticSportAvailable?'Automaticky z historie · '+fmt(history.weeklyHours,1)+' h týdně':'Automaticky · čeká na historii';
+    if(history?.automaticSportAvailable&&!$('profileSportHours').value)$('profileSportHours').value='auto';
     try{localStorage.setItem('fitnessProfileSuggested',JSON.stringify(s));}catch{}
     const auto=(id,value,text)=>{if(!value||!$(id))return;if($(id).tagName==='SELECT')$(id).options[0].textContent='Automaticky: '+text;else $(id).placeholder='Automaticky: '+text;};
     auto('profileHeight',s.height,s.height+' (Google Health)');
     auto('profileActivity',s.activity,({sedentary:'sedavý',light:'lehce aktivní',active:'aktivní',heavy:'velmi aktivní'}[s.activity]||s.activity)+' · '+Number(s.averageSteps).toLocaleString('cs-CZ')+' kroků/den');
     auto('profileRhr',s.rhr,s.rhr+' (průměr 30 dní)');
-    auto('profileHrmax',s.hrmax,s.hrmax+' (max. z aktivit, 6 měs.)');
+    auto('profileHrmax',s.hrmax,s.hrmax+(s.sources?.hrmax==='age-estimate'?' (odhad podle věku, upřesní se z aktivit)':' (max. z aktivit, 6 měs.)'));
     // A date field has no placeholder: show the Google birth date under it.
     if(s.birthDate&&!$('profileBirthDate').value&&!$('profileBirthDateAuto')){const [y,m,d]=s.birthDate.split('-');$('profileBirthDate').insertAdjacentHTML('afterend','<small class="small" id="profileBirthDateAuto">Automaticky z Google účtu: '+Number(d)+'. '+Number(m)+'. '+y+'</small>');const age=ageFromBirthDate(s.birthDate);if(age!=null&&!$('profileAge').value)$('profileAge').placeholder='Automaticky: '+age;}
     try{renderExperience();}catch{}
@@ -3179,7 +3325,7 @@ function renderEnergyProfileNotice(){
     if(!box){box=document.createElement('article');box.className='card energy-profile-notice';box.style.margin='0 0 16px';host.prepend(box);}
     const needsWeight=missing.includes('weight'),needsProfile=missing.some(k=>k!=='weight');
     box.innerHTML='<h3>Kalorický cíl zatím nepočítám</h3><p class="small">Chybí: '+esc(missing.map(k=>ENERGY_MISSING[k]||k).join(', '))+'.</p><div class="select-row">'+(needsWeight?'<button class="btn primary" type="button" data-energy="weight">Zapsat váhu</button>':'')+(needsProfile?'<button class="btn'+(needsWeight?'':' primary')+'" type="button" data-energy="profile">Doplnit profil</button>':'')+'</div>';
-    box.querySelectorAll('[data-energy]').forEach(b=>b.onclick=()=>{if(b.dataset.energy==='weight')return openWeightSheet();activate('settings');$('fitnessProfileForm')?.scrollIntoView({behavior:'smooth'});});}
+    box.querySelectorAll('[data-energy]').forEach(b=>b.onclick=()=>{if(b.dataset.energy==='weight')return openWeightSheet();openSettings('profile','fitnessProfileForm');});}
 }
 installEnergyProfile();
 const renderNutritionWithoutNotice=renderNutrition;renderNutrition=function(){renderNutritionWithoutNotice();renderEnergyProfileNotice();};
@@ -3542,7 +3688,7 @@ installHealthTiles();
 const MAIN_SPORT_OPTIONS=[['cycling','Cyklistika'],['running','Běh'],['triathlon','Triatlon'],['strength','Silový trénink'],['general','Všeobecná kondice']];
 function installSportFocus(){
   const profileCard=$('fitnessProfileForm')?.closest('.card');if(!profileCard||$('sportFocusForm'))return;
-  profileCard.insertAdjacentHTML('beforebegin','<article class="card" id="sportFocusCard" style="margin-top:16px"><h3>Hlavní sport a cíl'+infoTip('sportFocus','hlavní sport')+'</h3><form id="sportFocusForm" class="food-editor-grid">'+
+  profileCard.insertAdjacentHTML('beforebegin','<article class="card" id="sportFocusCard"><h3>Hlavní sport a cíl'+infoTip('sportFocus','hlavní sport')+'</h3><form id="sportFocusForm" class="food-editor-grid">'+
     '<label>Hlavní sport<select class="food-input" id="focusSport"><option value="">Nevybráno</option>'+MAIN_SPORT_OPTIONS.map(([v,t])=>'<option value="'+v+'">'+t+'</option>').join('')+'</select></label>'+
     '<label>Čas na trénink · h týdně<input id="focusHours" class="food-input" type="number" min="1" max="40" step="0.5" placeholder="např. 8"></label>'+
     '<label class="wide">Cíl<input id="focusGoal" class="food-input" maxlength="300" placeholder="např. FTP 300 W, maraton pod 3:30, udržet kondici"></label>'+
@@ -3565,6 +3711,18 @@ function focusSummary(p){
   return [sport,p.weeklyHours?p.weeklyHours+' h/týden':'',p.eventDate&&days>=0?(p.eventName||'Závod')+' za '+days+' dní':''].filter(Boolean).join(' · ');
 }
 installSportFocus();
+// The section lines in Nastavení follow what is saved.
+function installSettingsSummaries(){
+  // The lw-theme cookie, or the device setting without it (as in installDetailViews).
+  const light=()=>{const m=document.cookie.match(/(?:^|; )lw-theme=(light|dark)/);return m?m[1]==='light':Boolean(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches);};
+  const appearance=()=>setSettingsSummary('appearance',(light()?uiText('Světlý','Light'):uiText('Tmavý','Dark'))+' · '+uiText('Čeština','English'));
+  const prior=activate;activate=function(id){prior(id);if(id==='settings'){try{renderProfileSummary();appearance();}catch{/* summaries are optional */}}};
+  document.querySelectorAll('[data-theme-choice]').forEach(b=>b.addEventListener('click',appearance));
+  $('fitnessProfileForm')?.addEventListener('submit',()=>setTimeout(renderProfileSummary,0));
+  $('sportFocusForm')?.addEventListener('submit',()=>setTimeout(renderProfileSummary,0));
+  try{renderProfileSummary();appearance();}catch{/* summaries are optional */}
+}
+installSettingsSummaries();
 
 // Availability, week exceptions and the persistent personal coach.
 const STATUS_LABELS={active:'Trénink',sick:'Nemoc',injured:'Zranění',on_break:'Pauza'};
@@ -3753,6 +3911,7 @@ function rememberCoachTurn(role,content){
   state.athleteState.conversation=[...(state.athleteState.conversation||[]),{role,content}].slice(-20);
 }
 async function fetchAssistantReply(message,onAnswer,appContext,onProgress){
+  if(typeof aiIntroBefore==='function')await aiIntroBefore('/app/api/assistant',{method:'POST'});
   const response=await fetch('/app/api/assistant',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Interface-Language':document.documentElement?.lang||'cs'},body:JSON.stringify({message,stream:true,appContext,chatId:assistantChat.id})});
   if(response.status===401)showLoginGate();
   if(!response.headers.get('Content-Type')?.includes('application/x-ndjson')){const result=await response.json();if(!response.ok)throw new Error(result.message||'Odpověď se nepodařilo načíst.');return result;}
@@ -3887,14 +4046,14 @@ async function answerCoachActions(message,decision){
   $('assistantConversation').querySelectorAll('.coach-replies').forEach(el=>el.remove());$('assistantConversation').querySelectorAll('.coach-reply-hint').forEach(el=>el.remove());
   const lines=[],keys=[];
   for(const a of actions){try{const r=await decideCoachAction(a,decision);lines.push((decision==='confirm'?'✓ ':'✕ ')+(r.message||coachActionLabel(a)));if(r.key)keys.push(r.key);}catch(error){lines.push('⚠ '+coachActionLabel(a)+': '+error.message);}}
-  const text=lines.join('\n')+(decision==='reject'?'\n\nDobře, nic neměním. Napiš, co chceš jinak.':keys.length?'\n\nDo Intervals.icu se zapíše samo do 15 s; v plánu týdne ho můžeš zastavit.':'');
+  const text=lines.join('\n')+(decision==='reject'?'\n\nDobře, nic neměním. Napiš, co chceš jinak.':keys.length?'\n\nDo aplikace se uloží samo do 15 s; propojené Intervals.icu se synchronizuje; v plánu týdne ho můžeš zastavit.':'');
   appendCoachTurn('assistant',text);rememberCoachTurn('assistant',text);
   if(keys.length){$('assistantConversation').lastElementChild?.insertAdjacentHTML('beforeend','<div data-deploy-steps="'+esc(keys.join(','))+'"></div>');renderDeploySteps();}
   scrollAssistant(true);
 }
 function availabilityTime(minutes){return minutes==null?'Neurčeno':minutes===0?'Bez sportu':(Math.floor(minutes/60)?Math.floor(minutes/60)+' h':'')+(minutes%60?' '+minutes%60+' min':'');}
 function availabilityEditorHtml(prefs,historyEstimate){
-  return '<div class="availability-intro"><span class="availability-eyebrow">Časová dostupnost</span><p>Kolik času můžeš každý den věnovat sportu?</p><div class="availability-total"><strong id="availabilityTotal"></strong><span>za týden</span></div></div><div class="availability-grid">'+['Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota','Neděle'].map((label,i)=>{const a=prefs.availability?.[i]||{},m=a.minutes;return '<div class="availability-row" data-availability-day="'+i+'" data-specified="'+(m==null?'false':'true')+'"><div class="availability-day-head"><label for="availabilitySlider'+i+'">'+label+'</label><button class="availability-duration" type="button" data-edit-duration aria-expanded="false"><span data-time-label>'+availabilityTime(m)+'</span><span aria-hidden="true">⌄</span></button></div><input id="availabilitySlider'+i+'" data-minutes type="range" min="0" max="'+Math.max(360,Math.ceil((m||0)/60)*60)+'" step="'+(m!=null&&m%15?'1':'15')+'" value="'+(m||0)+'" aria-label="Čas pro sport · '+label+'"><div class="availability-exact" hidden><label>Hodiny<input data-hours type="number" min="0" max="24" step="1" value="'+Math.floor((m||0)/60)+'"></label><label>Minuty<input data-edit-minutes type="number" min="0" max="59" step="1" value="'+((m||0)%60)+'"></label><button type="button" class="btn" data-set-duration>Nastavit</button></div></div>';}).join('')+'</div><section class="availability-frequency"><div class="availability-frequency-head"><label for="availabilityCount">Aktivit za týden</label><div class="availability-frequency-controls"><input id="availabilityCount" type="number" min="0" max="14" step="1" aria-label="Počet aktivit za týden" value="'+(prefs.weeklyActivities??historyEstimate?.count??3)+'"'+(prefs.weeklyActivities==null?' disabled':' required')+'><label class="history-toggle"><input id="availabilityByHistory" type="checkbox"'+(prefs.weeklyActivities==null?' checked':'')+'> <span>Podle historie</span></label></div></div><p id="availabilityHistoryNote" class="availability-history-note" data-history-message="'+esc(historyEstimate?.message||'Historie zatím není dostupná. Do jejího načtení použijeme nejvýše 3 aktivity týdně podle dostupného času.')+'"></p></section>';
+  return (prefs.automatic?'<p class="notice">'+esc(prefs.automatic.explanation)+' Výchozí objem: '+availabilityTime(prefs.automatic.weeklyMinutes)+' týdně. Uložením nastavíš vlastní čas.</p>':'')+'<div class="availability-intro"><span class="availability-eyebrow">Časová dostupnost</span><p>Kolik času můžeš každý den věnovat sportu?</p><div class="availability-total"><strong id="availabilityTotal"></strong><span>za týden</span></div></div><div class="availability-grid">'+['Pondělí','Úterý','Středa','Čtvrtek','Pátek','Sobota','Neděle'].map((label,i)=>{const a=prefs.availability?.[i]||{},m=a.minutes;return '<div class="availability-row" data-availability-day="'+i+'" data-specified="'+(m==null?'false':'true')+'"><div class="availability-day-head"><label for="availabilitySlider'+i+'">'+label+'</label><button class="availability-duration" type="button" data-edit-duration aria-expanded="false"><span data-time-label>'+availabilityTime(m)+'</span><span aria-hidden="true">⌄</span></button></div><input id="availabilitySlider'+i+'" data-minutes type="range" min="0" max="'+Math.max(360,Math.ceil((m||0)/60)*60)+'" step="'+(m!=null&&m%15?'1':'15')+'" value="'+(m||0)+'" aria-label="Čas pro sport · '+label+'"><div class="availability-exact" hidden><label>Hodiny<input data-hours type="number" min="0" max="24" step="1" value="'+Math.floor((m||0)/60)+'"></label><label>Minuty<input data-edit-minutes type="number" min="0" max="59" step="1" value="'+((m||0)%60)+'"></label><button type="button" class="btn" data-set-duration>Nastavit</button></div></div>';}).join('')+'</div><section class="availability-frequency"><div class="availability-frequency-head"><label for="availabilityCount">Aktivit za týden</label><div class="availability-frequency-controls"><input id="availabilityCount" type="number" min="0" max="14" step="1" aria-label="Počet aktivit za týden" value="'+(prefs.weeklyActivities??historyEstimate?.count??3)+'"'+(prefs.weeklyActivities==null?' disabled':' required')+'><label class="history-toggle"><input id="availabilityByHistory" type="checkbox"'+(prefs.weeklyActivities==null?' checked':'')+'> <span>Podle historie</span></label></div></div><p id="availabilityHistoryNote" class="availability-history-note" data-history-message="'+esc(historyEstimate?.message||'Historie zatím není dostupná. Do jejího načtení použijeme nejvýše 3 aktivity týdně podle dostupného času.')+'"></p></section>';
 }
 function installAvailabilityControls(root){
   const updateRow=row=>{const input=row.querySelector('[data-minutes]'),m=Number(input.value);input.style.setProperty('--fill',(m/Number(input.max)*100)+'%');input.setAttribute('aria-valuetext',row.dataset.specified==='true'?availabilityTime(m):'Neurčeno');row.querySelector('[data-time-label]').textContent=row.dataset.specified==='true'?availabilityTime(m):'Neurčeno';row.classList.toggle('no-time',m===0);row.classList.toggle('unspecified',row.dataset.specified!=='true');};
@@ -3909,7 +4068,7 @@ function installAvailabilityControls(root){
   const updateMode=()=>{count.disabled=mode.checked;count.required=!mode.checked;if(!mode.checked&&count.value==='')count.value='3';note.textContent=mode.checked?note.dataset.historyMessage:'Plánovač zohlední tento počet i čas dostupný v jednotlivých dnech.';note.classList.toggle('from-history',mode.checked);};mode.onchange=updateMode;updateMode();
 }
 function readAvailabilityEditor(root,prefs){
-  return {...prefs,weeklyActivities:$('availabilityByHistory').checked?null:Number($('availabilityCount').value),availability:[...root.querySelectorAll('[data-availability-day]')].map(row=>({window:'',minutes:row.dataset.specified==='true'?Number(row.querySelector('[data-minutes]').value):null,preferredSports:[]}))};
+  return {...prefs,availabilityMode:'manual',weeklyActivities:$('availabilityByHistory').checked?null:Number($('availabilityCount').value),availability:[...root.querySelectorAll('[data-availability-day]')].map(row=>({window:'',minutes:row.dataset.specified==='true'?Number(row.querySelector('[data-minutes]').value):null,preferredSports:[]}))};
 }
 async function openAvailabilityEditor(scope){
   try{
@@ -3961,7 +4120,7 @@ function renderAssistantWeekProposal(r){
       $('showWeekProposals').onclick=()=>{$('assistantDialog').close();activate('workouts');openWorkouts();$('hubWeek').scrollIntoView({behavior:'smooth',block:'start'});};
       if($('retryWeekProposals'))$('retryWeekProposals').onclick=async()=>{$('retryWeekProposals').disabled=true;const again=await generateWeekProposals(done.failed);$('retryWeekProposals')?.remove();appendCoachTurn('assistant','Znovu připraveno '+again.ok+' z '+done.failed.length+'.');};
       renderDeploySteps();
-      appendCoachTurn('assistant',done.failed.length?'Připravil jsem '+done.ok+' z '+items.length+' tréninků. '+done.failed.length+' se nepovedlo, server byl přetížený – můžeš je zkusit znovu.':'Tréninky jsou připravené a do 15 s je zapíšu do Intervals.icu. Průběh vidíš tady i v plánu týdne.');
+      appendCoachTurn('assistant',done.failed.length?'Připravil jsem '+done.ok+' z '+items.length+' tréninků. '+done.failed.length+' se nepovedlo, server byl přetížený – můžeš je zkusit znovu.':'Tréninky jsou připravené a do 15 s je uložím do aplikace. Průběh vidíš tady i v plánu týdne.');
     }catch(error){$('assistantStatus').textContent=error.message;tools.querySelectorAll('button').forEach(x=>x.disabled=false);button.textContent='Připravit tyto tréninky';}};
   $('discussWeekProposal').onclick=()=>discussWithAssistant('Chci probrat kompromis k návrhu pro týden '+r.start+'. '+(items.length?'Navržené aktivity: '+items.map(x=>x.date+' · '+HUB_SPORTS[x.sport]+' · '+hm(x.minutes)).join('; ')+'. ':'')+'Navrhni mírnější variantu, která zohlední regeneraci, dostupný čas a můj cíl. Pokud potřebuješ něco upřesnit, zeptej se.',{appContext:{view:'workouts',date:r.start,weekStart:r.start,sport:null,exercise:null}});
   if($('detailExistingWeek'))$('detailExistingWeek').onclick=async()=>{const button=$('detailExistingWeek');button.disabled=true;try{const week=await hubWeekData(),detail=[];for(const d of week.days||[]){if(d.date<pragueToday())continue;for(const a of d.daily?.training?.planned||[]){const sport=activitySport(a);if(!['ride','run','gym'].includes(sport))continue;detail.push({date:d.date,sport,slot:detail.filter(x=>x.date===d.date&&x.sport===sport).length,minutes:Math.round((a.durationHours||1)*60),environment:sport==='gym'?'indoor':'auto',existing:a.id});}}if(detail.length){await generateWeekProposals(detail);appendCoachTurn('assistant','Podrobnosti k naplánovaným tréninkům jsou připravené v plánu týdne.');}else $('assistantStatus').textContent='V tomto týdnu nejsou zbývající plánované tréninky.';}catch(error){$('assistantStatus').textContent=error.message;}finally{button.disabled=false;}};
@@ -3972,7 +4131,7 @@ function openGymPreview(date,pr){
   const g=pr.gymPreview,plan=g.plan||{},draft=pr.draft||(pr.draft={rows:(plan.rows||[]).map(r=>r.slice()),muscles:{...(g.muscles||{})}}),open=gymProposalOpen(pr);
   const minutes=plan.timing?.estimatedMinutes||plan.timing?.requestedMinutes;
   const head='<div class="eyebrow">'+(pr.scheduled?'✓ Potvrzeno · je v plánu':pr.existing?'Rozpis naplánovaného gymu':'Návrh · čeká na potvrzení')+'</div><h4 class="training-name">'+esc(plan.planName||'Gym')+'</h4>'+(plan.rationale?'<p class="small">'+esc(plan.rationale)+'</p>':'');
-  const foot=open?'<div class="gs-confirm"><button type="button" class="btn primary" id="confirmGymPreview">✓ Potvrdit trénink</button><p class="small">Zapíše se do plánu i do Intervals.icu.</p></div>':pr.existing?'<p class="small">Jde o rozpis už naplánovaného gymu. Úpravy dělej v jeho detailu.</p>':'';
+  const foot=open?'<div class="gs-confirm"><button type="button" class="btn primary" id="confirmGymPreview">✓ Potvrdit trénink</button><p class="small">Uloží se do aplikace. Propojené Intervals.icu se synchronizuje.</p></div>':pr.existing?'<p class="small">Jde o rozpis už naplánovaného gymu. Úpravy dělej v jeho detailu.</p>':'';
   openSheet('Gym · '+longDate(date),head+'<div class="gs-host"></div>'+foot,body=>{
     const host=body.querySelector('.gs-host');
     mountGymSession(host,{mode:'draft',date,editable:open,draft,facts:minutes?[['Délka','~'+hm(minutes)]]:[],back:()=>openGymPreview(date,pr)});
@@ -3986,7 +4145,7 @@ function openGymPreview(date,pr){
   },'training-detail');
 }
 function installAdaptivePlanning(){
-  $('settings').insertAdjacentHTML('beforeend','<article class="card" id="availabilitySettings" style="margin-top:12px"><h3>Časové možnosti</h3><p class="small" id="availabilitySummary">Načítám…</p><button class="btn primary" id="editDefaultAvailability" type="button">Nastavit běžný týden</button><div id="coachMemories"></div></article>');
+  settingsBody('training').insertAdjacentHTML('beforeend','<article class="card" id="availabilitySettings"><h3>Časové možnosti</h3><p class="small" id="availabilitySummary">Načítám…</p><button class="btn primary" id="editDefaultAvailability" type="button">Nastavit běžný týden</button><div id="coachMemories"></div></article>');
   $('editDefaultAvailability').onclick=()=>openAvailabilityEditor('default');
   $('proposeWeek').closest('.planner-actions').insertAdjacentHTML('afterbegin','<button class="btn" id="editWeekAvailability" type="button">🕒 Časové možnosti</button>');
   $('editWeekAvailability').onclick=()=>openAvailabilityEditor('week');
@@ -4064,6 +4223,7 @@ function foodAssessmentHtml(entry,options){
   return tags.length?'<span class="food-tags" title="Přehled podle zapsané porce a maker">'+tags.map(([kind,text])=>'<small class="food-tag tag-'+kind+'">'+esc(text)+'</small>').join('')+'</span>':'';
 }
 function foodExportHtml(entry){
+  if(!serviceConnected('google'))return '';
   const status=entry.google?.status||'not_exported',labels={synced:'✓ Google Health',queued:'Google · čeká na odeslání',syncing:'Google · odesílám',operation:'Google · potvrzuji zápis',planned:'Plán · do Google až v daný den',error:'Google · zápis se nepodařil',uncertain:'Google · výsledek není potvrzený',disconnected:'Google · není připojené',not_exported:'Google · dosud neodesláno'};
   return '<small class="food-export export-'+esc(status)+'" title="'+esc(entry.google?.message||'')+'">'+esc(labels[status]||status)+(['error','not_exported'].includes(status)?' <button type="button" data-food-sync="'+Number(entry.id)+'">Odeslat znovu</button>':'')+'</small>';
 }
@@ -4139,14 +4299,16 @@ function projectedForm(date){
 }
 function renderFutureSignals(){
   const date=selectedHistoryDate,future=date>pragueToday();if(!$('oFitness'))return;
-  for(const [id,text] of [['oFitness','CTL · odhad'],['oForm','TSB · odhad na ráno']]){const small=$(id).closest('.card')?.querySelector(':scope>.small');if(!small)continue;if(small.dataset.original==null)small.dataset.original=small.textContent;small.textContent=future?text:small.dataset.original;}
+  const ownLoad=serviceConnected('intervals');
+  for(const [id,text,none] of [['oFitness','CTL · odhad','Kondice · jen s Intervals.icu'],['oForm','TSB · odhad na ráno','Forma · jen s Intervals.icu']]){const small=$(id).closest('.card')?.querySelector(':scope>.small');if(!small)continue;if(small.dataset.original==null)small.dataset.original=small.textContent;small.textContent=!ownLoad?none:future?text:small.dataset.original;}
   if(!future)return;
   const p=projectedForm(date),note=p?(p.unknown?'odhad · '+p.unknown+' '+(p.unknown===1?'den':p.unknown<5?'dny':'dní')+' bez plánu počítám jako volno':'odhad podle plánu'):'';
-  if(p){$('oFitness').innerHTML=fmt(p.ctl,1)+'<div class="trend">'+esc(note)+'</div>';$('oForm').innerHTML=formText(p.form)+'<div class="trend">'+esc(note)+'</div>';}
+  if(!ownLoad){$('oFitness').innerHTML='—';$('oForm').innerHTML='—';}
+  else if(p){$('oFitness').innerHTML=fmt(p.ctl,1)+'<div class="trend">'+esc(note)+'</div>';$('oForm').innerHTML=formText(p.form)+'<div class="trend">'+esc(note)+'</div>';}
   else{$('oFitness').innerHTML='<span class="is-empty">Bez dat z Intervals.icu</span>';$('oForm').innerHTML='<span class="is-empty">Bez dat z Intervals.icu</span>';}
   const weights=(state.weight?.records||[]).filter(r=>measured(r.value_numeric)).sort((a,b)=>String(a.sample_time).localeCompare(String(b.sample_time))),w=weights.at(-1);
   $('oWeight').innerHTML=w?fmt(num(w.value_numeric),1)+' kg':'<span class="is-empty">Bez záznamu</span>';
-  if($('oWeightMeta'))$('oWeightMeta').textContent=w?'Poslední záznam '+dateLabel(pragueDay(w.sample_time))+' · cíl '+fmt(Number(state.daily?.nutrition?.targetWeightKg||80),1)+' kg':'';
+  if($('oWeightMeta'))$('oWeightMeta').textContent=w?'Poslední záznam '+dateLabel(pragueDay(w.sample_time))+(Number(state.daily?.nutrition?.targetWeightKg)?' · cíl '+fmt(Number(state.daily.nutrition.targetWeightKg),1)+' kg':''):'';
   $('oSleep').innerHTML='<span class="is-empty">Noc ještě nebyla</span>';
   const nights=primarySleepSessions(state.sleep?.sessions).slice(0,30),avg=nights.length?nights.reduce((s,r)=>s+num(r.durationMin),0)/nights.length:null;
   if($('oSleepMeta'))$('oSleepMeta').textContent='Cíl 8 h'+(avg?' · tvůj průměr '+hm(avg):'');
@@ -4216,3 +4378,155 @@ if(typeof document!=='undefined'&&typeof MutationObserver!=='undefined'&&documen
   new MutationObserver(()=>{if(!queued){queued=true;requestAnimationFrame(run);}}).observe(shell,{childList:true,subtree:true});
   czechDecimals(shell);
 }
+
+// Account setup is saved on the server, independently of provider consent.
+let accountSetup=null;
+async function showAccountSetup({edit=false}={}){
+  if($('loginGate')||$('onboardingGate'))return;
+  await jsonFetch('/app/api/profile').catch(()=>{});
+  let setup=await jsonFetch('/app/api/onboarding');accountSetup=setup;
+  let providers=(await jsonFetch('/app/api/connections').catch(()=>({providers:[]}))).providers||[];
+  const draft={profile:{...setup.profile,mainSport:setup.savedProfile?.mainSport||''},weightKg:setup.weightKg||'',training:{experience:setup.training.experienceMode==='manual'?setup.training.experience:'auto',limitations:setup.training.limitations||''}};
+  if(!draft.profile.sportHours&&setup.history.automaticSportAvailable)draft.profile.sportHours='auto';
+  if(!draft.profile.goal)draft.profile.goal='maintain';
+  let step=edit?1:0,refreshing=false;
+  const sportNames={cycling:'cyklistika',running:'běh',strength:'síla',general:'všeobecná kondice'};
+  const experienceNames={beginner:'začátečník',regular:'pravidelně sportující',experienced:'vysoká pravidelnost tréninku'};
+  document.body.insertAdjacentHTML('beforeend','<div id="onboardingGate" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle" style="'+gateStyle+'"><div class="card" style="width:min(620px,100%);display:grid;gap:14px" id="setupBody"></div></div>');
+  const field=(id,label,value,type='text',attrs='')=>'<label>'+label+'<input class="food-input" id="'+id+'" type="'+type+'" value="'+esc(value??'')+'" '+attrs+'></label>';
+  const select=(id,label,value,options,empty='Zatím nevyplněno')=>'<label>'+label+'<select class="food-input" id="'+id+'"><option value="">'+esc(empty)+'</option>'+options.map(([v,l])=>'<option value="'+v+'"'+(value===v?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></label>';
+  const remember=()=>{
+    if(step===1){const age=draft.profile.age;for(const key of ['sex','age','height','activity','sportHours','goal'])draft.profile[key]=$('setup-'+key).value;if(Number(age)!==Number(draft.profile.age))draft.profile.birthDate='';draft.weightKg=$('setup-weight').value;}
+    if(step===2){draft.profile.mainSport=$('setup-mainSport').value;draft.profile.sportGoal=$('setup-sportGoal').value;draft.training.experience=$('setup-experience').value||'auto';draft.training.limitations=$('setup-limitations').value;}
+  };
+  const refresh=async()=>{
+    if(refreshing||!$('onboardingGate'))return;refreshing=true;
+    try{remember();const before=JSON.stringify({history:setup.history,profile:draft.profile,weight:draft.weightKg}),fresh=await jsonFetch('/app/api/onboarding');if(!$('onboardingGate'))return;setup=fresh;for(const [key,value] of Object.entries(fresh.profile||{}))if(key!=='mainSport'&&(draft.profile[key]==null||draft.profile[key]===''))draft.profile[key]=value;
+      draft.weightKg=draft.weightKg||fresh.weightKg||'';if(!draft.profile.sportHours&&fresh.history.automaticSportAvailable)draft.profile.sportHours='auto';if(before!==JSON.stringify({history:setup.history,profile:draft.profile,weight:draft.weightKg}))render();
+    }catch(error){$('setupError')&&($('setupError').textContent=error.message);}finally{refreshing=false;}
+  };
+  const finish=async()=>{
+    remember();const b=$('setupFinish');if(b)b.disabled=true;
+    try{
+      const body={...draft,profile:{...draft.profile}};
+      // Untouched provider suggestions stay automatic; only edited values become overrides.
+      for(const key of ['height','activity','rhr','hrmax','birthDate'])if(!setup.savedProfile?.[key]&&String(body.profile[key]??'')===String(setup.profile[key]??''))body.profile[key]='';
+      if(!setup.savedProfile?.age&&setup.suggestions?.birthDate&&Number(body.profile.age)===Number(setup.profile.age))body.profile.age='';
+      if(Number(body.weightKg)===Number(setup.weightKg)&&setup.weightKg)delete body.weightKg;
+      const r=await jsonFetch('/app/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});localStorage.setItem('fitnessProfile',JSON.stringify({...r.profile,mainSport:r.savedProfile?.mainSport||''}));$('onboardingGate').remove();if(location.hash==='#setup')history.replaceState(null,'',location.pathname+location.search);accountSetup=r;toast(r.baseline.ready?'Profil je uložený. Kalorický základ je vypočítaný.':'Nastavení je uložené. Údaje pro kalorie můžeš doplnit později.');await load();pollAccountImport();}
+    catch(error){$('setupError')&&($('setupError').textContent=error.message);if(b)b.disabled=false;}
+  };
+  const render=()=>{
+    const h=setup.history;
+    let html='<div class="eyebrow">Nastavení účtu · krok '+(step+1)+' ze 3</div><h2 id="onboardingTitle">'+['Zdroje dat','Profil a kalorie · volitelné','Tvůj trénink · volitelné'][step]+'</h2>';
+    if(step===0){
+      // The same service cards as Settings → Propojení; the provider's page returns here.
+      html+='<p>Přihlášení přes Google založí účet. Přístup ke Google Health povoluješ zvlášť a je dobrovolný. Aplikace funguje i s ručními záznamy.</p><div class="service-list">'+providers.map(p=>serviceCardHtml(p,'setup')).join('')+'</div><p class="small" id="setupSync" aria-live="polite"></p><button class="btn primary" id="setupNext">'+(setup.baseline.ready?'Otevřít aplikaci':'Pokračovat')+'</button>';
+    }else if(step===1){
+      html+='<p>Tento krok můžeš přeskočit. Známé údaje předvyplníme z propojených služeb. Kalorický cíl zobrazíme, až budeme znát potřebné údaje; bez nich můžeš používat ostatní funkce.</p><form id="setupProfile"><div class="food-editor-grid">'+select('setup-sex','Pohlaví pro výpočet metabolismu',draft.profile.sex,[['male','Muž'],['female','Žena']])+field('setup-age','Věk',draft.profile.age,'number','min="18" max="100"')+field('setup-height','Výška · cm',draft.profile.height,'number','min="100" max="230"')+field('setup-weight','Hmotnost · kg',draft.weightKg,'number','min="35" max="250" step="0.1"')+select('setup-activity','Běžný pohyb mimo sport',draft.profile.activity,[['sedentary','Sedavá práce, málo chůze'],['light','Hodně chůze nebo práce vestoje'],['active','Většinu dne v pohybu'],['heavy','Fyzicky náročná práce']])+select('setup-sportHours','Sport za týden · nepovinný odhad',draft.profile.sportHours,[...(h.automaticSportAvailable?[['auto','Automaticky z historie · '+fmt(h.weeklyHours,1)+' h týdně']]:[]),['0','Žádný'],['1-3','1–3 hodiny'],['3-6','3–6 hodin'],['6-10','6–10 hodin'],['10+','Více než 10 hodin']],h.automaticSportAvailable?'Bez ručního odhadu':'Zatím bez odhadu')+select('setup-goal','Cíl hmotnosti · volitelné',draft.profile.goal,[['maintain','Udržovat váhu'],['lose_0.25','Hubnout 0,25 kg týdně'],['lose_0.5','Hubnout 0,5 kg týdně'],['lose_0.75','Hubnout 0,75 kg týdně'],['lose_1','Hubnout 1 kg týdně']])+'</div><p class="small" id="setupHistoryNote">'+(h.automaticSportAvailable?'Sport vychází z dokončených aktivit za poslední 4 týdny. Záznamy z více služeb započítáme jednou.':'Automaticky nabídneme po načtení historie s délkou aktivit. Propojení samotné nestačí; odhad není povinný.')+'</p><button class="btn" type="button" id="setupRefresh">Aktualizovat údaje z historie</button><button class="btn primary" type="submit">Pokračovat</button><button class="btn" id="setupSkipProfile" type="button">Přeskočit a otevřít aplikaci</button><button class="btn" id="setupEditTraining" type="button">Upravit tréninkové zaměření</button></form>';
+    }else{
+      html+='<form id="setupTraining"><div class="food-editor-grid">'+select('setup-mainSport','Hlavní sport',draft.profile.mainSport,[['cycling','Cyklistika'],['running','Běh'],['triathlon','Triatlon'],['strength','Síla'],['general','Všeobecná kondice']],'Automaticky: '+(sportNames[h.mainSport]||'všeobecná kondice'))+field('setup-sportGoal','Čeho chceš dosáhnout · volitelné',draft.profile.sportGoal,'text','maxlength="300" placeholder="Může zůstat prázdné"')+select('setup-experience','Tréninková zkušenost',draft.training.experience,[['auto','Automaticky: '+experienceNames[h.experience]],['beginner','Začínám'],['regular','Sportuji pravidelně'],['experienced','Jsem zkušený/á']],'Automaticky')+field('setup-limitations','Omezení nebo poznámka pro trenéra · volitelné',draft.training.limitations,'text','maxlength="500"')+'</div><p class="small">Hlavní sport odhadujeme z četnosti za 8 týdnů. Zkušenost je odhad podle pravidelnosti za 12 týdnů; bez historie začínáme opatrně jako u začátečníka. Můžeš obojí změnit.</p><p>Časové možnosti nastavíš v Plánu. Do té doby použijeme dostupnou historii, případně opatrný výchozí rozvrh. Pro silový trénink bez nastavení místa nabízíme cviky s vlastní vahou.</p><p class="small">Při nemoci nebo zranění nastav příslušný stav v aplikaci.</p><button class="btn primary" id="setupFinish" type="submit">Otevřít aplikaci</button></form>';
+    }
+    html+='<p class="small" id="setupError" role="alert"></p>'+(step?'<button class="btn" id="setupBack" type="button">Zpět</button>':'')+'<button class="btn" id="setupLogout" type="button">Odhlásit</button>';
+    $('setupBody').innerHTML=html;$('setupLogout').onclick=logout;
+    if(step===0){
+      $('setupNext').onclick=async()=>{await refresh();if(!edit&&setup.baseline.ready)return finish();step=1;render();};
+      wireIntervalsKey($('setupBody'),async()=>{providers=(await jsonFetch('/app/api/connections')).providers;await refresh();});
+      jsonFetch('/app/api/sync').then(s=>{if($('setupSync'))$('setupSync').textContent=s.status==='running'?'Načítáme historii na pozadí. Můžeš pokračovat.':s.status==='partial'||s.status==='error'?'Část historie se nepodařilo načíst. Import můžeš zopakovat v Nastavení.':'';}).catch(()=>{});
+    }
+    if(step===1){$('setupProfile').onsubmit=e=>{e.preventDefault();remember();if(!edit)return finish();step=2;render();};$('setupSkipProfile').onclick=finish;$('setupEditTraining').onclick=()=>{remember();step=2;render();};$('setupRefresh').onclick=refresh;}
+    if(step===2)$('setupTraining').onsubmit=e=>{e.preventDefault();finish();};
+    if(step)$('setupBack').onclick=()=>{remember();step--;render();};
+  };
+  render();
+  if(!edit&&setup.baseline.ready)return finish();
+  if(setup.connectedProviders.length){
+    jsonFetch('/app/api/sync',{method:'POST'}).catch(()=>{});
+    (async()=>{for(let i=0;i<60&&$('onboardingGate');i++){await new Promise(resolve=>setTimeout(resolve,5000));if(!$('onboardingGate'))return;await refresh();const sync=await jsonFetch('/app/api/sync').catch(()=>({status:'error'}));if(sync.status!=='running')return;}})();
+  }
+}
+// The last screen: the day's calorie target and what to do next.
+async function renderSetupDone(body){
+  const [daily,connections]=await Promise.all([jsonFetch('/app/api/daily?date='+pragueToday()).catch(()=>({})),jsonFetch('/app/api/connections').catch(()=>({providers:[]}))]);
+  const n=daily.nutrition||{},target=num(n.calorieTarget);
+  const services=(connections.providers||[]).map(p=>'<li>'+(p.connected?'<span class="pill good">Připojeno</span> ':'<span class="pill">Nepřipojeno</span> ')+esc(p.name)+'</li>').join('');
+  body.innerHTML='<div class="eyebrow">Hotovo</div><h2 id="onboardingTitle">Můžeš začít</h2>'+
+    (target?'<div class="setup-target"><span class="small">Denní kalorický cíl</span><strong>'+fmt(target)+' kcal</strong><p class="small">Klidový výdej podle profilu × pohyb přes den, upravený o cíl. Během dne ho navyšujeme o naměřený pohyb.</p>'+calorieTargetNotes(n)+'</div>':'')+
+    '<ul class="setup-services">'+services+'</ul><p class="small">Služby připojíš nebo odpojíš kdykoli v Nastavení → Propojení.</p>'+
+    '<ul class="setup-next small"><li><strong>Dnes</strong> ukáže plán dne, jídlo a regeneraci.</li><li><strong>Tréninky</strong> navrhnou posilovnu, kolo i běh podle tvého času.</li><li><strong>Asistent</strong> poradí a upraví plán vlastními slovy.</li></ul>'+
+    '<div class="setup-actions"><button class="btn primary" type="button" id="setupFinish">Začít používat Loadwise</button></div>';
+  $('setupFinish').onclick=async()=>{$('onboardingGate')?.remove();if(location.hash==='#setup')history.replaceState(null,'',location.pathname+location.search);try{localStorage.setItem('lw-dashboard-ready','1');}catch{}toast('Vítej v Loadwise.');loadConnections();await load();pollAccountImport();};
+}
+async function pollAccountImport(){
+  const settings=$('settings');if(!settings)return;
+  if(!$('importStatus'))settings.insertAdjacentHTML('afterbegin','<p class="notice" id="importStatus" aria-live="polite"></p>');
+  for(let i=0;i<60;i++){
+    const s=await jsonFetch('/app/api/sync').catch(()=>({status:'error'}));
+    $('importStatus').textContent=s.status==='running'?'Načítáme historii. Výpočty se zpřesní podle dostupných dat.':s.status==='partial'||s.status==='error'?'Část importu se nepodařila. Dostupná data zůstávají uložená. Zkus Obnovit nebo znovu připojit službu.':s.status==='done'?'Historie je načtená. Doporučení používají dostupná data.':'Bez propojení používáme tvůj profil a ruční záznamy.';
+    if(s.status!=='running'){if(s.status==='done')await load();return;}await new Promise(resolve=>setTimeout(resolve,5000));
+  }
+}
+async function showSubscription(){
+  openSheet('Předplatné','<p>Načítám přehled…</p>');
+  try{const s=await jsonFetch('/app/api/subscription');$('sheetBody').innerHTML='<p class="notice">'+(s.mode==='pilot'?'Pilot pro pozvané · všechny dostupné funkce máš zdarma':s.aiAccess?'Tvůj tarif: AI':'Tvůj tarif: Free')+'</p><div style="overflow:auto">'+aiPlansHtml(s)+'</div><h3>Podmínky</h3><p>'+esc(s.terms)+'</p><p class="small">Cena a limity AI tarifu zatím nejsou stanovené. Objednávky ani platby nejsou spuštěné. Dostupnost AI vyžaduje funkční připojení služby; při jejím výpadku zůstává základ aplikace použitelný.</p>';}
+  catch(error){$('sheetBody').textContent=error.message;}
+}
+function installSubscription(){if($('subscriptionCard')||!$('settings'))return;settingsBody('account').insertAdjacentHTML('beforeend','<article class="card" id="subscriptionCard" style="margin-top:12px"><h3>Předplatné</h3><p>V pilotu pro pozvané jsou dostupné AI funkce zdarma.</p><button class="btn" id="subscriptionDetails">Free a AI · funkce a podmínky</button></article>');$('subscriptionDetails').onclick=showSubscription;}
+
+async function openOwnFoodLibrary(){
+  openSheet('Moje potraviny','<p>Načítám…</p>');
+  try{const {products}=await jsonFetch('/app/api/food/personal');$('sheetBody').innerHTML='<input class="food-input" id="ownFoodFilter" type="search" placeholder="Hledat v mých potravinách"><p class="small">Úprava mění uloženou potravinu, nikoli dříve zapsaná jídla. Osobní poznámky a jídelníček se nesdílejí.</p><div id="ownFoodRows"></div>';
+    const render=()=>{$('ownFoodRows').innerHTML=products.map((p,i)=>({p,i})).filter(({p})=>foodTextKey(p.name+' '+(p.brand||'')).includes(foodTextKey($('ownFoodFilter').value))).map(({p,i})=>'<article class="notice"><strong>'+esc(p.name)+'</strong><p>'+fmt(p.calories_100g)+' kcal / '+(p.nutrition_basis==='portion'?'porce':'100 '+esc(p.nutrition_basis))+'</p><button class="btn" data-use-food="'+i+'">Zapsat</button><button class="btn" data-edit-food="'+i+'">Upravit</button><button class="btn" data-remove-food="'+i+'">Smazat</button></article>').join('')||'<p>Žádné uložené potraviny.</p>';
+      $('ownFoodRows').querySelectorAll('[data-use-food]').forEach(b=>b.onclick=()=>{const p=products[Number(b.dataset.useFood)];closeSheet();openFoodLogger();selectFoodProduct(p);});
+      $('ownFoodRows').querySelectorAll('[data-edit-food]').forEach(b=>b.onclick=()=>editOwnFood(products[Number(b.dataset.editFood)]));
+      $('ownFoodRows').querySelectorAll('[data-remove-food]').forEach(b=>b.onclick=()=>{const p=products[Number(b.dataset.removeFood)];openSheet('Smazat potravinu','<p>Smazat '+esc(p.name)+' z tvé knihovny? Záznamy v jídelníčku zůstanou zachované.</p><button class="btn" id="confirmFoodDelete">Smazat</button><button class="btn" id="cancelFoodDelete">Zpět</button>');$('cancelFoodDelete').onclick=openOwnFoodLibrary;$('confirmFoodDelete').onclick=async()=>{try{await jsonFetch('/app/api/food/personal',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:p.id})});await openOwnFoodLibrary();}catch(error){toast(error.message);}};});
+    };$('ownFoodFilter').oninput=render;render();
+  }catch(error){$('sheetBody').textContent=error.message;}
+}
+const foodTextKey=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function editOwnFood(p){
+  const fields=[['name','Název','text'],['brand','Značka','text'],['barcode','Čárový kód','text'],['quantity','Velikost balení','text'],['serving_size','Velikost porce (např. 150 g)','text'],['calories_100g','kcal','number'],['protein_100g','Bílkoviny · g','number'],['carbs_100g','Sacharidy · g','number'],['fat_100g','Tuky · g','number']];
+  openSheet('Upravit potravinu','<form id="ownFoodEdit"><p>Hodnoty pro '+(p.nutrition_basis==='portion'?'jednu porci':'100 '+esc(p.nutrition_basis))+'.</p><div class="food-editor-grid">'+fields.map(([k,l,t])=>'<label>'+l+'<input class="food-input" id="own-'+k+'" type="'+t+'" '+(t==='number'?'min="0" step="any" required':'maxlength="180"')+' value="'+esc(p[k]??'')+'"></label>').join('')+'</div><button class="btn primary" type="submit">Uložit změny</button><button class="btn" id="ownFoodCancel" type="button">Zpět</button><p id="ownFoodError" role="alert"></p></form>');$('ownFoodCancel').onclick=openOwnFoodLibrary;
+  $('ownFoodEdit').onsubmit=async e=>{e.preventDefault();try{const body={...p};for(const [k,,t]of fields)body[k]=t==='number'?Number($('own-'+k).value):$('own-'+k).value;await jsonFetch('/app/api/food/personal',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});await openOwnFoodLibrary();}catch(error){$('ownFoodError').textContent=error.message;}};
+}
+async function openOwnRecipes(){
+  openSheet('Moje jídla','<p>Načítám…</p>');
+  try{const {recipes}=await jsonFetch('/app/api/food/recipes');$('sheetBody').innerHTML='<p>Vlastní recepty se surovinami a porcemi. Sdílení do katalogu si volíš při uložení.</p><button class="btn primary" id="newOwnRecipe">Přidat jídlo</button>'+recipes.map((r,i)=>'<article class="notice"><strong>'+esc(r.name)+'</strong><p>'+fmt(r.portion.calories_100g)+' kcal / porce · '+r.servings+' porcí</p><button class="btn" data-log-recipe="'+i+'">Zapsat porci</button><button class="btn" data-edit-recipe="'+i+'">Upravit</button><button class="btn" data-delete-recipe="'+i+'">Smazat</button></article>').join('');$('newOwnRecipe').onclick=()=>editOwnRecipe();
+    $('sheetBody').querySelectorAll('[data-log-recipe]').forEach(b=>b.onclick=()=>{const r=recipes[Number(b.dataset.logRecipe)];closeSheet();openFoodLogger();selectFoodProduct(r.portion);});
+    $('sheetBody').querySelectorAll('[data-edit-recipe]').forEach(b=>b.onclick=()=>editOwnRecipe(recipes[Number(b.dataset.editRecipe)]));
+    $('sheetBody').querySelectorAll('[data-delete-recipe]').forEach(b=>b.onclick=()=>{const r=recipes[Number(b.dataset.deleteRecipe)];openSheet('Smazat jídlo','<p>Smazat '+esc(r.name)+' z knihovny? Historie jídelníčku zůstane zachovaná.</p><button class="btn" id="confirmRecipeDelete">Smazat</button><button class="btn" id="cancelRecipeDelete">Zpět</button>');$('cancelRecipeDelete').onclick=openOwnRecipes;$('confirmRecipeDelete').onclick=async()=>{try{await jsonFetch('/app/api/food/recipes',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id})});await openOwnRecipes();}catch(error){toast(error.message);}};});
+  }catch(error){$('sheetBody').textContent=error.message;}
+}
+function editOwnRecipe(recipe={}){
+  let ingredients=(recipe.ingredients||[{name:'',quantity:100,unit:'g',calories:0,protein_g:0,carbs_g:0,fat_g:0}]).map(i=>({...i}));
+  openSheet(recipe.id?'Upravit jídlo':'Nové jídlo','<form id="recipeEditor"><label>Název<input class="food-input" id="ownRecipeName" required maxlength="180" value="'+esc(recipe.name||'')+'"></label><label>Počet porcí<input class="food-input" id="ownRecipeServings" type="number" min="0.1" max="100" step="0.1" required value="'+(recipe.servings||1)+'"></label><p>U každé suroviny zadej hodnoty pro použité množství. Kalorie a makra jedné porce spočítáme ze součtu.</p><div id="recipeIngredients"></div><button class="btn" id="addRecipeIngredient" type="button">Přidat surovinu</button><label><input id="shareOwnRecipe" type="checkbox" '+(recipe.shared?'checked':'')+'> Sdílet název, suroviny a výživové hodnoty do společného vyhledávání. Účet a jídelníček zůstávají soukromé.</label><button class="btn primary" type="submit">Uložit jídlo</button><button class="btn" id="cancelRecipeEdit" type="button">Zpět</button><p id="recipeEditError" role="alert"></p></form>');
+  const remember=()=>{$('recipeIngredients').querySelectorAll('[data-ingredient]').forEach(el=>{const i=Number(el.dataset.ingredient);el.querySelectorAll('[data-recipe-field]').forEach(input=>{const k=input.dataset.recipeField;ingredients[i][k]=['name','unit'].includes(k)?input.value:Number(input.value);});});};
+  const render=()=>{$('recipeIngredients').innerHTML=ingredients.map((i,n)=>'<fieldset data-ingredient="'+n+'"><legend>Surovina '+(n+1)+'</legend><div class="food-editor-grid">'+[['name','Název','text'],['quantity','Množství','number'],['calories','kcal','number'],['protein_g','Bílkoviny · g','number'],['carbs_g','Sacharidy · g','number'],['fat_g','Tuky · g','number']].map(([k,l,t])=>'<label>'+l+'<input class="food-input" data-recipe-field="'+k+'" type="'+t+'" required '+(t==='number'?'min="0" step="any"':'maxlength="180"')+' value="'+esc(i[k]??'')+'"></label>').join('')+'<label>Jednotka<select class="food-input" data-recipe-field="unit">'+[['g','g'],['ml','ml'],['piece','kus']].map(([v,l])=>'<option value="'+v+'" '+(i.unit===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label></div><button class="btn" data-remove-ingredient="'+n+'" type="button">Odebrat surovinu</button></fieldset>').join('');$('recipeIngredients').querySelectorAll('[data-remove-ingredient]').forEach(b=>b.onclick=()=>{remember();ingredients.splice(Number(b.dataset.removeIngredient),1);render();});};render();
+  $('addRecipeIngredient').onclick=()=>{remember();ingredients.push({name:'',quantity:100,unit:'g',calories:0,protein_g:0,carbs_g:0,fat_g:0});render();};$('cancelRecipeEdit').onclick=openOwnRecipes;
+  $('recipeEditor').onsubmit=async e=>{e.preventDefault();remember();try{await jsonFetch('/app/api/food/recipes',{method:recipe.id?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:recipe.id,name:$('ownRecipeName').value,servings:Number($('ownRecipeServings').value),ingredients,shared:$('shareOwnRecipe').checked})});await openOwnRecipes();}catch(error){$('recipeEditError').textContent=error.message;}};
+}
+if($('myFoodLibrary')){$('myFoodLibrary').onclick=openOwnFoodLibrary;$('myFoodLibrary').insertAdjacentHTML('afterend','<button class="btn" id="myRecipeLibrary" type="button">Moje jídla</button>');$('myRecipeLibrary').onclick=openOwnRecipes;}
+installSubscription();
+const selectWithCatalogueNotice=selectFoodProduct;
+selectFoodProduct=function(p){selectWithCatalogueNotice(p);$('catalogueQualityNotice')?.remove();if(p.catalog_id){$('foodEditor').insertAdjacentHTML('beforeend','<div class="notice" id="catalogueQualityNotice"><p>'+(p.reports?'U této položky byla nahlášena nesrovnalost. Ověř hodnoty podle etikety.':'Komunitní hodnoty zadané uživateli; nejsou automaticky ověřené.')+'</p><button class="btn" id="reportCatalogueFood" type="button">Nahlásit nesprávné údaje</button></div>');$('reportCatalogueFood').onclick=()=>{openSheet('Nahlásit potravinu','<form id="foodReportForm"><label>Co nesedí?<textarea class="food-input" id="foodReportReason" required maxlength="500"></textarea></label><button class="btn" type="submit">Odeslat hlášení</button><p id="foodReportResult" role="status"></p></form>');$('foodReportForm').onsubmit=async e=>{e.preventDefault();try{await jsonFetch('/app/api/food/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({catalogId:p.catalog_id,reason:$('foodReportReason').value})});$('foodReportResult').textContent='Hlášení je uložené. Ostatním zobrazíme upozornění.';e.target.querySelector('button').disabled=true;}catch(error){$('foodReportResult').textContent=error.message;}};};}};
+function openManualWorkout(){
+ const requestId=crypto.randomUUID();
+ openSheet('Vlastní trénink','<form id="manualWorkoutForm"><div class="food-editor-grid"><label>Název<input class="food-input" name="name" required maxlength="180"></label><label>Sport<select class="food-input" name="sport"><option value="ride">Kolo</option><option value="run">Běh</option><option value="gym">Síla</option></select></label><label>Datum<input class="food-input" name="date" type="date" value="'+pragueToday()+'" required></label><label>Délka · min<input class="food-input" name="minutes" type="number" min="1" max="1440" required></label><label>Poznámka<input class="food-input" name="notes" maxlength="1000"></label></div><label><input type="checkbox" name="completed"> Trénink už je dokončený (zapsat do historie)</label><button class="btn primary" type="submit">Uložit do aplikace</button><p class="small">Plán se může odeslat do propojených Intervals.icu. Ruční záznam dokončení zůstává v aplikaci.</p><p id="manualWorkoutError" role="alert"></p></form>');
+ $('manualWorkoutForm').onsubmit=async e=>{e.preventDefault();const f=e.target,b=f.querySelector('button');b.disabled=true;try{const body=Object.fromEntries(new FormData(f));body.completed=f.elements.completed.checked;body.requestId=requestId;const r=await jsonFetch('/app/api/workouts/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});closeSheet();toast(r.sync?.status==='error'?'Trénink je uložený. Export zkus později.':'Trénink je uložený v aplikaci.');await load();}catch(error){$('manualWorkoutError').textContent=error.message;b.disabled=false;}};
+}
+if($('workouts')){$('workouts').insertAdjacentHTML('afterbegin','<button class="btn" id="addManualWorkout" type="button">Přidat vlastní trénink</button>');$('addManualWorkout').onclick=openManualWorkout;}
+if($('nutrition')&&$('myFoodLibrary')){
+ $('nutrition').insertAdjacentHTML('beforeend','<article class="card" id="ownFoodLibraryCard" style="margin-top:12px"><h3>Moje potraviny a jídla</h3><p class="small">Spravuj vlastní potraviny a recepty. Společný katalog se nabízí při hledání.</p><div class="select-row" id="ownFoodLibraryButtons"></div></article>');
+ $('ownFoodLibraryButtons').append($('myFoodLibrary'),$('myRecipeLibrary'));
+}
+
+async function showStrengthPlace(){
+  try{
+    const {training}=await jsonFetch('/app/api/training-setup');
+    openSheet('Kde budeš posilovat?','<form id="strengthPlaceForm"><p>Podle místa vybereme cviky, které můžeš provést. Bez nastavení používáme vlastní váhu.</p><label>Místo a dostupné pomůcky<select class="food-input" id="strengthPlace"><option value="bodyweight">Doma bez nářadí · vlastní váha</option><option value="dumbbells">Mám jednoručky a lavici</option><option value="gym">V posilovně · stroje a činky</option></select></label><p class="small">Změna se použije při příštím generování. Uložené tréninky zůstávají stejné.</p><button class="btn primary" type="submit">Uložit</button></form>',body=>{
+      $('strengthPlace').value=training.equipment||'bodyweight';
+      body.querySelector('form').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('button');b.disabled=true;try{await jsonFetch('/app/api/training-setup',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:$('strengthPlace').value})});closeSheet();toast('Místo pro silový trénink je uložené.');}catch(error){toast(error.message);b.disabled=false;}};
+    });
+  }catch(error){toast(error.message);}
+}
+if($('generateGym')&&!$('strengthPlaceButton')){$('generateGym').insertAdjacentHTML('beforebegin','<button class="btn" type="button" id="strengthPlaceButton">Kde cvičím</button>');$('strengthPlaceButton').onclick=showStrengthPlace;}

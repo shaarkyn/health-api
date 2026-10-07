@@ -1,3 +1,5 @@
+import {trainingSetup} from './onboarding.js';
+import {storeLocalEvent,syncLocalWorkout,ensureLocalWorkouts} from './local-workouts.js';
 // Adaptive workout library: the shared catalog (built-in workouts plus any
 // rows in workout_library), per-user capability progression, ranking, "generate a
 // workout for this day" and scheduling to the user's Intervals.icu calendar.
@@ -7,8 +9,7 @@ import { CYCLING_WORKOUTS } from "./cycling-workouts.js";
 import { RUNNING_WORKOUTS } from "./running-workouts.js";
 import { explainWorkout, stepRows } from "./workout-explanation.js";
 import { getAthleteState, assertTrainingAllowed } from './athlete-state.js';
-import { getWeekPlan } from './week-planner.js';
-import { availabilityOn, parseTimeWindow } from './training-availability.js';
+import { intervalsAuthorization } from "./intervals-auth.js";
 
 export const SYSTEMS = ["recovery", "endurance", "tempo", "sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"];
 const HARD_SYSTEMS = new Set(["sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"]);
@@ -55,7 +56,9 @@ export async function getWorkout(db, id) {
 export async function getCapabilities(db, sport = "ride") {
   await ensureTrainingTables(db);
   const rows = await db.prepare("SELECT * FROM training_capabilities WHERE user_id=? AND sport=?").bind(db.userId, sport).all();
-  return { ...defaultCapabilities(sport), ...Object.fromEntries((rows.results || []).map(x => [x.system, x])) };
+  const training=await trainingSetup(db),defaults=defaultCapabilities(sport);
+  if(training.experience)for(const value of Object.values(defaults))value.level=training.experience==='beginner'?1:training.experience==='experienced'?4:3;
+  return { ...defaults, ...Object.fromEntries((rows.results || []).map(x => [x.system, x])) };
 }
 
 export function parseWorkoutSearchFilters(params) {
@@ -158,6 +161,8 @@ export async function generateWorkout(db, { sport = "ride", environment = "indoo
   // Prefer distinct families among the alternatives so "another option" is really different.
   const seen = new Set(), distinct = [];
   for (const w of result.workouts) if (!seen.has(w.family || w.id)) { seen.add(w.family || w.id); distinct.push(w); }
+  // A beginning runner starts with run/walk when the session is easy.
+  if (sport === "run" && coach.constraints?.novice && ["endurance", "recovery"].includes(kind)) distinct.sort((a, b) => (b.family === "run-walk") - (a.family === "run-walk"));
   const pool = distinct.slice(0, 5), pick = pool[Math.abs(Math.trunc(n(variant, 0))) % pool.length];
   const plannedToday = coach.constraints?.plannedToday;
   const planned = plannedToday?.system ? { name: plannedToday.name, minutes: plannedToday.minutes, system: plannedToday.system, intensityFactor: plannedToday.intensityFactor, structure: plannedToday.structure } : null;
@@ -179,6 +184,14 @@ export function resizeStructure(structure = [], target, { sport = "ride", system
   const aerobic = run ? 82 : 65, wholeEasy = ["recovery", "endurance"].includes(system);
   const fillers = () => s.map((b, i) => i > 0 && i < s.length - 1 && easy(b) ? i : -1).filter(i => i >= 0);
   const round1 = x => Math.round(x * 10) / 10;
+  // Run/walk changes length by its run/walk cycles: a beginner does not get continuous jogging.
+  const cycle = run && wholeEasy ? s.find(b => b.steps && b.steps.some(x => n(x.power, 100) < 60)) : null;
+  if (cycle) {
+    const per = totalMinutes([{ ...cycle, repeats: 1 }]), before = n(cycle.repeats, 1);
+    cycle.repeats = Math.max(1, before + Math.round((target - totalMinutes(s)) / per));
+    if (cycle.repeats !== before) notes.push("úseků běhu s chůzí " + before + " → " + cycle.repeats);
+    return { structure: s, notes };
+  }
   let delta = target - totalMinutes(s);
   if (delta > 0) {
     const f = fillers();
@@ -368,44 +381,23 @@ export function buildIntervalsEvent(workout, date, environment = "indoor") {
 }
 
 export async function scheduleWorkoutInIntervals(env, db, { workoutId, date, confirm = false, environment = "indoor" }) {
-  if (confirm !== true) throw new Error("Zápis do Intervals.icu vyžaduje potvrzení.");
+  if (confirm !== true) throw new Error("Uložení tréninku vyžaduje potvrzení.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) || new Date(date + "T12:00:00Z").toISOString().slice(0, 10) !== date) throw new Error("Neplatné datum.");
   const workout = await getWorkout(db, workoutId); if (!workout) throw new Error("Workout nebyl nalezen.");
   assertTrainingAllowed(await getAthleteState(db));
-  const available=availabilityOn(await getWeekPlan(db,date),date);
-  if(available.minutes!=null&&renderForEnvironment(workout,environmentOf(environment)).duration_minutes>available.minutes)throw new Error('Trénink přesahuje dostupný čas pro tento den.');
-  if (!env.INTERVALS_API_KEY) throw new Error("Intervals.icu není připojeno.");
+  // Confirmation saves the athlete's choice, including replacements and chat
+  // proposals. Availability limits belong to generation, never to this write.
   await ensureTrainingTables(db);
-  const event = buildIntervalsEvent(workout, date, environmentOf(environment)), auth = "Basic " + btoa("API_KEY:" + String(env.INTERVALS_API_KEY));
+  await ensureLocalWorkouts(db);
+  const event = buildIntervalsEvent(workout, date, environmentOf(environment));
   const existing = await db.prepare("SELECT intervals_event_id,status FROM workout_schedule_links WHERE user_id=? AND intervals_external_id=?").bind(db.userId, event.external_id).first();
-  if (existing) return { status: "already_scheduled", workout: { id: workout.id, name: workout.name }, date, externalId: event.external_id, intervalsEventId: existing.intervals_event_id || null };
-  const links=await db.prepare("SELECT workout_id,environment,intervals_event_id FROM workout_schedule_links WHERE user_id=? AND scheduled_date=? AND status='scheduled'").bind(db.userId,date).all();
-  let usedMinutes=0;
-  for(const link of links.results||[]){const w=await getWorkout(db,link.workout_id);if(w)usedMinutes+=renderForEnvironment(w,link.environment).duration_minutes;}
-  // Include calendar workouts created outside the library, without counting
-  // the cached copy of a linked workout twice.
-  const linkedIds=new Set((links.results||[]).map(l=>String(l.intervals_event_id)));
-  const planned=await db.prepare("SELECT external_id,payload_json FROM health_datapoints WHERE user_id=? AND source_family='intervals' AND data_type='planned-workout' AND start_time>=? AND start_time<?").bind(db.userId,date,date+'T23:59:59').all().catch(()=>({results:[]}));
-  for(const row of planned.results||[]){
-    let p;try{p=JSON.parse(row.payload_json);}catch{continue;}
-    if(linkedIds.has(String(p.id??String(row.external_id||'').replace(/^planned:/,'')))||/nutrition|food|meal/i.test(String(p.name||'')+' '+String(p.category||'')))continue;
-    const seconds=Number(p.moving_time??p.duration_seconds??p.duration),start=p.start_date_local,end=p.end_date_local;
-    usedMinutes+=Number.isFinite(seconds)&&seconds>0?seconds/60:start&&end?Math.max(0,(Date.parse(end)-Date.parse(start))/60000):0;
-  }
-  if(available.minutes!=null&&usedMinutes+renderForEnvironment(workout,environmentOf(environment)).duration_minutes>available.minutes)throw new Error('Součet tréninků přesahuje dostupný čas pro tento den.');
-  const window=parseTimeWindow(available.window);
-  if(window){const start=Number(window.start.slice(0,2))*60+Number(window.start.slice(3))+Math.ceil(usedMinutes);event.start_date_local=date+'T'+String(Math.floor(start/60)).padStart(2,'0')+':'+String(start%60).padStart(2,'0')+':00';}
-  const response = await fetch("https://intervals.icu/api/v1/athlete/0/events/bulk?upsert=true", { method: "POST", headers: { Authorization: auth, Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify([event]) });
-  const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error("Intervals.icu HTTP " + response.status);
-  const first = Array.isArray(data) ? data[0] : data;
-  if (!first?.id || first.category !== "WORKOUT") throw new Error("Intervals.icu nepotvrdilo vytvoření workoutu.");
+  if (existing) return { sync: await syncLocalWorkout({...env,DB:db},existing.intervals_event_id), status: "already_scheduled", workout: { id: workout.id, name: workout.name }, date, externalId: event.external_id, intervalsEventId: existing.intervals_event_id || null };
+  const rendered=renderForEnvironment(workout,environmentOf(environment));
+  event.moving_time=Math.round(rendered.duration_minutes*60);event.icu_training_load=event.load_target;
+  const local=await storeLocalEvent(db,event);
   await db.prepare(`INSERT INTO workout_schedule_links(user_id,sport,workout_id,family,scheduled_date,environment,intervals_external_id,intervals_event_id,status) VALUES(?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(user_id,intervals_external_id) DO UPDATE SET intervals_event_id=excluded.intervals_event_id,status=excluded.status`)
-    .bind(db.userId, sportOf(workout.sport), workout.id, workout.family || null, date, event.tags.includes("outdoor") ? "outdoor" : "indoor", event.external_id, String(first.id), "scheduled").run();
-  // The local copy of the event, so the week shows it now and not after the next sync.
-  const start = first.start_date_local || event.start_date_local || date + "T00:00:00";
-  await db.prepare("INSERT INTO health_datapoints(user_id,source_family,data_type,external_id,sample_time,start_time,end_time,payload_json) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,source_family,data_type,external_id) DO UPDATE SET sample_time=excluded.sample_time,start_time=excluded.start_time,end_time=excluded.end_time,payload_json=excluded.payload_json,updated_at=CURRENT_TIMESTAMP")
-    .bind(db.userId, "intervals", "planned-workout", "planned:" + first.id, start, start, first.end_date_local || null, JSON.stringify({ ...event, ...first })).run().catch(() => {});
-  return { status: "ok", workout: { id: workout.id, name: workout.name }, date, environment: event.tags.includes("outdoor") ? "outdoor" : "indoor", externalId: event.external_id, intervalsEventId: first.id, eventId: "planned:" + first.id };
+    ON CONFLICT(user_id,intervals_external_id) DO NOTHING`)
+    .bind(db.userId,sportOf(workout.sport),workout.id,workout.family||null,date,rendered.environment,event.external_id,local.id,'scheduled').run();
+  const sync=await syncLocalWorkout({...env,DB:db},local.id);
+  return {status:'ok',workout:{id:workout.id,name:workout.name},date,environment:rendered.environment,externalId:event.external_id,intervalsEventId:sync.eventId||null,eventId:'planned:'+local.id,sync};
 }

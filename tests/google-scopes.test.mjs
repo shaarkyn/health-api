@@ -30,7 +30,7 @@ test("connecting asks for Google Health only; 'extra' adds the optional scopes i
 
 test("Google's consent screen comes only after the app's own disclosure and consent", async () => {
   // Google Health data policy: the disclosure and consent in the app come right before Google's.
-  for (const [path, back] of [["/oauth/google", "/app?connect=google"], ["/oauth/google?extra=1", "/app?connect=google-extra"]]) {
+  for (const [path, back] of [["/oauth/google", "/app?connect=google"], ["/oauth/google?extra=1", "/app?connect=google-extra"], ["/oauth/google?return=setup", "/app?connect=google&return=setup"]]) {
     const response = await handleGoogleOAuth(new Request("https://petrfitnessdata.eu" + path), google, "/oauth/google");
     assert.equal(response.status, 302);
     assert.equal(response.headers.get("Location"), back);
@@ -39,7 +39,9 @@ test("Google's consent screen comes only after the app's own disclosure and cons
   // An unticked box that must be ticked before continuing to Google.
   assert.match(client, /<input type="checkbox" id="googleConsentAgree">/);
   assert.match(client, /id="googleConsentGo" disabled>/);
-  assert.match(client, /'\/oauth\/google\?consent=1'\+\(extra\?'&extra=1':''\)/);
+  // Agreeing continues to the link the user chose, with its extra=1 or return=setup.
+  assert.match(client, /googleHealthConsent\(a\.getAttribute\('href'\)\)/);
+  assert.match(client, /target\.searchParams\.set\('consent','1'\);location\.href=target\.pathname\+target\.search;/);
 });
 
 test("granted scopes are stored per user and offered in the connection status", async () => {

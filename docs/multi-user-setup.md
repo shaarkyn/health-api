@@ -17,11 +17,12 @@ Secret `ALLOWED_GOOGLE_EMAILS` už potřeba není.
 2. Přihlášení přes Google funguje pro každého pozvaného hned: žádá jen e-mail (`openid email`) a na ty se ověření ani testovací režim nevztahují. Ověření se týká jen připojení Google Health:
    - Projekt ve stavu *Testing*: přidej stejný e-mail i do **Google Cloud Console → Google Auth Platform → Audience → Test users** (nejvýš 100 lidí). Souhlas s Google Health jim vyprší po 7 dnech a musí se připojit znovu.
    - Projekt zveřejněný (*In production*), ale neověřený: seznam Test users není potřeba a souhlas nevyprší. Uživatel jen potvrdí varování, že aplikace není ověřená. Google Health takto připojí nejvýš 100 lidí, víc až po ověření aplikace Googlem.
-3. Pošli uživateli odkaz `https://petrfitnessdata.eu/app`. Po přihlášení ho aplikace provede připojením:
-   - **Google Health**: souhlas na stránce Google.
-   - **Intervals.icu**: API klíč z *Settings → Developer Settings*. Athlete ID není potřeba, aplikace ho zjistí z klíče.
+3. Pošli uživateli odkaz `https://petrfitnessdata.eu/app`. Po přihlášení ho provede průvodce nastavením (podrobně `docs/account-workflow.md`):
+   - **Propojení**: Google Health tlačítkem (souhlas na stránce Google), Intervals.icu tlačítkem, když je aplikace zaregistrovaná u Intervals.icu (`INTERVALS_CLIENT_ID`, `INTERVALS_CLIENT_SECRET`), jinak vložením API klíče z *Settings → Developer Settings* podle návodu v okně. Athlete ID není potřeba, aplikace ho zjistí z klíče.
+   - **Profil a kalorie**: pohlaví, věk, výška, váha, pohyb přes den, sport za týden a cíl.
+   - **Tvůj trénink**: hlavní sport a cíl, zkušenost, vybavení a čas na sport pro každý den; potom obrazovka s kalorickým cílem a co dál.
 
-Propojení není povinné. Průvodce lze přeskočit tlačítkem *Pokračovat bez propojení*; uživatel pak zapisuje váhu a jídlo ručně a kalorický cíl se počítá z profilu (pohlaví, věk, výška, váha, denní aktivita, sport za týden a cíl). Propojit služby jde kdykoli v Nastavení.
+Propojení není povinné: stačí jedna služba, nebo žádná; uživatel pak zapisuje váhu a jídlo ručně a kalorický cíl se počítá z profilu. Průvodce jde znovu spustit v Nastavení → Účet; propojit služby jde kdykoli v Nastavení → Propojení.
 
 Silový plán (Gym) má každý uživatel vlastní. Plán dne je v databázi (tabulka `gym_plans`) a odcvičené série se ukládají do historie (`strength_sets`). Google Sheets se už nepoužívá.
 
@@ -40,7 +41,7 @@ Pozvánky fungují stejně jako u Googlu: účet vznikne, když Apple potvrdí p
 
 ## Smazání účtu
 
-Každý uživatel kromě správce si může v **Nastavení → Účet → Smazat účet** smazat účet i se všemi daty (`src/account-deletion.js`). Aplikace nejdřív zruší svůj přístup k jeho Google účtu, pak smaže řádky ve všech tabulkách se sloupcem `user_id`, pozvánku a nakonec samotného uživatele. Co už bylo zkopírované do Intervals.icu nebo Google Health, tam zůstane. Odpojení Google Health v Nastavení přístup u Googlu taky zruší.
+Každý uživatel kromě správce si může v **Nastavení → Účet** stáhnout všechna svoje data a smazat účet (`src/account-data.js`, podrobně v [account-workflow.md](account-workflow.md)). Smazání nejdřív vrátí Googlu souhlas k Google Health, pak smaže řádky účtu ve všech osobních tabulkách (`PERSONAL_TABLES` v `src/tenancy.js`, včetně propojených Apple ID v `user_identities`) a nakonec samotného uživatele. Nová tabulka se sloupcem `user_id` proto patří do `PERSONAL_TABLES`, jinak ji stažení i smazání vynechá. Co už bylo zkopírované do Intervals.icu nebo Google Health, tam zůstane. Odpojení Google Health v Nastavení přístup u Googlu taky zruší.
 
 ## Co zatím zůstává jen pro správce
 

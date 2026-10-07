@@ -7,13 +7,16 @@ import {designSystem,themeBoot,themeSwitch} from './design-system.js';
 import {ICON_PATHS,icon} from './icons.js';
 import {langBoot} from './i18n.js';
 import {signInButtons,signInButtonsCss} from './sign-in-buttons.js';
+// account: the signed-in user's id (or '' when signed out). What the app keeps
+// on the device belongs to one account; the page drops it for another one.
 // signIn.apple: show "Sign in with Apple" (only once its keys are set).
-export function dashboardPage({clientVersion='dev',signIn={}}={}) {
+export function dashboardPage({clientVersion='dev',account='',signIn={}}={}) {
   const html = `<!doctype html>
 <html lang="cs">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="lw-account" content="${/^\d{1,12}$/.test(String(account))?account:''}">
 <meta name="theme-color" content="#0d131a" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#fbfcfd" media="(prefers-color-scheme: light)">
 ${themeBoot}
@@ -48,7 +51,7 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
 #foodManageDialog{width:min(620px,calc(100vw - 24px));max-height:88vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);padding:20px}#foodManageDialog::backdrop{background:#000a}.food-manage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}.food-manage-grid label,.food-copy-controls label{display:grid;gap:5px;font-size:12px;color:var(--muted)}.food-manage-grid input,.food-manage-grid select{width:100%}.food-manage-actions,.food-copy-controls{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:12px}.food-copy-controls{border-top:1px solid var(--line);padding-top:14px}.food-copy-controls label{min-width:170px}@media(max-width:620px){.food-manage-grid{grid-template-columns:1fr}.meal-row-main{display:block}.meal-row-main strong,.meal-row-main span{display:block}.meal-row-actions select{max-width:none;width:100%}}
 #foodManageDialog .detail-heading{display:flex;align-items:center;justify-content:space-between;flex-direction:row;gap:12px}#foodManageDialog .detail-heading h3{margin:0}#foodManageClose{flex:none}
 .consent-dialog{width:min(560px,calc(100vw - 24px));max-height:88vh;overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);padding:22px}.consent-dialog::backdrop{background:#000a}.consent-dialog h3{margin:0 0 6px;font-size:20px}.consent-list{margin:14px 0;padding-left:18px;display:grid;gap:9px;font-size:13px;line-height:1.5}.consent-check{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--text) 4%,var(--bg));font-weight:600;cursor:pointer}.consent-check input{flex:none;width:18px;height:18px;margin:2px 0 0}.consent-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}.consent-dialog a{color:var(--primary-text)}
-.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--bg))}.account-delete{margin-top:12px}.account-delete summary{cursor:pointer;color:var(--muted);font-size:13px}.account-delete p{margin:10px 0}.account-delete-note{margin:10px 0 0}.apple-sign-in{margin-top:12px;align-items:center}
+.apple-sign-in{margin-top:12px;align-items:center}
 </style>
 </head>
 <body>
@@ -74,7 +77,7 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
 <section id="overview" class="view">
   <div class="readiness-hero"><div><div class="readiness-kicker">Performance readiness · <span id="overviewDate">—</span></div><h1 id="readinessTitle">Dnešní připravenost</h1><p id="readinessInsight">Načítám dnešní signály.</p><div id="readinessFocus" class="focus-chip">Dnešní priorita</div></div><div class="readiness-score"><div id="readinessOrb" class="score-orb"><div><strong id="readinessScore">—</strong><span>recovery</span></div></div><div id="readinessCaption" class="score-caption">čekám na spánek</div></div><div class="readiness-metrics"><div id="readinessDials" class="dial-row"></div></div></div>
   <div class="section">Denní signály</div><div class="quick-grid">
-    <div class="card"><div class="label">Hmotnost</div><div id="oWeight" class="value">—</div><div id="oWeightMeta" class="small">aktuálně · cíl 80 kg</div></div>
+    <div class="card"><div class="label">Hmotnost</div><div id="oWeight" class="value">—</div><div id="oWeightMeta" class="small">aktuálně</div></div>
     <div class="card"><div class="label">Spánek</div><div id="oSleep" class="value">—</div><div id="oSleepMeta" class="small">recovery vs. 30 dní</div></div>
     <div class="card"><div class="label">Fitness</div><div id="oFitness" class="value">—</div><div class="small">CTL · Intervals.icu</div></div>
     <div class="card"><div class="label">Form</div><div id="oForm" class="value">—</div><div class="small">TSB · dnes</div></div>

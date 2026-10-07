@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { createD1 } from "./helpers/d1.mjs";
 import { handleAppleLogin, appleConfigured, appleClientSecret, appleIdentity, unlinkAppleIdentity, _resetAppleJwksCacheForTest } from "../src/apple-login.js";
 import { isPublicPath, resolvePrincipal } from "../src/dashboard-auth.js";
-import { ensureTenancy, _resetTenancyForTest } from "../src/tenancy.js";
-import { deleteAccount } from "../src/account-deletion.js";
+import { ensureTenancy, scopedDb, _resetTenancyForTest } from "../src/tenancy.js";
+import { deleteAccount } from "../src/account-data.js";
 
 const b64 = value => Buffer.from(typeof value === "string" ? value : JSON.stringify(value)).toString("base64url");
 const ec = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
@@ -142,14 +142,14 @@ test("a signed-in user links their Apple ID in Settings, even with a hidden e-ma
   // Deleting the account takes the Apple link with it.
   const again = await start(env, { path: "/auth/apple?link=1", user: { id: friend.id } });
   await callback(env, again, {}, appleFetch({}, { nonce: again.nonce }));
-  await deleteAccount(env.DB, { id: friend.id, email: "friend@example.com" });
+  await deleteAccount({ DB: scopedDb(env.DB, friend.id), USER_ID: friend.id }, { id: friend.id, email: "friend@example.com" });
   assert.equal(await env.DB.prepare("SELECT COUNT(*) AS n FROM user_identities WHERE user_id=?").bind(friend.id).first().then(r => r.n), 0);
 });
 
 test("the app page asks for the Apple button only when Apple is set up, and Settings can link Apple", () => {
   const entry = readFileSync(new URL("../src/entrypoint.js", import.meta.url), "utf8");
   const client = readFileSync(new URL("../src/dashboard-client.js", import.meta.url), "utf8");
-  assert.match(entry, /dashboardPage\(\{ clientVersion: CLIENT_VERSION, signIn: \{ apple: appleConfigured\(env\) \} \}\)/);
+  assert.match(entry, /dashboardPage\(\{ clientVersion: CLIENT_VERSION, account: .*, signIn: \{ apple: appleConfigured\(env\) \} \}\)/);
   assert.match(entry, /handleAppleLogin\(request, rawEnv, url\.pathname, \{ user: signedIn \? user : null \}\)/);
   assert.match(client, /href="\/auth\/apple\?link=1"/);
   assert.match(client, /fetch\('\/app\/api\/me\/apple',\{method:'DELETE'/);
