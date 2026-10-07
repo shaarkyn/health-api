@@ -88,6 +88,7 @@ import { isStaging, markStaging } from "./staging.js";
 import { techniqueFor, ownExerciseVideo, saveOwnExerciseVideo, storedTechnique, generateTechnique, exerciseInUse } from "./exercise-technique.js";
 import { isPublicPath, resolvePrincipal, unauthorizedResponse, handleDashboardLogout, verifyDashboardSession, sessionSecret } from "./dashboard-auth.js";
 import { aiAllowance } from "./ai-usage.js";
+import { exportAccountData, deleteAccount } from "./account-data.js";
 import { handleIntervalsOAuth } from "./intervals-oauth.js";
 import { ensureTenancy, TenancyUpgradeInProgress, userEnv, findUser, ownerUser, usersWithProviders, listUsersAndInvites, inviteUser, removeInvite, setUserDisabled } from "./tenancy.js";
 import { pragueToday } from './prague-date.js';
@@ -531,6 +532,23 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   if (url.pathname === "/app/api/me" && request.method === "GET") {
     const [onboarding,ai]=await Promise.all([onboardingStatus(env),session.signedIn&&env.OPENAI_API_KEY?aiAllowance(env).catch(error=>{console.error('AI usage read failed',error.message);return null;}):null]);
     return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env),onboarding,ai},{headers:{"Cache-Control":"no-store"}});
+  }
+  // The user's own data: download everything, or delete the account with it.
+  if(url.pathname==='/app/api/account/export'&&request.method==='GET'){
+    if(!session.signedIn)return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
+    const data=await exportAccountData(env,session.user);
+    return new Response(JSON.stringify(data,null,1),{headers:{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="loadwise-data-'+pragueToday()+'.json"','Cache-Control':'no-store'}});
+  }
+  if(url.pathname==='/app/api/account/delete'&&request.method==='POST'){
+    if(!session.signedIn)return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
+    if(request.headers.get('Origin')!==url.origin)return Response.json({message:'Neplatný původ požadavku.'},{status:403});
+    const body=await request.json().catch(()=>({}));
+    if(String(body.confirm||'').trim().toUpperCase()!=='SMAZAT')return Response.json({message:'Pro potvrzení napiš SMAZAT.'},{status:400});
+    try{
+      const result=await deleteAccount(await connectionEnvironment(env),session.user);
+      // The session cookie goes too.
+      return Response.json(result,{headers:{'Cache-Control':'no-store','Set-Cookie':handleDashboardLogout().headers.get('Set-Cookie')}});
+    }catch(error){return Response.json({message:error.message},{status:400});}
   }
   if(url.pathname==='/app/api/subscription'&&request.method==='GET')return Response.json(await subscriptionStatus(env),{headers:{'Cache-Control':'no-store'}});
   if(url.pathname==='/app/api/onboarding'){

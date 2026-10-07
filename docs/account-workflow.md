@@ -72,6 +72,17 @@ rozpoznání jídla/etikety z fotografie, rozbor jídla z textu, webové dohled�
 potravin a generování nových návodů na cviky. Energetické výpočty, základní
 tréninkové generátory, katalogy a ruční evidence fungují bez OpenAI.
 
+## Vlastní data a smazání účtu
+
+Nastavení → Účet nabízí stažení všech dat účtu (`GET /app/api/account/export`,
+JSON ze všech osobních tabulek bez klíčů připojení) a smazání účtu
+(`POST /app/api/account/delete` s potvrzením `SMAZAT`, `account-data.js`).
+Smazání vrátí Googlu souhlas k Google Health, odstraní řádky účtu ze všech
+osobních tabulek (`PERSONAL_TABLES`) i samotný účet a odhlásí. Znovu se
+přihlásit jde jen s novou pozvánkou. Sdílený katalog potravin a receptů osobní
+údaje neobsahuje a zůstává. Účet správce smazat nejde. Intervals.icu nemá volání
+pro odvolání klíče; uživatel může aplikaci odebrat v nastavení Intervals.icu.
+
 ## Ověření a migrace
 
 Použij Node >=22, `npm run check`, `npm run lint` a `npm test`.
