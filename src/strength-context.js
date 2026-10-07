@@ -163,12 +163,22 @@ export async function buildStrengthContext(env, requestedDate = null) {
   try {
     const { recoveryWeek, weekLoadsBefore } = await import("./week-planner.js");
     const monday = new Date(Date.parse(date + "T12:00:00Z") - ((new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7) * 86400000).toISOString().slice(0, 10);
-    const oldestWellness = new Date(Date.parse(monday + "T12:00:00Z") - 22 * 86400000).toISOString().slice(0, 10);
+    // 61 days: the recovery model compares today with a 60-day baseline.
+    const oldestWellness = new Date(Math.min(Date.parse(monday + "T12:00:00Z") - 22 * 86400000, Date.parse(date + "T12:00:00Z") - 61 * 86400000)).toISOString().slice(0, 10);
     const wellness = await intervalsGet(env, `/athlete/0/wellness?oldest=${oldestWellness}&newest=${date}`);
     const rows = Array.isArray(wellness) ? wellness : [], ctl = Number([...rows].reverse().find(r => Number(r.ctl) > 0)?.ctl) || null;
     const weekLoads = weekLoadsBefore(rows, monday);
     context.recoveryWeek = { ...recoveryWeek({ base: ctl ? ctl * 7 : null, weekLoads }), weekLoads, ctl, known: Boolean(ctl && weekLoads.length) };
+    context.intervalsWellness = rows;
   } catch { context.recoveryWeek = { recovery: false, reason: null, known: false }; }
+  // The day's HRV, resting HR and breathing with their history, as the dashboard
+  // reads them: Google Health first, Intervals.icu filling the gaps.
+  try {
+    const { googleDashboard } = await import("./google-dashboard.js"), { mergeWellnessRows } = await import("./recovery-model.js");
+    const google = await googleDashboard(env.DB, date).catch(() => ({ wellness: [] }));
+    context.wellnessSeries = mergeWellnessRows(google.wellness, context.intervalsWellness);
+  } catch { context.wellnessSeries = []; }
+  delete context.intervalsWellness;
   try { context.strength.plannedSessions = await plannedGymSessions(env, date); } catch { context.strength.plannedSessions = []; }
   // Sex sets the muscle priorities and the starting loads without history.
   try { const { loadEffectiveProfile } = await import("./profile-suggestions.js"); const profile = await loadEffectiveProfile(env.DB, env.USER_ID); context.profile = { sex: profile?.sex || "" }; } catch { context.profile = { sex: "" }; }

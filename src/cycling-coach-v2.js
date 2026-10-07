@@ -3,6 +3,7 @@ import { trainingStatus } from './training-status.js';
 import { qualityDomain } from './session-intensity.js';
 import { recoveryWeek as recoveryWeek_, weekLoadsBefore } from './week-planner.js';
 import { pragueToday } from "./prague-date.js";
+import { recoveryReadiness } from "./recovery-model.js";
 
 const n=(v,d=null)=>v===null||v===undefined||v===""?d:Number.isFinite(Number(v))?Number(v):d;
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
@@ -52,6 +53,14 @@ function latestWellness(fitness,date){
 // Today's HRV or resting heart rate against the athlete's own 4-week
 // average from the Intervals.icu wellness (Google Health is synced there):
 // what is low for one athlete is normal for another.
+// HRV and resting HR from the Intervals.icu wellness through the shared model.
+// The newest of today and yesterday counts as the morning reading.
+function bodySignals(fitness,date){
+  const rows=(Array.isArray(fitness?.wellness)?fitness.wellness:[]).filter(r=>r?.id).map(r=>({id:r.id,hrv:n(r.hrv),restingHR:n(r.restingHR),respiration:n(r.respiration)}));
+  const has=d=>rows.some(r=>r.id===d&&(r.hrv>0||r.restingHR>0)),y=new Date(Date.parse(date+"T12:00:00Z")-86400000).toISOString().slice(0,10);
+  const ref=has(date)?date:has(y)?y:null;
+  return ref?recoveryReadiness({rows,date:ref}):null;
+}
 export function wellnessTrend(fitness,date,key){
   const rows=(Array.isArray(fitness?.wellness)?fitness.wellness:[]).map(r=>({age:diffDays(date,r.id),value:n(r[key])})).filter(r=>r.age!=null&&r.age>=0&&r.value!=null&&r.value>0);
   const today=rows.filter(r=>r.age<=1).sort((a,b)=>a.age-b.age)[0];
@@ -209,15 +218,18 @@ export function buildCyclingCoachV2({date,daily,week,fitness,health,gym,preferen
     else if(tsb<=-10){score-=7;readinessReasons.push("mírná kumulovaná únava");}
   }
   if(ramp!=null&&ramp>8){score-=10;readinessReasons.push("rychlý růst tréninkové zátěže");}
-  // Body signals against the athlete's own baseline: a drop in HRV or a rise
-  // in resting heart rate says the body has not absorbed the load yet.
+  // Body signals against the athlete's own baseline, with the shared recovery
+  // model (lnRMSSD and resting HR against 60 days, src/recovery-model.js): a
+  // value below the personal normal range says the body has not absorbed the
+  // load yet. The penalty grows with the distance from the athlete's mean.
   const hrv=wellnessTrend(fitness,targetDate,"hrv"),rhr=wellnessTrend(fitness,targetDate,"restingHR");
-  if(hrv&&hrv.deltaPct<=-20){score-=22;readinessReasons.push("HRV "+Math.round(hrv.today)+" ms je o "+Math.round(-hrv.deltaPct)+" % pod tvým průměrem ("+Math.round(hrv.baseline)+")");}
-  else if(hrv&&hrv.deltaPct<=-10){score-=10;readinessReasons.push("HRV o "+Math.round(-hrv.deltaPct)+" % pod tvým průměrem");}
-  if(rhr&&rhr.delta>=7){score-=18;readinessReasons.push("klidový tep "+Math.round(rhr.today)+" je o "+Math.round(rhr.delta)+" tepů nad tvým průměrem");}
-  else if(rhr&&rhr.delta>=4){score-=8;readinessReasons.push("klidový tep o "+Math.round(rhr.delta)+" tepy nad průměrem");}
+  const body=bodySignals(fitness,targetDate),bh=body?.components?.hrv,br=body?.components?.restingHR;
+  if(hrv&&bh&&bh.score<70){const p=Math.min(25,Math.round(.5*(70-bh.score)));score-=p;if(p>=5)readinessReasons.push("HRV "+Math.round(hrv.today)+" ms je pod tvým běžným pásmem "+Math.round(bh.low)+"–"+Math.round(bh.high)+" ms ("+Math.round(-hrv.deltaPct)+" % pod průměrem)");}
+  if(rhr&&br&&br.score<70){const p=Math.min(20,Math.round(.33*(70-br.score)));score-=p;if(p>=5)readinessReasons.push("klidový tep "+Math.round(rhr.today)+" je o "+Math.round(rhr.delta)+" tepů nad tvým průměrem");}
   // Both at once is a strong sign of fatigue or a coming illness.
-  if(hrv&&rhr&&hrv.deltaPct<=-10&&rhr.delta>=4){score-=8;readinessReasons.push("HRV i klidový tep zároveň ukazují na výraznou únavu");}
+  if(bh&&br&&bh.z<=-1&&br.z>=1){score-=8;readinessReasons.push("HRV i klidový tep zároveň ukazují na výraznou únavu");}
+  if(bh?.trend==="down"){score-=5;readinessReasons.push("7denní průměr HRV klesl pod tvoje běžné pásmo");}
+  if(body?.components?.respiration?.elevated){score-=8;readinessReasons.push("dech ve spánku je výrazně nad tvým průměrem, může jít o nastupující nemoc");}
   if(sleepMinutes!=null){
     if(sleepMinutes<360){score-=18;readinessReasons.push("spánek pod 6 h");}
     else if(sleepMinutes<420){score-=8;readinessReasons.push("spánek pod 7 h");}

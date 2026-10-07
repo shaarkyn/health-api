@@ -139,5 +139,19 @@ export function strainScore(load) {
   return load > 0 ? Math.round(21 * (1 - Math.exp(-load / 225)) * 10) / 10 : 0;
 }
 
+// Google Health rows first, Intervals.icu wellness filling the days and fields
+// Google has none of (Apple Watch, Garmin and others sync there), as the
+// dashboard does in vitalWellness.
+export function mergeWellnessRows(google, intervals) {
+  const byDate = new Map((google || []).filter(r => r && r.id).map(r => [r.id, { ...r }]));
+  for (const r of intervals || []) {
+    if (!r || !r.id) continue;
+    const row = byDate.get(r.id) || { id: r.id };
+    for (const key of ["hrv", "restingHR", "respiration"]) if (!(Number(row[key]) > 0) && Number(r[key]) > 0) row[key] = Number(r[key]);
+    byDate.set(r.id, row);
+  }
+  return [...byDate.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
+
 // The functions the dashboard client copies verbatim.
 export const RECOVERY_MODEL_FUNCTIONS = [personalBaseline, sleepNeedMinutes, sleepDebtMinutes, sleepIndexScore, recoveryComponentScore, recoveryReadiness, heartRateLoad, strainScore];
