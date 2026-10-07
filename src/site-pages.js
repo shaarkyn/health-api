@@ -394,7 +394,6 @@ export function privacyPage(request) {
 <li><strong>Intervals.icu</strong>, if you connect it: the workouts you plan in Loadwise, nutrition notes and calorie targets in your calendar, your weight, and every hour a copy of your daily wellness from Google Health (sleep, average sleeping heart rate, steps, resting heart rate, HRV, oxygen saturation, respiration, VO2 max and body fat). Intervals.icu handles this data under its own privacy policy.</li>
 <li><strong>Google Health</strong>: the food and drinks you log and, if you allow it, your weight.</li>
 <li><strong>OpenAI</strong>, when you use an AI feature (such as the assistant, recognizing food from a photo, label or description, plan reviews, workout reflections or exercise descriptions): the data that request needs, such as your message, the photo and related training, sleep, health and nutrition data. OpenAI does not use data sent through its API to train its models and keeps it for up to 30 days to detect abuse.</li>
-<li><strong>ChatGPT</strong>, if you connect Loadwise to it: ChatGPT can then read your plans, recovery, training and nutrition in Loadwise and log food when you ask it to. OpenAI handles that data under its own privacy policy.</li>
 <li><strong>Cloudflare</strong> runs Loadwise, stores its database in Europe and keeps the technical logs.</li>
 <li><strong>Open-Meteo</strong> gets only the place you enter for the weather in your training plan.</li>
 <li><strong>Authorities</strong>, only when the law requires it.</li>
@@ -476,7 +475,6 @@ export function privacyPage(request) {
 <li><strong>Intervals.icu</strong>, když ho připojíš: tréninky, které naplánuješ v Loadwise, poznámky k výživě a cíle kalorií v kalendáři, tvoji váhu a každou hodinu kopii denních wellness údajů z Google Health (spánek, průměrný tep ve spánku, kroky, klidový tep, HRV, okysličení krve, dech, VO₂max a tělesný tuk). Intervals.icu s nimi zachází podle svých zásad ochrany soukromí.</li>
 <li><strong>Google Health</strong>: jídlo a pití, které zapíšeš, a když to povolíš, i tvoje váha.</li>
 <li><strong>OpenAI</strong>, když použiješ AI funkci (třeba asistenta, rozpoznání jídla z fotky, etikety nebo popisu, revizi plánu, zhodnocení tréninku nebo popis cviku): data, která daný požadavek potřebuje, třeba tvoji zprávu, fotku a související údaje o tréninku, spánku, zdraví a výživě. OpenAI data poslaná přes své API nepoužívá k trénování modelů a uchovává je nejvýš 30 dní kvůli odhalování zneužití.</li>
-<li><strong>ChatGPT</strong>, když do něj Loadwise připojíš: ChatGPT pak může číst tvoje plány, regeneraci, tréninky a výživu v Loadwise a zapisovat jídlo, když ho o to požádáš. OpenAI s těmito daty zachází podle svých zásad ochrany soukromí.</li>
 <li><strong>Cloudflare</strong> provozuje Loadwise, ukládá jeho databázi v Evropě a uchovává technické záznamy.</li>
 <li><strong>Open-Meteo</strong> dostane jen místo, které zadáš pro počasí v plánu tréninků.</li>
 <li><strong>Úřady</strong>, jen když to vyžaduje zákon.</li>
