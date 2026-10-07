@@ -122,7 +122,42 @@ function populateWeekSelectors(weekId,dayId,days){
 // A modal dialog covers the page, so messages and tips move into it while open.
 function overlayHost(){try{return document.querySelector('dialog:modal')||document.body}catch{return document.body}}
 function toast(msg){const t=$("toast"),host=overlayHost();if(t.parentNode!==host)host.appendChild(t);t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600)}
-async function jsonFetch(path,options={}){const r=await fetch(path,{credentials:"same-origin",...options,headers:{...options.headers,"X-Interface-Language":document.documentElement.lang||"cs"}});const d=await r.json().catch(()=>({message:"Invalid response"}));if(r.status===401)showLoginGate();if(!r.ok)throw new Error(d.message||"HTTP "+r.status);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate|\/assistant/.test(path))markDataChanged(path);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate/.test(path)&&typeof clearLibraryCache==='function')clearLibraryCache();if(options.method&&options.method!=='GET'&&!/\/assistant|\/sync|\/athlete-state|\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/(?:generate|schedule)|\/estimate|\/week-plan|\/planned\//.test(path))scheduleCoachRefresh();return d}
+async function jsonFetch(path,options={}){if(typeof aiIntroBefore==='function')await aiIntroBefore(path,options);const r=await fetch(path,{credentials:"same-origin",...options,headers:{...options.headers,"X-Interface-Language":document.documentElement.lang||"cs"}});const d=await r.json().catch(()=>({message:"Invalid response"}));if(r.status===401)showLoginGate();if(r.status===402&&typeof showAiPlans==='function')subscriptionInfo().then(s=>showAiPlans(s,{locked:true})).catch(()=>{});if(!r.ok)throw new Error(d.message||"HTTP "+r.status);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate|\/assistant/.test(path))markDataChanged(path);if(options.method&&options.method!=='GET'&&!/\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/generate|\/estimate/.test(path)&&typeof clearLibraryCache==='function')clearLibraryCache();if(options.method&&options.method!=='GET'&&!/\/assistant|\/sync|\/athlete-state|\/food\/(?:label|photo|search|ai-lookup)|\/workouts\/(?:generate|schedule)|\/estimate|\/week-plan|\/planned\//.test(path))scheduleCoachRefresh();return d}
+// ---- AI plan: the comparison of Free and AI ----
+// During the pilot everything is free; the first use of an AI feature shows
+// once what will belong to the AI plan (remembered per account on the server).
+// Once the paid split is on, a locked AI feature (HTTP 402) shows it each time.
+// Paying is not live yet: the button only says so.
+const AI_PATHS=['/app/api/assistant','/app/api/coach/week','/app/api/coach/review','/app/api/gym/adjust','/app/api/food/ai-lookup','/app/api/food/photo'];
+let subscriptionPromise=null;
+function subscriptionInfo(){return subscriptionPromise||(subscriptionPromise=fetch('/app/api/subscription',{credentials:'same-origin'}).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status))).catch(error=>{subscriptionPromise=null;throw error;}));}
+async function aiIntroBefore(path,options={}){
+  if(String(options.method||'GET').toUpperCase()!=='POST'||!AI_PATHS.includes(String(path).split('?')[0]))return;
+  let s;try{s=await subscriptionInfo();}catch{return;}
+  if(s.mode!=='pilot'||s.introSeen)return;
+  s.introSeen=true;
+  fetch('/app/api/subscription/intro',{method:'POST',credentials:'same-origin'}).catch(()=>{});
+  await showAiPlans(s,{pilot:true});
+}
+// compact: the free features as one line, so the pop-up fits a phone screen.
+function aiPlansHtml(s,{compact=false}={}){
+  const free=(s.features||[]).filter(f=>!f.ai);
+  const shown=compact?[{name:'Základ aplikace: profil a kalorie, ruční záznamy, potraviny, plánování tréninků a propojení služeb',ai:false},...(s.features||[]).filter(f=>f.ai)]:(s.features||[]);
+  if(compact&&!free.length)shown.shift();
+  const rows=shown.map(f=>'<tr><th scope="row">'+esc(f.name)+'</th><td>'+(f.ai?'<span class="plan-no">—</span>':'<span class="plan-yes">✓</span>')+'</td><td><span class="plan-yes">✓</span></td></tr>').join('');
+  return '<table class="plan-table"><thead><tr><th scope="col"><span class="sr-only">Funkce</span></th><th scope="col">Free</th><th scope="col">AI</th></tr></thead><tbody>'+rows+'<tr class="plan-price"><th scope="row">Cena</th><td>Zdarma</td><td>Bude oznámena</td></tr></tbody></table>';
+}
+function showAiPlans(s,{pilot=false,locked=false}={}){
+  if($('aiPlans'))return Promise.resolve();
+  return new Promise(resolve=>{
+    document.body.insertAdjacentHTML('beforeend','<div id="aiPlans" role="dialog" aria-modal="true" aria-labelledby="aiPlansTitle" style="'+gateStyle+'"><div class="card ai-plans-card"><div class="eyebrow">'+(pilot?'Pilot · AI zdarma':'AI předplatné')+'</div><h2 id="aiPlansTitle">'+(locked?'Tahle funkce je v AI předplatném':'Používáš AI funkci')+'</h2><p class="small">'+(pilot?'Během pilotu máš všechno zdarma. Až spustíme předplatné, AI funkce budou v placeném tarifu a základ aplikace zůstane zdarma.':'Základ aplikace je zdarma. AI trenér, rozpoznání jídla z fotky a další AI funkce jsou v předplatném.')+'</p>'+aiPlansHtml(s,{compact:true})+'<p class="small" id="aiPlansNote" role="status"></p><div class="setup-actions ai-plans-actions"><button class="btn" type="button" id="aiPlansClose">'+(pilot?'Pokračovat zdarma':'Zavřít')+'</button><button class="btn primary" type="button" id="aiPlansBuy">Předplatit AI</button></div></div></div>');
+    const close=()=>{$('aiPlans')?.remove();resolve();};
+    $('aiPlansClose').onclick=close;
+    $('aiPlansBuy').onclick=()=>{$('aiPlansNote').textContent=pilot?'Platby zatím nejsou spuštěné. Během pilotu máš AI zdarma, nic platit nemusíš.':'Platby zatím nejsou spuštěné. Dáme vědět, až půjde předplatné objednat.';};
+    $('aiPlansClose').focus({preventScroll:true});
+  });
+}
+{const css=document.createElement('style');css.textContent='.ai-plans-card{width:min(560px,100%);display:grid;gap:14px;max-height:calc(100vh - 32px);overflow:auto}.ai-plans-card h2{margin:0}.ai-plans-card>p{margin:0}.plan-table{width:100%;border-collapse:collapse;font-size:14px}.plan-table th,.plan-table td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.plan-table thead th{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.plan-table td{text-align:center;width:64px}.plan-table thead th:not(:first-child){text-align:center}.plan-table tbody th{font-weight:500;text-transform:none;letter-spacing:normal;color:var(--text);font-size:14px;line-height:1.35}.plan-table thead th{padding-top:0}.plan-yes{color:var(--ok);font-weight:700}.plan-no{color:var(--muted)}.plan-price th,.plan-price td{font-weight:700;border-bottom:0}.plan-price td{font-size:13px}.ai-plans-actions{position:sticky;bottom:-1px;background:inherit;padding:10px 0 2px;margin:0}.ai-plans-card{padding-bottom:12px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}';document.head.append(css);}
 // Every data API requires a session; the first 401 swaps the dashboard for a login screen.
 const gateStyle='position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:var(--bg);overflow:auto';
 function showLoginGate(){if($("loginGate"))return;forgetAccount();if(new URLSearchParams(location.search).get('deleted')==='1')queueMicrotask(()=>toast('Účet a data jsou smazané.'));document.body.insertAdjacentHTML("beforeend",'<div id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginGateTitle" style="'+gateStyle+'"><div class="card" style="width:min(380px,100%);display:grid;gap:12px"><h2 id="loginGateTitle" style="margin:0">Přihlášení</h2><p class="small" style="margin:0">Do aplikace se přihlašuješ svým Google účtem. Přístup mají jen pozvaní uživatelé. Přihlášení slouží pouze k založení účtu; přístup ke Google Health povolíš zvlášť a dobrovolně.</p><a class="btn primary" href="/auth/google" style="text-align:center;text-decoration:none">Přihlásit přes Google</a></div></div>');}
@@ -3846,6 +3881,7 @@ function rememberCoachTurn(role,content){
   state.athleteState.conversation=[...(state.athleteState.conversation||[]),{role,content}].slice(-20);
 }
 async function fetchAssistantReply(message,onAnswer,appContext,onProgress){
+  if(typeof aiIntroBefore==='function')await aiIntroBefore('/app/api/assistant',{method:'POST'});
   const response=await fetch('/app/api/assistant',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Interface-Language':document.documentElement?.lang||'cs'},body:JSON.stringify({message,stream:true,appContext,chatId:assistantChat.id})});
   if(response.status===401)showLoginGate();
   if(!response.headers.get('Content-Type')?.includes('application/x-ndjson')){const result=await response.json();if(!response.ok)throw new Error(result.message||'Odpověď se nepodařilo načíst.');return result;}
@@ -4370,7 +4406,7 @@ async function pollAccountImport(){
 }
 async function showSubscription(){
   openSheet('Předplatné','<p>Načítám přehled…</p>');
-  try{const s=await jsonFetch('/app/api/subscription');$('sheetBody').innerHTML='<p class="notice">'+(s.mode==='pilot'?'Pilot pro pozvané · všechny dostupné funkce máš zdarma':s.aiAccess?'Tvůj tarif: AI':'Tvůj tarif: Free')+'</p><div style="overflow:auto"><table><caption>Plánované rozdělení funkcí</caption><thead><tr><th scope="col">Funkce</th><th scope="col">Free</th><th scope="col">AI předplatné</th></tr></thead><tbody>'+s.features.map(f=>'<tr><th scope="row">'+esc(f.name)+'</th><td>'+(f.ai?'—':'✓')+'</td><td>✓</td></tr>').join('')+'</tbody></table></div><h3>Podmínky</h3><p>'+esc(s.terms)+'</p><p class="small">Cena a limity AI tarifu zatím nejsou stanovené. Objednávky ani platby nejsou spuštěné. Dostupnost AI vyžaduje funkční připojení služby; při jejím výpadku zůstává základ aplikace použitelný.</p>';}
+  try{const s=await jsonFetch('/app/api/subscription');$('sheetBody').innerHTML='<p class="notice">'+(s.mode==='pilot'?'Pilot pro pozvané · všechny dostupné funkce máš zdarma':s.aiAccess?'Tvůj tarif: AI':'Tvůj tarif: Free')+'</p><div style="overflow:auto">'+aiPlansHtml(s)+'</div><h3>Podmínky</h3><p>'+esc(s.terms)+'</p><p class="small">Cena a limity AI tarifu zatím nejsou stanovené. Objednávky ani platby nejsou spuštěné. Dostupnost AI vyžaduje funkční připojení služby; při jejím výpadku zůstává základ aplikace použitelný.</p>';}
   catch(error){$('sheetBody').textContent=error.message;}
 }
 function installSubscription(){if($('subscriptionCard')||!$('settings'))return;settingsBody('account').insertAdjacentHTML('beforeend','<article class="card" id="subscriptionCard" style="margin-top:12px"><h3>Předplatné</h3><p>V pilotu pro pozvané jsou dostupné AI funkce zdarma.</p><button class="btn" id="subscriptionDetails">Free a AI · funkce a podmínky</button></article>');$('subscriptionDetails').onclick=showSubscription;}
