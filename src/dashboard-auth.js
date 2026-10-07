@@ -5,8 +5,8 @@ export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 
 // Routes reachable without a dashboard session or API key. Everything else
 // requires authentication. Routes listed here either serve static/public
-// content or enforce their own authentication (MCP bearer, OAuth flow,
-// GitHub OIDC, dashboard session inside the OAuth connectors).
+// content or enforce their own authentication (MCP bearer, GitHub OIDC,
+// dashboard session inside the OAuth connectors).
 const PUBLIC_PATHS = new Set([
   "/",
   "/privacy",
@@ -24,9 +24,6 @@ const PUBLIC_PATHS = new Set([
   "/auth/apple/callback",
   "/mcp",
   "/mcp/health",
-  "/register",
-  "/authorize",
-  "/token",
   "/automation/strength",
   "/automation/nutrition",
   "/automation/nutrition-notes"
