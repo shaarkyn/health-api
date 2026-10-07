@@ -5,7 +5,7 @@
 import { getTrainingProfile } from "./training-profile.js";
 import { powerZones, hrZones, paceZones } from "./training-zones.js";
 import { intervalsAuthorization } from "./intervals-auth.js";
-import { loadEffectiveProfile } from "./profile-suggestions.js";
+import { loadEffectiveProfile, refreshSuggestions } from "./profile-suggestions.js";
 const n = v => Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
 
 // On a trainer most riders hold a few per cent less than outdoors. Without an
@@ -61,8 +61,12 @@ export async function athleteThresholds(env, fetchImpl = fetch) {
   for (const key of ["lthr", "maxHr"]) if (profile[key]) out[key] = profile[key];
   // Max and resting heart rate from the personal profile (Nastavení → Profil)
   // when neither the training settings nor Intervals.icu have them.
+  // Those calibrate from the activities and the wellness (refreshed once a day).
   let personal = null;
-  if (env.DB && (!out.maxHr || !profile.restHr)) { try { personal = await loadEffectiveProfile(env.DB, env.USER_ID); } catch (error) { console.error("Profile unavailable", error.message); } }
+  if (env.DB && (!out.maxHr || !profile.restHr)) {
+    try { await refreshSuggestions(env, { fetchImpl }); } catch (error) { console.error("Profile suggestions not refreshed", error.message); }
+    try { personal = await loadEffectiveProfile(env.DB, env.USER_ID); } catch (error) { console.error("Profile unavailable", error.message); }
+  }
   if (!out.maxHr && n(personal?.hrmax)) out.maxHr = n(personal.hrmax);
   out.restHr = profile.restHr || n(personal?.rhr) || null;
   if (profile.runThresholdPace) { out.runThresholdPace = profile.runThresholdPace; out.runPaceSource = "manual"; }
