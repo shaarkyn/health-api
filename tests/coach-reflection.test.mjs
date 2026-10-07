@@ -109,8 +109,10 @@ test("the coach sees the next two days' plan and suggests recovery that fits", (
   assert.deepEqual(input.nextDays.map(d => d.restDay), [true, false]);
   assert.match(reflectionInstructions, /zítra restDay, napiš, že má zítra volný den/);
   assert.match(reflectionInstructions, /Nevymýšlej trénink, který v plánu není/);
-  assert.match(reflectionInstructions, /protažení nebo mobilitu .*3–4 cviky/);
-  assert.match(reflectionInstructions, /Sauna a vířivka ne při nemoci/);
+  assert.match(reflectionInstructions, /protažení nebo mobilita .*3–4 cviky/);
+  assert.match(reflectionInstructions, /Vybírej volně z celé škály/);
+  assert.match(reflectionInstructions, /masáž.*ledová lázeň, kompresní návleky/);
+  assert.match(reflectionInstructions, /Sauna, vířivka a ledová lázeň ne při nemoci/);
 });
 
 test("RPE feedback starts the coach's note in the background and the dashboard shows it", () => {

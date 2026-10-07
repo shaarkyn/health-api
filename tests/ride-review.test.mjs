@@ -90,7 +90,7 @@ test('the Today screen shows "how to start today" only in the morning, and draws
   const fn = name => { const start = source.indexOf('function ' + name + '('); return source.slice(start, source.indexOf('\nfunction ', start + 1)); };
   const ctx = { esc: v => String(v), window: { innerWidth: 1200 } };
   vm.createContext(ctx);
-  Object.assign(ctx, { uiText: cs => cs, fmt: (v, d = 0) => Math.round(Number(v) * 10 ** d) / 10 ** d, num: v => Number(v) || 0, hm: m => Math.floor(m / 60) + 'h ' + Math.round(m % 60) + 'm', primarySleepSessions: s => s || [],
+  Object.assign(ctx, { uiText: cs => cs, fmt: (v, d = 0) => Math.round(Number(v) * 10 ** d) / 10 ** d, num: v => Number(v) || 0, hm: m => Math.floor(m / 60) + 'h ' + Math.round(m % 60) + 'm', primarySleepSessions: s => s || [], pragueToday: () => '2026-10-07', dateShift: (d, k) => new Date(Date.parse(d + 'T12:00:00Z') + k * 864e5).toISOString().slice(0, 10),
     state: { sleep: { sessions: [{ date: '2026-10-07', durationMin: 334 }, { date: '2026-10-06', durationMin: 450 }] }, fitness: { wellness: [{ id: '2026-10-05', hrv: 80 }, { id: '2026-10-06', hrv: 82 }, { id: '2026-10-07', hrv: 51, ctl: 60, atl: 72 }] } } });
   vm.runInContext(['morningWindow', 'niceTicks', 'rideReviewCard', 'rideReviewChart', 'gymSetsChart', 'withRatings', 'ratingCard', 'rpeColor', 'rpeWord', 'ratingSignals', 'coachAdvice'].map(fn).join('\n') + '\n;this.m=morningWindow;this.card=rideReviewCard;this.withRatings=withRatings;this.ratingCard=ratingCard;', ctx);
   // The athlete's rating and the coach's answer follow the session's review card.
@@ -113,6 +113,7 @@ test('the Today screen shows "how to start today" only in the morning, and draws
   assert.match(rated, /😴<\/span><span>Spal jsi jen <b>5 h 34 min<\/b>/);
   assert.match(rated, /advice-call next"><span aria-hidden="true">📅<\/span><span>Zítra odpočívej/);
   assert.match(rated, /advice-call warn/);
+  assert.match(rated, /data-add-recovery data-date="2026-10-07"/);
   const recovery = ctx.coachAdvice('Dobrá práce. Večer si dej 10 minut protažení lýtek a hamstringů. Zítra máš volný den.', true);
   assert.match(recovery, /advice-call recover"><span aria-hidden="true">🧘/);
   assert.match(ctx.coachAdvice('Dobrá práce. Sauna ti pomůže.', true), /♨️/);

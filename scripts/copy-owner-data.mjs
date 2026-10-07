@@ -21,7 +21,7 @@ export const OWNER_TABLES = [
   "training_capabilities", "workout_feedback", "coach_reflections", "fluid_log",
   "workout_schedule_links", "training_profile", "week_plan_preferences",
   "week_plan_overrides", "athlete_state", "assistant_chats", "assistant_messages",
-  "exercise_videos"
+  "exercise_videos", "recovery_sessions"
 ];
 // Catalogues without personal data.
 export const SHARED_TABLES = ["shared_foods", "workout_library"];
