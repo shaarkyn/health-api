@@ -1,9 +1,9 @@
-import app, { appDailyTarget } from "./strength-gateway.js";
+import app from "./strength-gateway.js";
 import { buildCoachCouncil } from "./coach-engine.js";
 import { trainingStatus } from './training-status.js';
 import { handleMcpCompat } from "./mcp-compat.js";
 import { handleOAuthCompat } from "./oauth-compat.js";
-import { syncDailyNutritionNotes, deleteDailyNutritionNotes } from "./intervals-nutrition-notes.js";
+import { deleteDailyNutritionNotes } from "./intervals-nutrition-notes.js";
 import { verifyGitHubActionsToken } from "./github-oidc.js";
 import { dashboardPage } from "./dashboard.js";
 import { connectionStatus } from "./connections.js";
@@ -67,7 +67,7 @@ import { movePlannedEvent, deletePlannedEvent, setPlannedEnvironment, isStrength
 import { loadFitnessInsights, exerciseMuscles } from "./fitness-insights.js";
 import { adjustGymPlan, cleanGymRows, catalogNames } from "./gym-adjust.js";
 import { saveTrainingProfile } from "./training-profile.js";
-import { syncPlannedEventCalories } from "./intervals-calories.js";
+import { removePlannedEventCalories } from "./intervals-calories.js";
 import { readGymPlan, cancelGymPlan, restoreGymPlan, ensureGymPlans, moveGymPlan } from "./gym-plan-store.js";
 import { applyGymSwap } from './coach-gym-adjustment.js';
 import { dashboardSyncStatus,startDashboardSync } from './dashboard-sync.js';
@@ -1503,25 +1503,17 @@ function logoResponse() {
 }
 
 
-// Daily nutrition NOTE events in Intervals.icu: removed by default; written only on an explicit "sync".
-// Calorie estimates in the descriptions of today's planned Intervals.icu
-// workouts, for every user with Intervals connected (their weight and FTP).
+// Calories are not written to Intervals.icu. These automations remove what
+// the app wrote there before: the calorie lines in planned workouts and the
+// daily "Nutrition — date" notes, from today on.
 async function handlePlannedCaloriesAutomation(request, rawEnv) {
   if (request.method !== "POST") return Response.json({status:"error",message:"Method not allowed"},{status:405});
   try { await verifyGitHubActionsToken(request); }
   catch (error) { return Response.json({status:"error",step:"github_actions_auth",message:error.message},{status:401}); }
   try {
     const body=await request.json().catch(()=>({}));
-    const users=await forEachUser(rawEnv,["intervals"],async env=>{
-      const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND data_type IN ('weight','weight-written') AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first().catch(()=>null);
-      const thresholds=await athleteThresholds(env).catch(()=>({}));
-      const weightKg=Number(row?.value_numeric);
-      // The estimates go into the user's own Intervals.icu calendar, so they come
-      // from their own weight (and FTP for rides without power), never from the
-      // defaults: someone without a weight gets none, without an FTP none for those rides.
-      if(!(Number.isFinite(weightKg)&&weightKg>30))return {status:'skipped',reason:'Bez zapsané váhy'};
-      return syncPlannedEventCalories(env,{oldest:body?.oldest,newest:body?.newest,weightKg,ftp:thresholds.ftp||0});
-    });
+    const today=pragueToday(),oldest=String(body?.oldest||today),newest=String(body?.newest||shiftDate(today,60));
+    const users=await forEachUser(rawEnv,["intervals"],env=>removePlannedEventCalories(env,{oldest,newest}));
     return Response.json({status:"ok",users});
   } catch (error) { return Response.json({status:"error",step:"planned_calories",message:error.message},{status:500}); }
 }
@@ -1532,19 +1524,7 @@ async function handleNutritionNotesAutomation(request, rawEnv) {
     await verifyGitHubActionsToken(request);
     const body=await request.json().catch(()=>({}));
     const today=pragueToday(), oldest=String(body?.oldest||today), newest=String(body?.newest||shiftDate(today,14));
-    // Writing daily nutrition notes is opt-in ("sync"); anything else removes them.
-    const remove=String(body?.action || "").toLowerCase() !== "sync";
-    const users=await forEachUser(rawEnv,["intervals"],async env=>{
-      if (remove) return deleteDailyNutritionNotes(env,{oldest,newest});
-      // A weight given to the automation is the owner's; everyone else uses their own,
-      // and a user without a weight gets no note (syncDailyNutritionNotes skips).
-      let weightKg=env.USER_IS_OWNER===true?Number(body?.weightKg):NaN;
-      if(!Number.isFinite(weightKg)){
-        const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND data_type IN ('weight','weight-written') AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first();
-        weightKg=Number(row?.value_numeric);
-      }
-      return syncDailyNutritionNotes(env,{oldest,newest,weightKg,appTarget:date=>appDailyTarget(env,{waitUntil(){}},date)});
-    });
+    const users=await forEachUser(rawEnv,["intervals"],env=>deleteDailyNutritionNotes(env,{oldest,newest}));
     const failed=users.filter(u=>u.error);
     return Response.json({status:failed.length&&failed.length===users.length?"error":"ok",users},{status:failed.length&&failed.length===users.length?500:200});
   } catch(error){ return Response.json({status:"error",step:"nutrition_notes",message:error.message},{status:500}); }

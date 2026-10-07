@@ -82,7 +82,7 @@ async function cyclingContextRoute(env, url) {
 // The day's calorie target exactly as the app shows it: /analysis/daily plus
 // the Google Health energy budget, the same steps as /app/api/daily. Without
 // it (no profile or weight yet) the nutrition plan keeps its own estimate.
-export async function appDailyTarget(env, ctx, date) {
+async function appDailyTarget(env, ctx, date) {
   try {
     const day = date || pragueToday();
     const response = await app.fetch(new Request("https://internal/analysis/daily?date=" + encodeURIComponent(day)), env, ctx);
@@ -198,8 +198,7 @@ async function generateStrengthPlanRoute(env, request, url, ctx) {
     try {
       intervals = await writeStrengthPlanToIntervals(env, plan, {
         startTime: parseTimeWindow(availabilityOn(prefs, context.date).window)?.start || body?.startTime || "00:00",
-        durationMinutes: options.durationMinutes || 60,
-        weightKg: context?.weightTrend?.latestKg
+        durationMinutes: options.durationMinutes || 60
       });
     } catch (error) {
       intervals = { status: "error", message: error.message };

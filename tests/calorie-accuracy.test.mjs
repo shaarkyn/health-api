@@ -4,7 +4,6 @@ import { createD1 } from "./helpers/d1.mjs";
 import legacy from "../src/index.js";
 import { proteinReferenceKg, trendAdjustment } from "../src/energy-profile.js";
 import { withAppTarget } from "../src/nutrition-intelligence.js";
-import { syncDailyNutritionNotes } from "../src/intervals-nutrition-notes.js";
 import { pragueToday } from "../src/prague-date.js";
 
 const ctx = { waitUntil() {} };
@@ -104,15 +103,4 @@ test("the weight trend corrects the target by 100 kcal against the chosen goal",
   assert.equal(flat.calorieBreakdown.trendAdjustment, 0);
   // The app's correction is what the ChatGPT plan reports.
   assert.equal(withAppTarget({ calorieTarget: 2250, macros: {} }, { nutrition: rising }).adaptiveCalorieAdjustment, -100);
-});
-
-test("a user without a weight gets no Intervals.icu nutrition note, and nothing is asked of Intervals", async () => {
-  const realFetch = globalThis.fetch;
-  let calls = 0;
-  globalThis.fetch = async () => { calls++; return Response.json([]); };
-  try {
-    const result = await syncDailyNutritionNotes({ DB: db(), USER_ID: 7, INTERVALS_API_KEY: "k" }, { oldest: "2099-01-05" });
-    assert.equal(result.status, "skipped");
-    assert.equal(calls, 0);
-  } finally { globalThis.fetch = realFetch; }
 });

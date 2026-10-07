@@ -7,12 +7,7 @@ function auth(env) {
   return intervalsAuthorization(env.INTERVALS_API_KEY);
 }
 
-const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
 
-function strengthCalories(weightKg, minutes) {
-  if (!minutes) return 0;
-  return Math.round((5.0 * 3.5 * weightKg / 200) * minutes);
-}
 
 function formatKg(value) {
   if (value == null || value === "") return "vlastní váha";
@@ -53,13 +48,9 @@ export function strengthPlanToIntervalsEvent(plan, options = {}) {
   const startTime = String(options.startTime || "00:00").slice(0, 5);
   const externalId = String(options.externalId || `health-strength-${plan.date}`);
   const durationMinutes = Number(options.durationMinutes || 60);
-  // Calories need the athlete's weight; without one they are left out.
-  const weightKg = n(options.weightKg, 0);
-  const calories = weightKg > 0 ? strengthCalories(weightKg, durationMinutes) : null;
   const description = [
     plan.rationale ? `Proč tenhle trénink: ${plan.rationale}` : "",
     formatRows(plan.rows || []),
-    calories ? `Odhad výdeje: ${calories} kcal · ${durationMinutes} min` : "",
     "Vygenerováno v Loadwise"
   ].filter(Boolean).join("\n\n");
 
@@ -70,8 +61,8 @@ export function strengthPlanToIntervalsEvent(plan, options = {}) {
     type: "WeightTraining",
     name: `Strength — ${plan.planName || "Gym"}`,
     description,
-    moving_time: Math.round(durationMinutes * 60),
-    ...(calories ? { calories } : {})
+    // No calorie estimate: the app keeps the energy picture, Intervals.icu the training.
+    moving_time: Math.round(durationMinutes * 60)
   };
 }
 
@@ -106,7 +97,6 @@ export async function writeStrengthPlanToIntervals(env, plan, options = {}) {
     eventId: result.id ?? null,
     startDateLocal: result.start_date_local || event.start_date_local,
     type: result.type,
-    name: result.name || event.name,
-    estimatedCalories: event.calories
+    name: result.name || event.name
   };
 }
