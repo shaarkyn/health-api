@@ -8,7 +8,7 @@ const ctx=modelContext({dateShift:(d,n)=>{const x=new Date(d+'T12:00:00Z');x.set
 vm.runInContext(source.slice(source.indexOf('function nightNeed('),source.indexOf('function correctDataPresentation(')),ctx);
 const night={date:'2026-09-27',durationMin:513,timeInBedMin:600,stages:{DEEP:120,REM:120}};
 const day=i=>'2026-09-'+String(i).padStart(2,'0');
-test('sleep index: duration against need, efficiency from 85 %, stages capped',()=>{assert.equal(ctx.sleepIndex(night),100);assert.equal(ctx.sleepIndex({...night,durationMin:420,timeInBedMin:560}),76);assert.equal(ctx.sleepIndex({...night,timeInBedMin:900}),65);});
+test('sleep index: duration against need, efficiency from 85 %, stages capped',()=>{assert.equal(ctx.sleepIndex(night),100);assert.equal(ctx.sleepIndex({...night,durationMin:420,timeInBedMin:560}),70);assert.equal(ctx.sleepIndex({...night,timeInBedMin:900}),65);});
 test('sleep index without bed time is unavailable; without stages it is rescaled',()=>{assert.equal(ctx.sleepIndex({durationMin:480}),null);assert.equal(ctx.sleepIndex({date:'2026-09-27',durationMin:480,timeInBedMin:540}),100);});
 test('recovery requires a personal baseline and today\'s HRV or resting HR',()=>{
   const rows=Array.from({length:20},(_,i)=>({id:day(i+1),hrv:78+(i%5),restingHR:54+(i%3)}));

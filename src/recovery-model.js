@@ -46,7 +46,8 @@ export function sleepDebtMinutes(nights, date, need) {
   return { minutes: Math.max(0, Math.round(net)), nights: recent.length, average: recent.reduce((s, n) => s + Number(n.durationMin), 0) / recent.length, need: want };
 }
 
-// Sleep index 0–100: duration against the personal need (50), sleep
+// Sleep index 0–100: duration against the personal need (50, from none at
+// half the need to full at the need: under 6 h is not recommended), sleep
 // efficiency with full points from 85 % (35; NSF sleep quality, Ohayon 2017)
 // and the share of deep and REM sleep against typical adult proportions (15;
 // deep ≥ 13 %, REM ≥ 20 %; Ohayon 2004).
@@ -56,7 +57,7 @@ export function sleepIndexScore(night, need) {
   if (!night || !(Number(night.durationMin) > 0)) return null;
   const duration = Number(night.durationMin), bed = Number(night.timeInBedMin), want = need || 480;
   if (!(bed >= duration)) return null;
-  const durationPoints = 50 * Math.min(1, duration / want);
+  const durationPoints = 50 * Math.max(0, Math.min(1, (duration / want - 0.5) / 0.5));
   const efficiencyPoints = 35 * Math.max(0, Math.min(1, (duration / bed - 0.65) / 0.2));
   const deep = Number(night.stages && night.stages.DEEP), rem = Number(night.stages && night.stages.REM);
   if (!Number.isFinite(deep) || !Number.isFinite(rem)) return Math.round((durationPoints + efficiencyPoints) / 85 * 100);
