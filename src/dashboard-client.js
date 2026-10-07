@@ -320,9 +320,24 @@ function renderCoachCouncil(){
   // A priority that only repeats a card's headline and first line is left to the card.
   const heads=cards.map(x=>String(x.headline||'')).filter(Boolean),priorities=(council.priorities||[]).filter(x=>!heads.some(h=>String(x).startsWith(h)));
   p.hidden=!priorities.length;p.innerHTML=priorities.length?'<div class="eyebrow">KOORDINÁTOR · DNEŠNÍ PRIORITY</div><ol class="coach-actions">'+priorities.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ol>':'';
-  c.innerHTML=cards.map(x=>x.sections||x.chart||x.sets?rideReviewCard(x):'<article class="coach-card '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><ul class="coach-actions">'+(x.actions||[]).map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+((x.analysis||[]).length?'<div class="coach-analysis">'+x.analysis.map(a=>'<div><strong>'+esc(a.label)+'</strong><p>'+esc(a.text)+'</p></div>').join('')+'</div>':'')+((x.resources||[]).length?'<div class="small" style="margin-top:8px">'+x.resources.filter(r=>/^https:\/\//.test(String(r.url||''))).map(r=>'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.label||'Otevřít postup')+'</a>').join('<br>')+'</div>':'')+'</article>').join('');
+  c.innerHTML=withRatings(cards,(state.reflections?.[selectedHistoryDate]||[]).filter(r=>!r.date||r.date===selectedHistoryDate)).map(x=>x.rating?ratingCard(x):x.sections||x.chart||x.sets?rideReviewCard(x):'<article class="coach-card '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><ul class="coach-actions">'+(x.actions||[]).map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+((x.analysis||[]).length?'<div class="coach-analysis">'+x.analysis.map(a=>'<div><strong>'+esc(a.label)+'</strong><p>'+esc(a.text)+'</p></div>').join('')+'</div>':'')+((x.resources||[]).length?'<div class="small" style="margin-top:8px">'+x.resources.filter(r=>/^https:\/\//.test(String(r.url||''))).map(r=>'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.label||'Otevřít postup')+'</a>').join('<br>')+'</div>':'')+'</article>').join('');
 }
 
+// The athlete's own rating of a session (RPE, note) and the coach's answer sit
+// right after that session's review card, for any day shown. A note saved from
+// Today starts with the session name; otherwise a day with one review gets it.
+function withRatings(cards,reflections){
+  const out=[...cards],reviews=cards.filter(x=>x.sections||x.chart||x.sets);
+  for(const r of reflections.filter(r=>r.text||r.rpe!=null)){
+    const notes=String(r.notes||''),own=reviews.find(x=>x.headline&&notes.startsWith(x.headline+': '))||(reviews.length===1?reviews[0]:null);
+    const note=own&&notes.startsWith(own.headline+': ')?notes.slice(own.headline.length+2):notes;
+    out.splice(own?out.indexOf(own)+1:out.length,0,{rating:true,name:own?.headline||null,rpe:r.rpe,note,text:r.text,ai:r.source==='ai'});
+  }
+  return out;
+}
+function ratingCard(x){
+  return '<article class="coach-card review rating"><div class="eyebrow">'+uiText('Tvoje hodnocení a kouč','Your rating and the coach')+'</div><h3><span data-no-i18n>'+esc(x.name||uiText('Trénink','Session'))+'</span>'+(x.rpe!=null?' · RPE '+fmt(x.rpe,Number.isInteger(Number(x.rpe))?0:1):'')+'</h3>'+(x.note?'<p class="review-note"><strong>'+uiText('Poznámka','Note')+':</strong> <span data-no-i18n>'+esc(x.note)+'</span></p>':'')+(x.text?'<div class="coach-note"><small>'+esc(x.ai?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+'</small><p data-no-i18n>'+esc(x.text)+'</p></div>':'')+'</article>';
+}
 // A ride review: verdict, plan vs. reality per step, the main set as a table,
 // then what went well, what to do better and load with recovery. The texts come
 // from the server already in the app language.
@@ -2728,7 +2743,6 @@ function renderDayTimeline(){
   add('weight',()=>{const weights=(state.weight?.records||[]).filter(r=>measured(r.value_numeric)).map(r=>({...r,day:pragueDay(r.sample_time),at:clock(r.sample_time)})).filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.day)&&!Number.isNaN(Date.parse(r.day+'T12:00:00Z'))).sort((a,b)=>(a.day+(a.at||'12:00')).localeCompare(b.day+(b.at||'12:00'))),before=weights.filter(r=>r.day<date).at(-1),seen=new Set();
   for(const w of weights.filter(r=>r.day===date)){const kg=num(w.value_numeric),key=w.at+'|'+fmt(kg,1);if(seen.has(key))continue;seen.add(key);const delta=before?kg-num(before.value_numeric):null;items.push({t:date+'T'+(w.at||'12:00')+':00',icon:'⚖',cls:'weight',title:uiText('Váha · ','Weight · ')+fmt(kg,1)+' kg',meta:delta==null?uiText('první záznam','first entry'):(Math.abs(delta)<.05?'±':delta>0?'+':'−')+fmt(Math.abs(delta),1)+uiText(' kg od ',' kg since ')+dateLabel(before.day)});}});
   add('drinks',()=>{const f=state.fluids?.[date];if(f?.entries?.length)items.push({t:f.entries.at(-1).consumedAt,icon:'💧',cls:'water',title:'Pití · '+fluidLabel(f.totalMl),meta:f.entries.length+'× · cíl '+fluidLabel(f.target.ml)+' · naposledy'});});
-  add('coach',()=>{for(const r of (state.reflections?.[date]||[]).filter(r=>!r.date||r.date===date))items.push({t:date+'T23:58',icon:'💬',cls:'coach',title:uiText('Kouč','Coach')+(r.rpe!=null?' · RPE '+fmt(r.rpe):'')+(r.notes?' · „'+r.notes+'“':''),meta:r.text,label:r.source==='ai'?'AI':uiText('kouč','coach')});});
   // Intervals.icu times are local, Google Health ones UTC: order by Prague time.
   items.sort((a,b)=>(clock(a.t)||'').localeCompare(clock(b.t)||''));
   el.innerHTML='<div class="detail-heading"><div><div class="label">Timeline</div><h3>'+(date===pragueToday()?'Tvůj den':'Den '+esc(longDate(date)))+'</h3></div><div class="actions"><button class="btn" type="button" id="timelineWeight">⚖ <span class="tl-verb">Zapsat </span>váhu</button><button class="btn" type="button" id="timelineFood">＋ <span class="tl-verb">Zapsat </span>jídlo</button><button class="btn" type="button" id="timelineCoach">💬 Kouč</button></div></div>'+(items.length?'<ol class="timeline">'+items.map(x=>'<li class="tl-'+x.cls+'"><span class="tl-icon">'+x.icon+'</span><div><strong>'+esc(x.title)+'</strong><small>'+(x.raw?x.meta:esc(x.meta))+'</small></div><time>'+esc(x.label||(x.cls==='planned'&&/T23:59/.test(x.t)?'plán':clock(x.t)))+'</time></li>').join('')+'</ol>':'<div class="data-gap">Pro tento den zatím nic nemám.</div>');
@@ -2738,12 +2752,12 @@ function renderDayTimeline(){
 }
 // ---- Coach's notes: after RPE in the background, or asked for any day ----
 async function loadReflections(date=selectedHistoryDate){
-  try{const r=await jsonFetch('/app/api/coach/reflections?date='+date);state.reflections={...(state.reflections||{}),[date]:r.reflections||[]};if(date===selectedHistoryDate)renderDayTimeline();return state.reflections[date];}catch{return state.reflections?.[date]||[];}
+  try{const r=await jsonFetch('/app/api/coach/reflections?date='+date);state.reflections={...(state.reflections||{}),[date]:r.reflections||[]};if(date===selectedHistoryDate){renderDayTimeline();renderCoachCouncil();}return state.reflections[date];}catch{return state.reflections?.[date]||[];}
 }
 // The note after an RPE is written on the server; check back a few times.
 async function awaitReflection(date){
   const before=(await loadReflections(date)).length;
-  for(let i=0;i<6;i++){await new Promise(r=>setTimeout(r,5000));const now=await loadReflections(date);if(now.length>before){toast('💬 Kouč napsal zpětnou vazbu k tréninku – najdeš ji v timeline dne.');loadScheduledWorkouts?.();return now[0];}}
+  for(let i=0;i<6;i++){await new Promise(r=>setTimeout(r,5000));const now=await loadReflections(date);if(now.length>before){toast(uiText('💬 Kouč napsal zpětnou vazbu k tréninku – najdeš ji v Radách a hodnocení.','💬 The coach replied to your session – see Advisors and ratings.'));loadScheduledWorkouts?.();return now[0];}}
 }
 function openCoachSheet(date){
   const notes=(state.reflections?.[date]||[]).map(r=>'<div class="coach-note"><small>'+esc(r.source==='ai'?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+(r.rpe!=null?' · RPE '+fmt(r.rpe):'')+(r.notes?' · <span data-no-i18n>„'+esc(r.notes)+'“</span>':'')+'</small><p data-no-i18n>'+esc(r.text)+'</p></div>').join('');
@@ -3800,7 +3814,7 @@ function openRatingSheet({date=pragueToday(),name=null}={}){
         const match=library.find(w=>pick&&String(pick).toLowerCase().includes(String(w.name).toLowerCase().slice(0,12)))||(library.length===1?library[0]:null);
         if(match&&rpe){
           const res=await jsonFetch('/app/api/workouts/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workoutId:match.workout_id,scheduledDate:date,rpe,notes})});
-          $('rateResult').innerHTML=uiText('<p class="small">✓ Uloženo', '<p class="small">✓ Saved')+(res.intervals?.status==='ok'?uiText(' i v Intervals.icu', ' in Intervals.icu too'):'')+uiText('. Kouč připravuje zpětnou vazbu, objeví se v timeline.</p>', '. The coach is preparing feedback; it will appear in the timeline.</p>');awaitReflection(date);
+          $('rateResult').innerHTML=uiText('<p class="small">✓ Uloženo', '<p class="small">✓ Saved')+(res.intervals?.status==='ok'?uiText(' i v Intervals.icu', ' in Intervals.icu too'):'')+uiText('. Kouč připravuje zpětnou vazbu, objeví se v Radách a hodnocení.</p>', '. The coach is preparing feedback; it will appear in Advisors and ratings.</p>');awaitReflection(date);
         }else{
           const res=await jsonFetch('/app/api/coach/reflections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,rpe,notes:(pick?pick+': ':'')+notes})});
           state.reflections={...(state.reflections||{}),[date]:[res.reflection,...(state.reflections?.[date]||[])]};renderDayTimeline();

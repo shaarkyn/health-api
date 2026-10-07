@@ -109,7 +109,7 @@ test("RPE feedback starts the coach's note in the background and the dashboard s
   assert.match(entry, /if\(reflect\)ctx\.waitUntil\(createReflection\(/);
   assert.match(entry, /url\.pathname==='\/app\/api\/coach\/reflections'/);
   assert.match(entry, /coachContext\(\{\.\.\.inputs,availabilityMinutes,manualReadiness,goal,preferences,capabilities,athleteFeedback,coachNotes,athleteState,/);
-  assert.match(client, /cls:'coach',title:uiText\('Kouč','Coach'\)/);
+  assert.match(client, /x\.rating\?ratingCard\(x\)/);
   assert.match(client, /\$\('timelineCoach'\)\.onclick=\(\)=>openCoachSheet\(date\)/);
   assert.match(client, /awaitReflection\(body\.scheduledDate\)/);
 });

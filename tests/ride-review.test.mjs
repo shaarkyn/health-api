@@ -90,7 +90,18 @@ test('the Today screen shows "how to start today" only in the morning, and draws
   const fn = name => { const start = source.indexOf('function ' + name + '('); return source.slice(start, source.indexOf('\nfunction ', start + 1)); };
   const ctx = { esc: v => String(v), window: { innerWidth: 1200 } };
   vm.createContext(ctx);
-  vm.runInContext(['morningWindow', 'niceTicks', 'rideReviewCard', 'rideReviewChart', 'gymSetsChart'].map(fn).join('\n') + ';this.m=morningWindow;this.card=rideReviewCard;', ctx);
+  Object.assign(ctx, { uiText: cs => cs, fmt: (v, d = 0) => Math.round(Number(v) * 10 ** d) / 10 ** d });
+  vm.runInContext(['morningWindow', 'niceTicks', 'rideReviewCard', 'rideReviewChart', 'gymSetsChart', 'withRatings', 'ratingCard'].map(fn).join('\n') + '\n;this.m=morningWindow;this.card=rideReviewCard;this.withRatings=withRatings;this.ratingCard=ratingCard;', ctx);
+  // The athlete's rating and the coach's answer follow the session's review card.
+  const advisor = { title: 'Výživa', headline: 'Jídlo' }, ride = { headline: 'Threshold 4×5', sections: [] }, gym = { headline: 'Horní tělo', sets: [] };
+  let list = ctx.withRatings([advisor, ride], [{ rpe: 8, notes: 'Křeč do lýtka', text: 'Zítra volno.', source: 'ai' }]);
+  assert.equal(list[2].rating, true);
+  assert.equal(list[2].name, 'Threshold 4×5');
+  list = ctx.withRatings([ride, gym, advisor], [{ rpe: 6, notes: 'Horní tělo: těžké', text: 'Dobře.' }]);
+  assert.deepEqual([list[2].name, list[2].note], ['Horní tělo', 'těžké']);
+  const rated = ctx.ratingCard({ name: 'Threshold 4×5', rpe: 8, note: 'Křeč do lýtka', text: 'Zítra volno.', ai: true });
+  assert.match(rated, /Threshold 4×5<\/span> · RPE 8/);
+  assert.match(rated, /Poznámka:<\/strong> <span data-no-i18n>Křeč do lýtka/);
   const at = (h, m = 0) => new Date(2026, 9, 7, h, m);
   // Without sleep data: 4:00–11:59.
   assert.deepEqual([3, 4, 9, 11, 12, 19].map(h => ctx.m(at(h))), [false, true, true, true, false, false]);
