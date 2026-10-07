@@ -38,7 +38,8 @@ export const PERSONAL_TABLES = {
   assistant_chats: {},
   assistant_messages: {},
   exercise_videos: {},
-  api_cache_versions: {}
+  api_cache_versions: {},
+  ai_usage: {}
 };
 const PERSONAL_TABLE_PATTERN = new RegExp("\\b(" + Object.keys(PERSONAL_TABLES).join("|") + ")\\b", "i");
 

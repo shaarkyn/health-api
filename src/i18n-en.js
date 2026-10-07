@@ -1681,10 +1681,14 @@ export const EN = {
 "Forma · jen s Intervals.icu": "Form · only with Intervals.icu",
 "CTL · odhad": "CTL · estimate",
 "Bez dat z Intervals.icu": "No Intervals.icu data",
-"aktuálně": "current"
+"aktuálně": "current",
+"AI funkce nejsou pro tento účet zapnuté.": "AI features are not enabled for this account."
 };
 
 export const EN_TEMPLATES = {
+"AI dnes: {n} USD · bez limitu": "AI today: {n} USD · no limit",
+"AI dnes: {n} USD z {n} USD": "AI today: {n} USD of {n} USD",
+"Denní limit AI je vyčerpaný (${n}). Zítra se obnoví.": "Today's AI limit is used up (${n}). It resets tomorrow.",
 "-{n} kg vs. {n} dní": "-{n} kg vs. {n} days",
 "ATL · {n}denní trend": "ATL · {n}-day trend",
 "Aktuálně · cíl {n} kg · zbývá {n} kg": "Current · goal {n} kg · {n} kg to go",

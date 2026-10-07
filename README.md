@@ -64,6 +64,7 @@ Nastavují se v Cloudflare (`wrangler secret put NAZEV`), ne v repozitáři.
 | `INTERVALS_API_KEY` | Intervals.icu správce (ostatní uživatelé si klíč ukládají v aplikaci). |
 | `INTERVALS_CLIENT_ID`, `INTERVALS_CLIENT_SECRET` | Volitelné: aplikace zaregistrovaná u Intervals.icu. S nimi se Intervals.icu připojuje jedním tlačítkem (OAuth, `intervals-oauth.js`), bez nich vložením osobního API klíče. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Asistent trenéra a čtení fotek jídla (volitelně `OPENAI_VISION_MODEL`, jinak `OPENAI_LIGHT_MODEL`). |
+| `AI_DAILY_LIMIT_USD` | Volitelný denní limit útraty za AI na jednoho uživatele v USD (výchozí 1; `0` vypne AI všem kromě správce). Správce limit nemá. |
 | `OWNER_EMAIL` | Správce aplikace (ve `wrangler.jsonc`). |
 
 Google OAuth: připojení žádá jen scopes Google Health (`google-scopes.js`). Tlačítko „Rozšířit oprávnění Google“ v Nastavení si zvlášť vyžádá zápis váhy (`googlehealth.health_metrics_and_measurements.writeonly`) a datum narození (`user.birthday.read`, People API); obojí musí být povolené na OAuth consent screen a People API zapnuté v Google Cloud. Udělená oprávnění se ukládají k připojení uživatele. Na souhlasové obrazovce Googlu jde jednotlivá oprávnění odškrtnout: token se pak žádá jen pro udělená (`healthScopes`), data bez oprávnění zůstanou prázdná a Nastavení → Propojení ukáže, co chybí, s tlačítkem „Povolit chybějící“.
@@ -71,6 +72,10 @@ Google OAuth: připojení žádá jen scopes Google Health (`google-scopes.js`).
 Intervals.icu tlačítkem (OAuth): aplikaci zaregistruj e-mailem u podpory Intervals.icu (název, popis, web, logo, odkaz na zásady soukromí, Intervals ID a přesměrování `https://petrfitnessdata.eu/oauth/intervals/callback`), pak nastav `INTERVALS_CLIENT_ID` a `INTERVALS_CLIENT_SECRET`. Žádá `ACTIVITY:WRITE`, `WELLNESS:WRITE`, `CALENDAR:WRITE` a `SETTINGS:READ`. Token nevyprší; uloží se šifrovaně jako připojení `intervals` (s předponou `Bearer `) a všechny požadavky na Intervals berou hlavičku z `intervals-auth.js`.
 
 Průvodce nastavením (`account-setup.js`, okno v `dashboard-client.js`): po prvním přihlášení provede propojením služeb a profilem, ze kterého se počítá kalorický cíl. Ukazuje se, dokud ho uživatel nedokončí nebo nepřeskočí (uloženo na serveru, `dashboard_profile` řádek 3), nebo dokud chybí údaje pro kalorický cíl. Znovu se spustí v Nastavení → Účet. Co aplikace drží v zařízení (poslední den, profil, chat), patří jednomu účtu: stránka nese id přihlášeného (`<meta name="lw-account">`) a po přihlášení jiného účtu v tomtéž prohlížeči se to smaže.
+
+AI limit (`ai-usage.js`): každé volání modelu jde přes `callOpenAI`, které před dotazem zkontroluje dnešní útratu uživatele a po odpovědi ji zapíše do tabulky `ai_usage` (funkce, model, tokeny, cena podle `MODEL_PRICES`). Po dosažení limitu vrací API 429 se zprávou, že se limit zítra obnoví; den se počítá v pražském čase. Útrata za dnešek je vidět v Nastavení → Účet. Limit je místo, kde by placený tarif zvedal strop.
+
+Rychlost: Worker má zapnuté Smart Placement (`wrangler.jsonc`), takže běží blízko databáze D1, když je to rychlejší. Stav je v Cloudflare v Workers → health-api → Settings → Placement.
 
 GitHub Actions potřebují `CLOUDFLARE_API_TOKEN` a `CLOUDFLARE_ACCOUNT_ID`; automatizace se k API přihlašují tokenem GitHub OIDC.
 

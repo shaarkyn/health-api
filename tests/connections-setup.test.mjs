@@ -160,7 +160,7 @@ test("the setup window shows for a new account until it is finished or skipped",
 });
 
 test("the account endpoint reports the setup state and the client opens the window from it", () => {
-  assert.match(entry, /missingProviders:missingProviders\(env\),setup\}/);
+  assert.match(entry, /missingProviders:missingProviders\(env\),setup,ai\}/);
   assert.match(entry, /url\.pathname === "\/app\/api\/setup" && request\.method === "POST"/);
   assert.match(client, /if\(setupWanted\(me\)\)showSetup\(me,0\);/);
   for (const id of ["setupSkip", "setupLogout"]) assert.ok(client.includes('id="' + id + '"'), id);
