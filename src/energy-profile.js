@@ -1,6 +1,7 @@
 // Personal energy baseline: resting expenditure from sex, age, height and
 // weight (Mifflin-St Jeor) times everyday activity, the weekly goal, and a
 // sport estimate for users whose training is not tracked by a connected source.
+import { bilingual } from "./lang.js";
 import { normalizeFocus } from "./athlete-focus.js";
 
 // Everyday movement outside sport. Sport itself comes from tracked activities
@@ -125,14 +126,19 @@ export function trendAdjustment(goalKey, trend) {
   if (rate < -0.25) return { adjustment: 100, reason: "losing_while_maintaining" };
   return { adjustment: 0, reason: "within_target_range" };
 }
-export const TREND_REASONS = {
+export const TREND_REASONS = bilingual({
   loss_below_target: "váha klesá pomaleji, než je cíl: o 100 kcal méně",
   loss_above_target: "váha klesá rychleji, než je cíl: o 100 kcal víc",
   gaining_while_maintaining: "váha při udržování roste: o 100 kcal méně",
   losing_while_maintaining: "váha při udržování klesá: o 100 kcal víc"
-};
+}, {
+  loss_below_target: "weight is falling slower than the goal: 100 kcal less",
+  loss_above_target: "weight is falling faster than the goal: 100 kcal more",
+  gaining_while_maintaining: "weight is rising while maintaining: 100 kcal less",
+  losing_while_maintaining: "weight is falling while maintaining: 100 kcal more"
+});
 
-export const MISSING_LABELS = { weight: "váha", sex: "pohlaví", age: "datum narození", height: "výška", activity: "denní aktivita", goal: "cíl", sportHours: "sport za týden" };
+export const MISSING_LABELS = bilingual({ weight: "váha", sex: "pohlaví", age: "datum narození", height: "výška", activity: "denní aktivita", goal: "cíl", sportHours: "sport za týden" }, { weight: "weight", sex: "sex", age: "date of birth", height: "height", activity: "daily activity", goal: "goal", sportHours: "sport per week" });
 
 // The user's own values, with what the app worked out itself (height,
 // activity, resting and maximum heart rate, birth date) filling only the

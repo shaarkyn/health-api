@@ -799,14 +799,14 @@ function saveDashboardSnapshot(){
   const data={};for(const key of SNAPSHOT_PARTS)if(state[key]!=null)data[key]=state[key];
   for(const drop of [null,'nutrition','sleep','activities','week']){
     if(drop)delete data[drop];
-    try{const text=JSON.stringify({date:pragueToday(),weekStart,savedAt:Date.now(),data});if(text.length>2e6)continue;localStorage.setItem(SNAPSHOT_KEY,text);return;}catch{}
+    try{const text=JSON.stringify({date:pragueToday(),weekStart,lang:document.documentElement.lang||'cs',savedAt:Date.now(),data});if(text.length>2e6)continue;localStorage.setItem(SNAPSHOT_KEY,text);return;}catch{}
   }
   try{localStorage.removeItem(SNAPSHOT_KEY);}catch{}
 }
 function showDashboardSnapshot(){
   try{
     const snap=JSON.parse(localStorage.getItem(SNAPSHOT_KEY)||'null');
-    if(!snap||snap.date!==pragueToday()||selectedHistoryDate!==snap.date||Date.now()-snap.savedAt>12*3600e3)return;
+    if(!snap||snap.date!==pragueToday()||selectedHistoryDate!==snap.date||Date.now()-snap.savedAt>12*3600e3||(snap.lang||'cs')!==(document.documentElement.lang||'cs'))return;
     for(const key of SNAPSHOT_PARTS){if(snap.data[key]==null||(key==='week'&&snap.weekStart!==weekStart))continue;state[key]=snap.data[key];renderLoadedData(key);}
     $('topStatus').textContent='Aktualizuji…';
   }catch{}
@@ -4323,14 +4323,17 @@ function installTrainingTabs(){
 installTrainingTabs();
 {const week=renderWeekHub;renderWeekHub=async function(...args){const r=await week.apply(this,args);prefetchPlannedDetails();return r;};const day=renderToday;renderToday=function(...args){const r=day.apply(this,args);prefetchPlannedDetails();return r;};}
 
-// Czech decimal comma in rendered numbers: "82.4 kg" → "82,4 kg", "+16.2" →
+// Decimal separator of the app language in rendered numbers. Czech: "82.4 kg" → "82,4 kg", "+16.2" →
 // "+16,2", chart labels included. Dates ("05.10."), versions ("1.2.3"),
 // times and form fields stay as they are; [data-raw] opts out.
 const DECIMAL_DOT=/(^|[^\p{L}\d.:/+−-])([+−-]?\d+)\.(\d+)(?![.\d:/])/gu;
+// In English the other way round: "82,4 kg" written by Czech formatting → "82.4 kg".
+const DECIMAL_COMMA=/(^|[^\p{L}\d,])([+−-]?\d+),(\d+)(?![,\d])/gu;
 function czechDecimals(root){
   if(!root||typeof document==='undefined')return;
+  const en=document.documentElement.lang==='en',test=en?/\d,\d/:/\d\.\d/,pattern=en?DECIMAL_COMMA:DECIMAL_DOT,mark=en?'$1$2.$3':'$1$2,$3';
   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement?.closest('script,style,textarea,code,pre,[data-raw]')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
-  let node;while((node=walker.nextNode())){const t=node.textContent;if(/\d\.\d/.test(t)){const next=t.replace(DECIMAL_DOT,'$1$2,$3');if(next!==t)node.textContent=next;}}
+  let node;while((node=walker.nextNode())){const t=node.textContent;if(test.test(t)){const next=t.replace(pattern,mark);if(next!==t)node.textContent=next;}}
 }
 // ---- One icon set: UI emoji become the line icons from icons.js (served as window.LW_ICONS) ----
 // Food and weather pictures stay emoji: they illustrate content, not controls.

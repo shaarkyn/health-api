@@ -255,7 +255,7 @@ export function assistantTask(message,appContext=null,history=[]) {
 // stops a user at the daily limit before the call.
 export async function callOpenAI(env, { instructions, input, maxOutputTokens = 5000, tools = null, format = null, model = null, reasoningEffort = 'low',onText=null,feature=null }) {
   await assertAIAccess(env);
-  if (!env.OPENAI_API_KEY) throw new Error('AI není připojena.');
+  if (!env.OPENAI_API_KEY) throw new Error(L('AI není připojena.', 'AI is not connected.'));
   await assertAiAllowance(env);
   const chosenModel=model || env.OPENAI_MODEL || 'gpt-6-sol';
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -273,12 +273,12 @@ export async function callOpenAI(env, { instructions, input, maxOutputTokens = 5
       ...(format ? {text:{format}} : {})
     })
   });
-  if(!response.ok){const error=await response.json().catch(()=>({})),failure=new Error('OpenAI '+response.status+': '+(error.error?.message||'AI služba není dostupná.'));failure.ai=true;throw failure;}
+  if(!response.ok){const error=await response.json().catch(()=>({})),failure=new Error('OpenAI '+response.status+': '+(error.error?.message||L('AI služba není dostupná.', 'The AI service isn\'t available.')));failure.ai=true;throw failure;}
   const data=onText?await readOpenAIStream(response,onText):await response.json();
   await recordAiUsage(env,{feature,model:data.model||chosenModel,usage:data.usage});
   const incomplete=data.status==='incomplete';
   const text = data.output?.flatMap(item => item.content || []).filter(item => item.type === 'output_text').map(item => item.text).join('\n') || data.output_text || data.streamedText;
-  if (!text) throw new Error(incomplete?'Odpověď AI se nevešla do limitu a nedokončila se. Zkus otázku zúžit.':'AI nevrátila odpověď.');
+  if (!text) throw new Error(incomplete?L('Odpověď AI se nevešla do limitu a nedokončila se. Zkus otázku zúžit.', 'The AI answer didn\'t fit the limit and wasn\'t finished. Try narrowing the question.'):L('AI nevrátila odpověď.', 'The AI didn\'t return an answer.'));
   const citations = (data.output || []).flatMap(item => item.content || []).flatMap(item => item.annotations || []).filter(a => a.type === 'url_citation' && a.url).map(a => ({url:a.url, title:a.title || a.url}));
   return {text, model:data.model, usage:data.usage, citations,incomplete,incompleteReason:incomplete?data.incomplete_details?.reason||null:null};
 }
@@ -292,14 +292,14 @@ export function coachAnswerText(text,{actions=false,incomplete=false}={}){
   let parsed=null;if(actions){try{parsed=JSON.parse(text);}catch{/* cut off or plain text */}}
   const raw=String(text||''),plain=!/^\s*[{[]/.test(raw);
   let answer=String((typeof parsed?.answer==='string'?parsed.answer:null)??(plain?raw:partialCoachAnswer(raw))).trim();
-  if(incomplete)answer=(answer?answer+'\n\n':'')+TRUNCATED_NOTE;
-  else if(!answer)answer='Odpověď se nepodařilo zpracovat. Zkus to prosím znovu.';
+  if(incomplete)answer=(answer?answer+'\n\n':'')+L(TRUNCATED_NOTE,'The answer was cut short. Write “continue” or narrow the question.');
+  else if(!answer)answer=L('Odpověď se nepodařilo zpracovat. Zkus to prosím znovu.', 'The answer couldn\'t be processed. Please try again.');
   const visuals=Array.isArray(parsed?.visuals)?[...new Set(parsed.visuals.filter(v=>COACH_VISUALS.includes(v)))].slice(0,2):[];
   return {answer,visuals,actions:Array.isArray(parsed?.actions)?parsed.actions:[]};
 }
 
 export async function askCoach(env, message, context, {model = null, focus = null, task = assistantTask(message), actions = false,concise=false,onAnswer=null} = {}) {
-  if (!env.OPENAI_API_KEY) return {status: 'unavailable', message: 'AI není připojena. Nastav serverový secret OPENAI_API_KEY; předplatné ChatGPT není API klíč.'};
+  if (!env.OPENAI_API_KEY) return {status: 'unavailable', message: L('AI není připojena. Nastav serverový secret OPENAI_API_KEY; předplatné ChatGPT není API klíč.', 'AI is not connected. Set the OPENAI_API_KEY server secret; a ChatGPT subscription isn\'t an API key.')};
   const started = Date.now();
   const light = task === 'simple' || task === 'quick', chosen = model || (light ? lightModel(env) : complexModel(env));
   const data = task === 'simple' ? {date:context.date,now:context.now,athleteState:context.athleteState,statusNote:context.statusNote,preferenceMemory:context.preferenceMemory} : {...context};

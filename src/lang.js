@@ -78,3 +78,11 @@ export function aiLanguageNote(feature) {
     ? '\n\nLANGUAGE: The athlete uses the app in English. Write every user-facing text in natural English, even where these instructions say "česky" or the data is in Czech. Keep names the athlete wrote (foods, workouts, notes) as they are.'
     : '';
 }
+
+// A table of texts whose values follow the current language when read, for
+// module-level constants: bilingual({ a: 'česky' }, { a: 'in English' }).
+export function bilingual(cs, en) {
+  const table = {};
+  for (const key of Object.keys(cs)) Object.defineProperty(table, key, { get: () => L(cs[key], en[key] ?? cs[key]), enumerable: true });
+  return table;
+}
