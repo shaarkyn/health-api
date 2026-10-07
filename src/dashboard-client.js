@@ -2746,8 +2746,10 @@ async function awaitReflection(date){
   for(let i=0;i<6;i++){await new Promise(r=>setTimeout(r,5000));const now=await loadReflections(date);if(now.length>before){toast('💬 Kouč napsal zpětnou vazbu k tréninku – najdeš ji v timeline dne.');loadScheduledWorkouts?.();return now[0];}}
 }
 function openCoachSheet(date){
-  const notes=(state.reflections?.[date]||[]).map(r=>'<div class="coach-note"><small>'+esc(r.source==='ai'?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+(r.rpe!=null?' · RPE '+fmt(r.rpe):'')+(r.notes?' · „'+esc(r.notes)+'“':'')+'</small><p>'+esc(r.text)+'</p></div>').join('');
-  openSheet(uiText('Kouč · ','Coach · ')+(date===pragueToday()?uiText('dnes','today'):longDate(date)),notes+'<label class="coach-ask"><span class="small">Jak ses cítil? Co bylo jinak? (volitelné)</span><textarea id="coachNotes" rows="3" maxlength="1000" placeholder="např. těžké nohy, ráno procházka se psy"></textarea></label><div class="rpe-scale" id="coachRpe" role="group" aria-label="RPE">'+[1,2,3,4,5,6,7,8,9,10].map(n=>'<button type="button" data-rpe="'+n+'">'+n+'</button>').join('')+'</div><p class="small">RPE je volitelné. Kouč projde timeline dne, předchozí dny, formu (TSB), spánek, HRV a tvoje poznámky.</p><button type="button" class="btn primary sheet-wide" id="coachAsk">Zeptat se kouče</button>',body=>{
+  const notes=(state.reflections?.[date]||[]).map(r=>'<div class="coach-note"><small>'+esc(r.source==='ai'?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+(r.rpe!=null?' · RPE '+fmt(r.rpe):'')+(r.notes?' · <span data-no-i18n>„'+esc(r.notes)+'“</span>':'')+'</small><p data-no-i18n>'+esc(r.text)+'</p></div>').join('');
+  // Once the day has the coach's answer, the form stays folded: it is only for adding more.
+  const form='<label class="coach-ask"><span class="small">Jak ses cítil? Co bylo jinak? (volitelné)</span><textarea id="coachNotes" rows="3" maxlength="1000" placeholder="např. těžké nohy, ráno procházka se psy"></textarea></label><div class="rpe-scale" id="coachRpe" role="group" aria-label="RPE">'+[1,2,3,4,5,6,7,8,9,10].map(n=>'<button type="button" data-rpe="'+n+'">'+n+'</button>').join('')+'</div><p class="small">RPE je volitelné. Kouč projde timeline dne, předchozí dny, formu (TSB), spánek, HRV a tvoje poznámky.</p><button type="button" class="btn primary sheet-wide" id="coachAsk">Zeptat se kouče</button>';
+  openSheet(uiText('Kouč · ','Coach · ')+(date===pragueToday()?uiText('dnes','today'):longDate(date)),notes?notes+'<details class="coach-more"><summary>Doplnit poznámku nebo se zeptat znovu</summary>'+form+'</details>':form,body=>{
     let rpe=null;$('coachRpe').onclick=e=>{const b=e.target.closest('[data-rpe]');if(!b)return;rpe=rpe===Number(b.dataset.rpe)?null:Number(b.dataset.rpe);$('coachRpe').querySelectorAll('button').forEach(x=>x.classList.toggle('active',Number(x.dataset.rpe)===rpe));};
     $('coachAsk').onclick=async()=>{const b=$('coachAsk');b.disabled=true;b.textContent='Kouč přemýšlí…';try{const r=await jsonFetch('/app/api/coach/reflections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,notes:$('coachNotes').value,rpe})});state.reflections={...(state.reflections||{}),[date]:[r.reflection,...(state.reflections?.[date]||[])]};renderDayTimeline();openCoachSheet(date);}catch(error){toast(error.message);b.disabled=false;b.textContent='Zeptat se kouče';}};
   });
@@ -2823,21 +2825,25 @@ function todayItems(date){
   return out;
 }
 // A finished session already rated (RPE in Intervals.icu, a coach note that
-// names it, the only session of a rated day, or rated here) shows a tick.
+// names it, the only session of a rated day, or rated here) shows its RPE, or
+// a tick when the rating has no number. Returns the RPE, true or false.
 function sessionRated(x){
-  const a=x.a||{},rpe=Number(a.rpe??a.icu_rpe??a.payload?.icu_rpe??a.payload?.rpe),name=String(x.name||'Trénink');
-  if(rpe>=1&&rpe<=10)return true;
-  if(state.ratedSessions?.has(x.date+'|'+name))return true;
+  const a=x.a||{},rpe=Number(a.rpe??a.icu_rpe??a.payload?.icu_rpe??a.payload?.rpe),name=String(x.name||'Trénink'),valid=v=>v!=null&&v!==''&&Number(v)>=1&&Number(v)<=10;
+  if(valid(rpe))return rpe;
+  const key=x.date+'|'+name;
+  if(state.ratedSessions?.has(key)){const v=state.ratedSessions.get?.(key);return valid(v)?Number(v):true;}
   const notes=(state.reflections?.[x.date]||[]).filter(r=>r.rpe!=null||r.notes);
-  return notes.some(r=>String(r.notes||'').startsWith(name+':'))||x.daySessions===1&&notes.some(r=>r.rpe!=null);
+  const own=notes.find(r=>String(r.notes||'').startsWith(name+':'))||(x.daySessions===1?notes.find(r=>r.rpe!=null):null);
+  return own?(valid(own.rpe)?Number(own.rpe):true):false;
 }
+function ratedLabel(r){return typeof r==='number'?'✓ RPE '+fmt(r,Number.isInteger(r)?0:1):uiText('✓ ohodnoceno','✓ rated');}
 // Walks are everyday movement, not training: they get no rating.
 function isWalkActivity(a){return !activitySport(a)&&/walk|hike|chůze|procház|túra/i.test(String(a?.type||'')+' '+String(a?.name||''))}
 function todayItemHtml(x){
   const actions=x.kind==='planned'&&/^planned:/.test(String(x.p?.id||''))?'<button class="btn" data-today="move" data-id="'+esc(x.p.id)+'" data-name="'+esc(x.name)+'">Přesunout</button>':
     x.kind==='role'&&x.sport!=='gym'?'<button class="btn primary" data-today="generate" data-sport="'+x.sport+'">Generovat</button>':
     (x.kind==='gymplan'||x.kind==='role'&&x.sport==='gym')&&!(statusPausesTraining()&&(state.todayPick||pragueToday())>=pragueToday())?'<button class="btn primary" data-today="gym">▶ Začít</button>':
-    x.kind==='done'&&!isWalkActivity(x.a)?(sessionRated(x)?'<span class="today-rated">'+uiText('✓ ohodnoceno','✓ rated')+'</span>':'<button class="btn" data-today="rate" data-name="'+esc(x.name||'Trénink')+'">Hodnocení</button>'):'';
+    x.kind==='done'&&!isWalkActivity(x.a)?((r=>r?'<span class="today-rated" data-no-i18n>'+esc(ratedLabel(r))+'</span>':'<button class="btn" data-today="rate" data-name="'+esc(x.name||'Trénink')+'">Hodnocení</button>')(sessionRated(x))):'';
   return '<div class="today-item '+x.kind+'"><span class="today-icon">'+(SPORT_ICON[x.sport]||'•')+'</span><div><strong>'+esc(x.name)+'</strong><small>'+(x.kind==='done'?'✓ hotovo · ':x.kind==='planned'?'plán · ':x.kind==='role'?'návrh · ':'')+esc(x.meta||'')+'</small></div>'+actions+'</div>';
 }
 function renderToday(){
@@ -3798,10 +3804,10 @@ function openRatingSheet({date=pragueToday(),name=null}={}){
         }else{
           const res=await jsonFetch('/app/api/coach/reflections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,rpe,notes:(pick?pick+': ':'')+notes})});
           state.reflections={...(state.reflections||{}),[date]:[res.reflection,...(state.reflections?.[date]||[])]};renderDayTimeline();
-          $('rateResult').innerHTML='<div class="coach-note"><small>💬 Kouč</small><p>'+esc(res.reflection.text)+'</p></div>';
+          $('rateResult').innerHTML='<div class="coach-note"><small>💬 Kouč</small><p data-no-i18n>'+esc(res.reflection.text)+'</p></div>';
         }
         btn.textContent='✓ Uloženo';
-        state.ratedSessions=(state.ratedSessions||new Set()).add(date+'|'+String(pick||'Trénink'));try{renderToday();}catch{}
+        state.ratedSessions=(state.ratedSessions||new Map()).set(date+'|'+String(pick||'Trénink'),rpe||null);try{renderToday();}catch{}
       }catch(error){toast(error.message);btn.disabled=false;btn.textContent='Uložit hodnocení';}
     };
   });

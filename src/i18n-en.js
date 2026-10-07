@@ -1141,6 +1141,7 @@ export const EN = {
 "Ze staršího spánku nelze určit dnešní regeneraci.": "Today's recovery can't be determined from older sleep.",
 "Zeptat se AI trenéra": "Ask the AI coach",
 "Zeptat se kouče": "Ask the coach",
+"Doplnit poznámku nebo se zeptat znovu": "Add a note or ask again",
 "Zepředu": "Front",
 "Zezadu": "Back",
 "Zhodnoť moji aktuální regeneraci a navrhni, jak jí přizpůsobit nejbližší trénink.": "Assess my current recovery and suggest how to adapt my next workout to it.",
