@@ -3,9 +3,13 @@ import { todayGymContext } from './coach-gym-adjustment.js';
 import { isQualityName } from './session-intensity.js';
 import { parseIntervalsDescription } from './planned-detail.js';
 import { L, plural } from './lang.js';
+import { buildRideReview } from './ride-review.js';
+import { buildGymReview } from './gym-review.js';
+import { buildRunReview } from './run-review.js';
 const n=v=>v!=null&&v!==''&&Number.isFinite(Number(v))?Number(v):null;
 const txt=v=>String(v||'');
 const isBike=x=>/ride|cycling|bike|kolo/i.test(txt(x?.name)+' '+txt(x?.type));
+const isRun=x=>/^(Run|VirtualRun|TrailRun|Treadmill)/i.test(txt(x?.type));
 const isGym=x=>/weight|strength|weights|posil|gym/i.test(txt(x?.name)+' '+txt(x?.type));
 const isHard=x=>/threshold|vo2|interval|sweet spot|tempo/i.test(txt(x?.name))||isQualityName(x?.name);
 function sleepFacts(sessions,date){
@@ -104,8 +108,19 @@ function nutritionCoach(c,done,paused){
   if(paused)actions.splice(1,0,L('Aktuální stav pozastavuje běžné tréninky; zbývající plán v kalendáři neber jako doporučení ho dnes absolvovat.','Your current status pauses regular training; the remaining plan in the calendar is not a recommendation to do it today.'));
   return {id:'nutrition',title:sportTitle(L('Sportovní výživa','Sports nutrition'),c.focus),status:intake>0?'tracking':'ready',phase:done.length?'after':ride?'before':'rest',headline:done.length?L('Po aktivitě · doplnění energie','After activity · refuel'):fuel?L('Palivo pro dnešní jízdu','Fuel for today\'s ride'):L('Zbývající příjem','Remaining intake'),actions:actions.slice(0,4),confidence:intake>0?'high':'medium'};
 }
-function activityReview(a,matched){
-  const plan=matched.find(m=>String(m.actualId)===String(a.id))?.planned,h=n(a.durationHours),tss=n(a.tss),calories=n(a.calories),actions=[];
+function activityReview(a,matched,input={}){
+  const plan=matched.find(m=>String(m.actualId)===String(a.id))?.planned;
+  // A ride is set against its planned steps and the day's recovery (ride-review.js).
+  if(isBike(a)){
+    const r=buildRideReview({activity:a,detail:input.rideDetails?.[a.id]||null,plan,wellness:input.wellness||[],fitness:input.fitness||{},date:input.date||input.daily?.date});
+    return {id:'review-'+a.id,title:L('Kolo · hodnocení jízdy','Bike · ride review'),headline:a.name||L('Dokončená jízda','Completed ride'),phase:'after',status:'tracking',actions:r.actions,verdict:r.verdict,target:r.target,table:r.table,chart:r.chart,sections:r.sections,analysis:[],confidence:r.table?'high':'medium'};
+  }
+  if(isRun(a)){
+    const r=buildRunReview({activity:a,detail:input.rideDetails?.[a.id]||null,plan,wellness:input.wellness||[],fitness:input.fitness||{},date:input.date||input.daily?.date,thresholdPace:input.thresholds?.runThresholdPace});
+    return {id:'review-'+a.id,title:L('Běh · hodnocení','Run · review'),headline:a.name||L('Dokončený běh','Completed run'),phase:'after',status:'tracking',actions:r.actions,verdict:r.verdict,target:r.target,table:r.table,chart:r.chart,sections:r.sections,analysis:[],confidence:r.table?'high':'medium'};
+  }
+  if(isGym(a)&&input.gymReview)return gymReviewCard(input.gymReview,a.name,a.id);
+  const h=n(a.durationHours),tss=n(a.tss),calories=n(a.calories),actions=[];
   const measured=[h>0?Math.round(h*60)+' min':null,tss!=null?Math.round(tss)+' TSS':null,calories!=null?Math.round(calories)+' kcal':null].filter(Boolean);
   if(measured.length)actions.push(L('Dokončeno: ','Completed: ')+measured.join(' · ')+'.');
   if(plan&&n(plan.tss)>0&&tss!=null)actions.push(L('Zátěž oproti plánu: ','Load vs. plan: ')+Math.round(tss/n(plan.tss)*100)+' %.'+(tss/n(plan.tss)>1.15?L(' Vyšší zátěž zohledni u zbývajících jednotek.',' Take the higher load into account in the remaining sessions.'):''));
@@ -114,6 +129,9 @@ function activityReview(a,matched){
   if(plan&&n(plan.durationHours)>0&&h!=null)analysis.push({label:L('Délka oproti plánu','Duration vs. plan'),text:Math.round(h*60)+' / '+Math.round(n(plan.durationHours)*60)+L(' min. Samotná délka nepotvrzuje, že byly odjeté intervaly.',' min. Duration alone doesn\'t confirm the intervals were done.')});
   if(np>0&&ftp>0)analysis.push({label:L('Intenzita','Intensity'),text:'IF '+(np/ftp).toFixed(2)+' · NP '+Math.round(np)+' W · FTP '+Math.round(ftp)+' W.'});
   return {id:'review-'+a.id,title:isBike(a)?L('Kolo · hodnocení jízdy','Bike · ride rating'):L('Posilovna · dokončený trénink','Gym · completed workout'),headline:a.name||L('Dokončená aktivita','Completed activity'),phase:'after',status:'tracking',actions,analysis,confidence:'medium'};
+}
+function gymReviewCard(r,name,id){
+  return {id:'review-'+id,title:L('Posilovna · hodnocení tréninku','Gym · session review'),headline:name||L('Posilovna','Gym'),phase:'after',status:'tracking',actions:r.actions,verdict:r.verdict,table:r.table,sets:r.sets,sections:r.sections,analysis:[],confidence:'high'};
 }
 export function buildCoachCouncil(input){
   const date=input.date||input.daily?.date,daily=input.daily||{},training=daily.training||{},completed=training.completed||[],matched=training.matched||[],used=new Set(),policy=trainingStatus(input.athleteState);
@@ -125,8 +143,14 @@ export function buildCoachCouncil(input){
   const c={...daily,training:{...training,planned,completed:[]},sleep:sleepFacts(input.sleepSessions||[],date),fitness:input.fitness||{},food:daily.nutrition?.foodLog?.totals||{},focus:input.focus,todayGym:input.gym?todayGymContext(input.gym,date):null,thresholds:input.thresholds||null};
   const coaches=[],bike=planned.find(isBike),gym=planned.find(isGym);
   if(policy.paused)coaches.push({id:'athlete-status',title:L('Aktuální stav','Current status'),status:'recovery',headline:policy.headline,phase:'rest',confidence:'high',actions:[policy.guidance[0],...(policy.note?[L('Tvoje omezení: ','Your limitations: ')+policy.note]:[])]});
-  else{if(bike)coaches.push(bikeCoach(c,bike));if(gym)coaches.push(gymCoach(c,gym));}
-  const reviews=completed.filter(a=>isBike(a)||isGym(a)).map(a=>activityReview(a,matched)),fuel=nutritionCoach(c,completed.filter(a=>isBike(a)||isGym(a)),policy.paused);
+  // A gym session logged in the app is reviewed from its sets, with or without a watch activity;
+  // once every set is done, the review replaces the preparation card.
+  input={...input,gymReview:input.gym&&date&&!input.ahead?buildGymReview({values:input.gym.values,history:input.strengthHistory||[],date,wellness:input.wellness||[]}):null};
+  const gymDone=input.gymReview&&c.todayGym?.exercises?.length&&c.todayGym.exercises.every(e=>e.sets.every(x=>x.completed));
+  if(!policy.paused){if(bike)coaches.push(bikeCoach(c,bike));if(gym&&!gymDone)coaches.push(gymCoach(c,gym));}
+  const reviews=completed.filter(a=>isBike(a)||isGym(a)||isRun(a)).map(a=>activityReview(a,matched,input));
+  if(input.gymReview&&!reviews.some(r=>r.sets))reviews.push(gymReviewCard(input.gymReview,input.gym.values?.[2]?.[3]||null,'gym-'+date));
+  const fuel=nutritionCoach(c,completed.filter(a=>isBike(a)||isGym(a)),policy.paused);
   if(fuel)coaches.push(fuel);
   return {version:'adaptive-coach-council-v4',generatedAt:new Date().toISOString(),morningSummary:input.ahead?null:morningSummary({date,sleep:c.sleep,fitness:c.fitness,yesterday:input.yesterday,planned,policy}),priorities:coaches.map(c=>c.headline+': '+c.actions[0]).slice(0,3),coaches,reviews};
 }

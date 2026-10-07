@@ -301,15 +301,51 @@ function trainingDayMarkup(x){
   return '<div class="plan-day '+(x.date===pragueToday()?"today":"")+'" data-training-date="'+esc(x.date)+uiText('" tabindex="0" role="button" aria-label="Detail tréninku ', '" tabindex="0" role="button" aria-label="Workout details ')+esc(longDate(x.date))+'"><div class="dow">'+esc(longDate(x.date))+'</div>'+(items||'<div class="muted">Volno</div>')+'</div>';
 }
 
+// "How to start today" belongs to the morning: 4:00–11:59 on the device's own clock (the user's time zone).
+function morningWindow(now=new Date()){const h=now.getHours();return h>=4&&h<12;}
 function renderCoachCouncil(){
   const council=state.coaches||{},cards=[...(council.coaches||[]),...(council.reviews||[])];
   const p=$("coachPriorities"),c=$("coachCards");if(!p||!c)return;
   let summary=$('morningSummary');if(!summary){p.insertAdjacentHTML('beforebegin','<div id="morningSummary" class="morning-summary"></div>');summary=$('morningSummary');}
-  const morning=selectedHistoryDate>pragueToday()?null:council.morningSummary;summary.hidden=!morning;summary.innerHTML=morning?'<div class="eyebrow">DNEŠNÍ PŘIPRAVENOST</div><h3>'+esc(morning.headline)+'</h3><p>'+esc(morning.text)+'</p><strong>'+esc(morning.recommendation)+'</strong>':'';
+  const morning=morningWindow()&&selectedHistoryDate===pragueToday()?council.morningSummary:null;summary.hidden=!morning;summary.innerHTML=morning?'<div class="eyebrow">DNEŠNÍ PŘIPRAVENOST</div><h3>'+esc(morning.headline)+'</h3><p>'+esc(morning.text)+'</p><strong>'+esc(morning.recommendation)+'</strong>':'';
   // A priority that only repeats a card's headline and first line is left to the card.
   const heads=cards.map(x=>String(x.headline||'')).filter(Boolean),priorities=(council.priorities||[]).filter(x=>!heads.some(h=>String(x).startsWith(h)));
   p.hidden=!priorities.length;p.innerHTML=priorities.length?'<div class="eyebrow">KOORDINÁTOR · DNEŠNÍ PRIORITY</div><ol class="coach-actions">'+priorities.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ol>':'';
-  c.innerHTML=cards.map(x=>'<article class="coach-card '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><ul class="coach-actions">'+(x.actions||[]).map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+((x.analysis||[]).length?'<div class="coach-analysis">'+x.analysis.map(a=>'<div><strong>'+esc(a.label)+'</strong><p>'+esc(a.text)+'</p></div>').join('')+'</div>':'')+((x.resources||[]).length?'<div class="small" style="margin-top:8px">'+x.resources.filter(r=>/^https:\/\//.test(String(r.url||''))).map(r=>'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.label||'Otevřít postup')+'</a>').join('<br>')+'</div>':'')+'</article>').join('');
+  c.innerHTML=cards.map(x=>x.sections||x.chart||x.sets?rideReviewCard(x):'<article class="coach-card '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><ul class="coach-actions">'+(x.actions||[]).map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+((x.analysis||[]).length?'<div class="coach-analysis">'+x.analysis.map(a=>'<div><strong>'+esc(a.label)+'</strong><p>'+esc(a.text)+'</p></div>').join('')+'</div>':'')+((x.resources||[]).length?'<div class="small" style="margin-top:8px">'+x.resources.filter(r=>/^https:\/\//.test(String(r.url||''))).map(r=>'<a href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.label||'Otevřít postup')+'</a>').join('<br>')+'</div>':'')+'</article>').join('');
+}
+
+// A ride review: verdict, plan vs. reality per step, the main set as a table,
+// then what went well, what to do better and load with recovery. The texts come
+// from the server already in the app language.
+function rideReviewCard(x){
+  const table=x.table?.rows?.length?'<div class="review-table-wrap"><table class="review-table"><thead><tr>'+x.table.columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+x.table.rows.map(r=>'<tr>'+r.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':'';
+  const sections=(x.sections||[]).map(s=>'<div class="review-sec '+esc(s.kind||'')+'"><strong>'+esc(s.label)+'</strong><ul>'+(s.items||[]).map(i=>'<li>'+esc(i)+'</li>').join('')+'</ul></div>').join('');
+  return '<article class="coach-card review '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><div data-no-i18n data-raw>'+(x.verdict?'<p class="review-verdict">'+esc(x.verdict)+'</p>':'')+((x.actions||[]).length?'<p class="small">'+x.actions.map(esc).join(' ')+'</p>':'')+'</div>'+rideReviewChart(x.chart)+gymSetsChart(x.sets)+'<div data-no-i18n data-raw>'+table+(x.target?'<p class="small review-target">'+esc(x.target)+'</p>':'')+sections+'</div></article>';
+}
+// Every set of a finished gym session as a chip, coloured against the planned rep range.
+function gymSetsChart(list){
+  if(!(list||[]).length)return '';
+  const has=k=>list.some(e=>e.sets.some(x=>x.status===k)),key=[['in','V rozsahu'],['under','Pod rozsahem'],['over','Nad rozsahem'],['missing','Neodcvičeno']].filter(([k])=>has(k)).map(([k,l])=>'<span><i class="chip-key '+k+'"></i>'+l+'</span>').join('');
+  return '<div class="set-grid" data-no-i18n data-raw>'+list.map(e=>'<div class="set-row"><span class="set-name">'+esc(e.name)+'</span><span class="set-chips">'+e.sets.map(x=>'<span class="set-chip '+esc(x.status)+'">'+esc(x.label)+'</span>').join('')+'</span></div>').join('')+'</div><div class="review-key">'+key+'</div>';
+}
+function rideReviewChart(c){
+  const steps=c?.steps||[];if(!steps.length||!(c.ftp>0))return '';
+  let t=0;const xs=steps.map(s=>{const start=Number.isFinite(s.start)?s.start:t;t=start+(s.seconds||0);return {...s,x0:start,x1:t};});
+  const total=Math.max(1,...xs.map(s=>s.x1)),caps=xs.filter(s=>s.role!=='sprint').flatMap(s=>[s.hi,s.watts]).filter(Number.isFinite);
+  const {ticks}=niceTicks(0,Math.max(c.ftp*1.25,...caps)*1.08,4),top=ticks.at(-1),W=window.innerWidth<640?420:760,H=window.innerWidth<640?200:220,L=48,R=12,T=16,B=30;
+  const x=v=>L+v/total*(W-L-R),y=v=>T+(1-Math.min(v,top)/top)*(H-T-B),base=y(0);
+  const color={in:'var(--green)',over:'var(--amber)',under:'var(--sky)'};
+  let out=ticks.map(v=>'<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="color-mix(in srgb,var(--muted) 18%,var(--bg))"/><text x="'+(L-8)+'" y="'+(y(v)+4)+'" font-size="12" text-anchor="end" fill="color-mix(in srgb,var(--muted) 87%,var(--text))">'+v+(c.unit==='%'?' %':'')+'</text>').join('');
+  for(const s of xs){
+    const x0=x(s.x0)+.5,w=Math.max(1.5,x(s.x1)-x(s.x0)-1),fill=s.missing?'none':color[s.status]||'var(--violet)';
+    if(Number.isFinite(s.lo)&&s.role!=='sprint')out+='<rect x="'+x0+'" y="'+y(s.hi)+'" width="'+w+'" height="'+Math.max(2,y(s.lo)-y(s.hi))+'" fill="color-mix(in srgb,var(--text) 9%,transparent)" stroke="color-mix(in srgb,var(--text) 45%,var(--bg))" stroke-dasharray="3 3"/>';
+    if(s.missing)out+='<rect x="'+x0+'" y="'+y(s.hi||0)+'" width="'+w+'" height="'+Math.max(2,base-y(s.hi||0))+'" fill="none" stroke="color-mix(in srgb,var(--muted) 70%,var(--bg))" stroke-dasharray="2 4"><title>'+esc(s.tip||'')+'</title></rect>';
+    else if(Number.isFinite(s.watts)){out+='<rect class="review-bar" x="'+x0+'" y="'+y(s.watts)+'" width="'+w+'" height="'+Math.max(1,base-y(s.watts))+'" rx="1.5" fill="'+fill+'" fill-opacity=".72"><title>'+esc(s.tip||'')+'</title></rect>';if(s.watts>top)out+='<text x="'+(x0+w/2)+'" y="'+(T-3)+'" font-size="11" text-anchor="middle" fill="color-mix(in srgb,var(--text) 80%,var(--bg))">'+s.watts+'</text>';}
+  }
+  out+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(c.ftp)+'" y2="'+y(c.ftp)+'" stroke="color-mix(in srgb,var(--text) 55%,var(--bg))" stroke-dasharray="6 4"/><text x="'+(W-R)+'" y="'+(y(c.ftp)-5)+'" font-size="12" text-anchor="end" fill="color-mix(in srgb,var(--text) 75%,var(--bg))">'+esc(c.refLabel||'FTP '+c.ftp+' W')+'</text>';
+  out+='<text x="'+L+'" y="'+(H-8)+'" font-size="12" fill="color-mix(in srgb,var(--muted) 87%,var(--text))">0 min</text><text x="'+(W-R)+'" y="'+(H-8)+'" font-size="12" text-anchor="end" fill="color-mix(in srgb,var(--muted) 87%,var(--text))">'+Math.round(total/60)+' min</text>';
+  const key=[['in','V pásmu'],['over','Nad pásmem'],['under','Pod pásmem']].filter(([k])=>xs.some(s=>s.status===k)).map(([k,l])=>'<span><i style="background:'+color[k]+'"></i>'+l+'</span>').join('')+(xs.some(s=>s.role==='sprint')?'<span><i style="background:var(--violet)"></i>Sprint</span>':'')+'<span><i class="band"></i>Cílové pásmo</span>'+(xs.some(s=>s.missing)?'<span><i class="gap"></i>Chybí</span>':'');
+  return '<div class="review-chart"><svg class="experience-chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Plán a skutečnost po úsecích">'+out+'</svg><div class="review-key">'+key+'</div></div>';
 }
 
 function renderOverview(){
