@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createD1 } from "./helpers/d1.mjs";
 import { scopedDb } from "../src/tenancy.js";
-import { reflectionSignals, rulesReflection, createReflection, listReflections, activityFromRow, dedupeActivities, pragueLocal, reflectionInput } from "../src/coach-reflection.js";
+import { reflectionSignals, rulesReflection, createReflection, listReflections, activityFromRow, dedupeActivities, pragueLocal, reflectionInput, reflectionInstructions } from "../src/coach-reflection.js";
 
 const DATE = "2026-10-03";
 const day = i => new Date(Date.parse(DATE + "T12:00:00Z") - i * 86400000).toISOString().slice(0, 10);
@@ -101,6 +101,16 @@ test("the AI input is compact and keeps notes as data", () => {
   assert.equal(input.todayTimeline.map(a => a.kind).join(","), "walk,ride");
   assert.equal(input.todayFood[0].time, "07:00");
   assert.ok(input.last14Days.every(a => a.date < DATE));
+});
+
+test("the coach sees the next two days' plan and suggests recovery that fits", () => {
+  const s = scenario(), nextDays = [{ date: "x1", planned: [], restDay: true }, { date: "x2", planned: [{ name: "Sweet Spot", type: "Ride", minutes: 90, tss: 95 }], restDay: false }, { date: "x3", planned: [], restDay: true }];
+  const input = reflectionInput({ ...s, signals: reflectionSignals(s), food: [], previous: [], nextDays });
+  assert.deepEqual(input.nextDays.map(d => d.restDay), [true, false]);
+  assert.match(reflectionInstructions, /zítra restDay, napiš, že má zítra volný den/);
+  assert.match(reflectionInstructions, /Nevymýšlej trénink, který v plánu není/);
+  assert.match(reflectionInstructions, /protažení nebo mobilitu .*3–4 cviky/);
+  assert.match(reflectionInstructions, /Sauna a vířivka ne při nemoci/);
 });
 
 test("RPE feedback starts the coach's note in the background and the dashboard shows it", () => {

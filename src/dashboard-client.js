@@ -361,10 +361,11 @@ function coachAdvice(text,ai){
   const parts=String(text).split(/(?<=[.!?])\s+|;\s+/).map(t=>t.trim()).filter(Boolean).map(t=>t[0].toUpperCase()+t.slice(1));
   const strong=t=>esc(t).replace(/(\d+\s?h\s\d+\s?min|[−-]?\d+(?:[.,]\d+)?(?:\s?(?:%|ms|TSS|h|min|g|kcal|W|km|bpm)\b)?)/g,'<b>$1</b>');
   const icon=t=>/HRV|tep|puls|heart/i.test(t)?'❤️':/spal|spánek|spánk|sleep/i.test(t)?'😴':/TSB|únav|fatigue|form/i.test(t)?'🔋':/sacharid|jídl|tekutin|carb|fluid|eat/i.test(t)?'🍝':/křeč|cramp/i.test(t)?'⚡':/RPE|interval|sprint|tempo|úsek/i.test(t)?'🚴':'•';
-  const tomorrow=parts.filter(t=>/^(zítra|tomorrow)|\bzítra\b|\btomorrow\b/i.test(t)),warn=parts.filter(t=>!tomorrow.includes(t)&&/odborník|lékař|bolí|bolest|doctor|pain/i.test(t)),rest=parts.filter(t=>!tomorrow.includes(t)&&!warn.includes(t));
+  const tomorrow=parts.filter(t=>/^(zítra|tomorrow)|\bzítra\b|\btomorrow\b/i.test(t)),warn=parts.filter(t=>!tomorrow.includes(t)&&/odborník|lékař|bolí|bolest|doctor|pain/i.test(t));
+  const recover=parts.filter(t=>!tomorrow.includes(t)&&!warn.includes(t)&&/saun|vířiv|plav|protaž|protahov|mobilit|válc|stretch|sauna|hot tub|swim|foam roll/i.test(t)),rest=parts.filter(t=>!tomorrow.includes(t)&&!warn.includes(t)&&!recover.includes(t));
   const lead=rest.shift();
   return '<div class="coach-advice" data-no-i18n><small class="coach-by">'+esc(ai?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+'</small>'+(lead?'<p class="advice-lead">'+strong(lead)+'</p>':'')+(rest.length?'<ul class="advice-points">'+rest.map(t=>'<li><span class="advice-icon" aria-hidden="true">'+icon(t)+'</span><span>'+strong(t)+'</span></li>').join('')+'</ul>':'')+
-    tomorrow.map(t=>'<div class="advice-call next"><span aria-hidden="true">📅</span><span>'+strong(t)+'</span></div>').join('')+warn.map(t=>'<div class="advice-call warn"><span aria-hidden="true">⚠️</span><span>'+strong(t)+'</span></div>').join('')+'</div>';
+    tomorrow.map(t=>'<div class="advice-call next"><span aria-hidden="true">📅</span><span>'+strong(t)+'</span></div>').join('')+recover.map(t=>'<div class="advice-call recover"><span aria-hidden="true">'+(/saun|vířiv|hot tub/i.test(t)?'♨️':/plav|swim/i.test(t)?'🏊':'🧘')+'</span><span>'+strong(t)+'</span></div>').join('')+warn.map(t=>'<div class="advice-call warn"><span aria-hidden="true">⚠️</span><span>'+strong(t)+'</span></div>').join('')+'</div>';
 }
 // A ride review: verdict, plan vs. reality per step, the main set as a table,
 // then what went well, what to do better and load with recovery. The texts come

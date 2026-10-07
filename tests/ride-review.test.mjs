@@ -113,6 +113,9 @@ test('the Today screen shows "how to start today" only in the morning, and draws
   assert.match(rated, /😴<\/span><span>Spal jsi jen <b>5 h 34 min<\/b>/);
   assert.match(rated, /advice-call next"><span aria-hidden="true">📅<\/span><span>Zítra odpočívej/);
   assert.match(rated, /advice-call warn/);
+  const recovery = ctx.coachAdvice('Dobrá práce. Večer si dej 10 minut protažení lýtek a hamstringů. Zítra máš volný den.', true);
+  assert.match(recovery, /advice-call recover"><span aria-hidden="true">🧘/);
+  assert.match(ctx.coachAdvice('Dobrá práce. Sauna ti pomůže.', true), /♨️/);
   const at = (h, m = 0) => new Date(2026, 9, 7, h, m);
   // Without sleep data: 4:00–11:59.
   assert.deepEqual([3, 4, 9, 11, 12, 19].map(h => ctx.m(at(h))), [false, true, true, true, false, false]);
