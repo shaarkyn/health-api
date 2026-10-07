@@ -58,7 +58,7 @@ test('focused legs preserve cycling protection', () => {
   const plan=generateStrengthPlan(context,{focusMuscles:['quads']});
   assert.equal(plan.protectedLegs,true);
   assert.deepEqual([...new Set(plan.rows.filter(row=>row[0]==='WORK').map(row=>row[1]))],['Leg extension Prime']);
-  assert.match(plan.rationale,/rezervu u nohou/);
+  assert.match(plan.rationale,/u nich držet rezervu/);
 });
 import { completedRowsAreSynced } from "../src/strength-sync-guard.js";
 import { strengthPlanToIntervalsEvent } from "../src/intervals-strength.js";
