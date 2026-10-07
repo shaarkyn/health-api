@@ -4,6 +4,7 @@
 // athlete's chosen models. Running uses threshold pace (s/km) the same way.
 import { getTrainingProfile } from "./training-profile.js";
 import { powerZones, hrZones, paceZones } from "./training-zones.js";
+import { intervalsAuthorization } from "./intervals-auth.js";
 const n = v => Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
 
 // On a trainer most riders hold a few per cent less than outdoors. Without an
@@ -19,7 +20,7 @@ export async function athleteThresholds(env, fetchImpl = fetch) {
   const out = { ftp: null, indoorFtp: null, lthr: null, maxHr: null, runThresholdPace: null, runPaceSource: null, intervalsRunPace: null, runLthr: null, runMaxHr: null, source: null, intervalsFtp: null, latestRideFtp: null };
   if (env.INTERVALS_API_KEY) {
     try {
-      const response = await fetchImpl("https://intervals.icu/api/v1/athlete/0", { headers: { Authorization: "Basic " + btoa("API_KEY:" + String(env.INTERVALS_API_KEY)), Accept: "application/json" } });
+      const response = await fetchImpl("https://intervals.icu/api/v1/athlete/0", { headers: { Authorization: intervalsAuthorization(env.INTERVALS_API_KEY), Accept: "application/json" } });
       if (response.ok) {
         const athlete = await response.json();
         const settings = Array.isArray(athlete?.sportSettings) ? athlete.sportSettings : [];

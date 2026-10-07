@@ -6,12 +6,15 @@ import {assistantPanelTheme} from './assistant-panel-theme.js';
 import {designSystem,themeBoot,themeSwitch} from './design-system.js';
 import {ICON_PATHS,icon} from './icons.js';
 import {langBoot} from './i18n.js';
-export function dashboardPage({clientVersion='dev'}={}) {
+// account: the signed-in user's id (or '' when signed out). What the app keeps
+// on the device belongs to one account; the page drops it for another one.
+export function dashboardPage({clientVersion='dev',account=''}={}) {
   const html = `<!doctype html>
 <html lang="cs">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="lw-account" content="${/^\d{1,12}$/.test(String(account))?account:''}">
 <meta name="theme-color" content="#0d131a" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#fbfcfd" media="(prefers-color-scheme: light)">
 ${themeBoot}

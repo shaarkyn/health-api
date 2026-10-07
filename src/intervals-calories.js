@@ -1,9 +1,10 @@
 import { pragueToday } from "./prague-date.js";
+import { intervalsAuthorization } from "./intervals-auth.js";
 const BASE_URL = "https://intervals.icu/api/v1";
 
 function auth(env) {
   if (!env.INTERVALS_API_KEY) throw new Error("INTERVALS_API_KEY is not configured");
-  return "Basic " + btoa("API_KEY:" + env.INTERVALS_API_KEY);
+  return intervalsAuthorization(env.INTERVALS_API_KEY);
 }
 
 const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;

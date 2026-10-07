@@ -1,9 +1,10 @@
 import { buildStrengthContext } from "./strength-context.js";
 import { buildNutritionPlan } from "./nutrition-intelligence.js";
 import { getFoodDay, recommendFood } from "./food-log.js";
+import { intervalsAuthorization } from "./intervals-auth.js";
 
 const BASE_URL = "https://intervals.icu/api/v1";
-const auth = env => "Basic " + btoa("API_KEY:" + env.INTERVALS_API_KEY);
+const auth = env => intervalsAuthorization(env.INTERVALS_API_KEY);
 const addDays = (date, days) => {
   const d = new Date(date + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);

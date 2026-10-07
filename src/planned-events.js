@@ -4,6 +4,7 @@
 // without waiting for the next sync.
 
 import { cancelGymPlan, moveGymPlan } from './gym-plan-store.js';
+import { intervalsAuthorization } from "./intervals-auth.js";
 
 const BASE = "https://intervals.icu/api/v1/athlete/0/events/";
 export const isStrengthEvent = event => /^(WeightTraining|Strength|Gym)$/i.test(String(event?.type || ''));
@@ -24,7 +25,7 @@ export function shiftEventStart(start, date) {
 
 function auth(env) {
   if (!env.INTERVALS_API_KEY) throw new Error("Nejprve připoj Intervals.icu.");
-  return { Authorization: "Basic " + btoa("API_KEY:" + String(env.INTERVALS_API_KEY)), Accept: "application/json", "Content-Type": "application/json" };
+  return { Authorization: intervalsAuthorization(env.INTERVALS_API_KEY), Accept: "application/json", "Content-Type": "application/json" };
 }
 
 async function plannedRow(db, eventId) {

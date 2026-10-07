@@ -9,6 +9,7 @@ import { explainWorkout, stepRows } from "./workout-explanation.js";
 import { getAthleteState, assertTrainingAllowed } from './athlete-state.js';
 import { getWeekPlan } from './week-planner.js';
 import { availabilityOn, parseTimeWindow } from './training-availability.js';
+import { intervalsAuthorization } from "./intervals-auth.js";
 
 export const SYSTEMS = ["recovery", "endurance", "tempo", "sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"];
 const HARD_SYSTEMS = new Set(["sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"]);
@@ -376,7 +377,7 @@ export async function scheduleWorkoutInIntervals(env, db, { workoutId, date, con
   if(available.minutes!=null&&renderForEnvironment(workout,environmentOf(environment)).duration_minutes>available.minutes)throw new Error('Trénink přesahuje dostupný čas pro tento den.');
   if (!env.INTERVALS_API_KEY) throw new Error("Intervals.icu není připojeno.");
   await ensureTrainingTables(db);
-  const event = buildIntervalsEvent(workout, date, environmentOf(environment)), auth = "Basic " + btoa("API_KEY:" + String(env.INTERVALS_API_KEY));
+  const event = buildIntervalsEvent(workout, date, environmentOf(environment)), auth = intervalsAuthorization(env.INTERVALS_API_KEY);
   const existing = await db.prepare("SELECT intervals_event_id,status FROM workout_schedule_links WHERE user_id=? AND intervals_external_id=?").bind(db.userId, event.external_id).first();
   if (existing) return { status: "already_scheduled", workout: { id: workout.id, name: workout.name }, date, externalId: event.external_id, intervalsEventId: existing.intervals_event_id || null };
   const links=await db.prepare("SELECT workout_id,environment,intervals_event_id FROM workout_schedule_links WHERE user_id=? AND scheduled_date=? AND status='scheduled'").bind(db.userId,date).all();

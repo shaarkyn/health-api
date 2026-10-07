@@ -130,6 +130,8 @@ test("the dashboard works without connections", () => {
   const client = readFileSync(new URL("../src/dashboard-client.js", import.meta.url), "utf8");
   assert.doesNotMatch(entry, /status:"onboarding"/);
   assert.match(entry, /source:"none",connected:false/);
-  assert.match(client, /id="onboardingSkip"/);
-  assert.match(client, /const open=!me\.missingProviders\?\.length\|\|onboardingSkipped\(\);/);
+  // The setup window can be skipped and offers continuing without any service.
+  assert.match(client, /id="setupSkip"/);
+  assert.match(client, /Pokračovat bez propojení/);
+  assert.match(client, /const open=!setupWanted\(me\);/);
 });

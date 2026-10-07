@@ -5,8 +5,9 @@ import {walkingEnergyCheck,activityTelemetryEnergy} from './activity-energy-chec
 import { energyBaseline, MISSING_LABELS } from "./energy-profile.js";
 import { loadEffectiveProfile } from "./profile-suggestions.js";
 import { writeIntervalsWeight } from "./weight-sync.js";
-import { healthScopes } from "./google-scopes.js";
+import { healthScopes, hasGoogleScope, HEALTH_PERMISSIONS } from "./google-scopes.js";
 import { dateFormat } from "./date-format.js";
+import { intervalsAuthorization } from "./intervals-auth.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -382,6 +383,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 // An access token for the given scopes (Google Health by default, with weight
 // writing when the user granted it).
 export async function googleToken(env, scopes = healthScopes(env)) {
+  // Without a connection Google would only answer "missing refresh_token".
+  if (!env.GOOGLE_REFRESH_TOKEN) throw new Error("Google Health není připojené.");
+  if (!scopes.length) throw new Error("Google Health nemá povolené žádné oprávnění. V Nastavení obnov oprávnění Google.");
   const response = await fetchWithTimeout(
     "https://oauth2.googleapis.com/token",
 
@@ -441,11 +445,7 @@ function intervalsAuth(env) {
     );
   }
 
-  return "Basic " +
-    btoa(
-      "API_KEY:" +
-      env.INTERVALS_API_KEY
-    );
+  return intervalsAuthorization(env.INTERVALS_API_KEY);
 }
 
 
@@ -810,10 +810,15 @@ async function googleNutritionLogEndpoint(env, request) {
 }
 
 async function healthNutrition(env, url) {
+  const end = url.searchParams.get("end") || dateDaysFromNow(1);
+  const start = url.searchParams.get("start") || dateDaysAgo(30);
+  // Food logged in Google Health is an extra: without Google Health, or
+  // without the permission to read food, there is simply nothing from there.
+  if (!env.GOOGLE_REFRESH_TOKEN || !hasGoogleScope(env, HEALTH_PERMISSIONS.nutritionRead)) {
+    return Response.json({ status: "ok", source: "google-health", data_type: "nutrition-log", connected: Boolean(env.GOOGLE_REFRESH_TOKEN), permission: false, start, end, count: 0, records: [] });
+  }
   try {
     const token = await googleToken(env);
-    const end = url.searchParams.get("end") || dateDaysFromNow(1);
-    const start = url.searchParams.get("start") || dateDaysAgo(30);
     const points = await googleNutritionList(token, start, end);
     const records = points.map(point => {
       const log = point?.nutritionLog || {};
