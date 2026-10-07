@@ -1373,8 +1373,12 @@ async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
       const thresholds=await cached(env,ctx,'thresholds',()=>athleteThresholds(env));
       const resizeTo=Number.isFinite(Number(body.resizeTo))&&Number(body.resizeTo)>0?trainingBudget(prefs,date,Number(body.resizeTo)):null;
       if(resizeTo!=null&&resizeTo<(genSport==='run'?20:30))throw new Error('Na změnu délky nezbývá dost času.');
-      let generated=await generateWorkout(env.DB,{sport:genSport,environment,date,coach,availabilityMinutes:resizeTo??availabilityMinutes,variant:body.variant,thresholds,workoutId:body.workoutId?String(body.workoutId).slice(0,120):null,resizeTo});
-      if(availabilityMinutes&&generated.workout?.duration_minutes>availabilityMinutes)generated=await generateWorkout(env.DB,{sport:genSport,environment,date,coach,thresholds,workoutId:generated.workout.id,resizeTo:availabilityMinutes});
+      // The free time is a limit, not a target: the coach may want less (an easy
+      // day, a beginner, a run that grows slowly). A length typed by the athlete wins.
+      const coachMinutes=Number(coach.recommendation?.session?.durationMinutes)||null;
+      const sessionMinutes=availabilityMinutes!=null&&coachMinutes?Math.min(availabilityMinutes,coachMinutes):availabilityMinutes;
+      let generated=await generateWorkout(env.DB,{sport:genSport,environment,date,coach,availabilityMinutes:resizeTo??sessionMinutes,variant:body.variant,thresholds,workoutId:body.workoutId?String(body.workoutId).slice(0,120):null,resizeTo});
+      if(sessionMinutes&&resizeTo==null&&generated.workout?.duration_minutes>sessionMinutes)generated=await generateWorkout(env.DB,{sport:genSport,environment,date,coach,thresholds,workoutId:generated.workout.id,resizeTo:sessionMinutes});
       return Response.json({...generated,weekRole,weekTarget,environmentReason:suggestedEnvironment.reason},{headers:{'Cache-Control':'no-store'}});
     }
     if(url.pathname==='/app/api/workouts/feedback'&&request.method==='POST'){

@@ -151,6 +151,13 @@ export function stepRows(structure = [], { ftp = null, environment = "indoor", z
   return structure.map(block => block.steps ? { repeats: n(block.repeats, 1), note: block.note || null, steps: block.steps.map(row) } : { repeats: 1, steps: [row(block)] });
 }
 
+// Where the heart-rate zone comes from, in words.
+function hrReference(model, lthr) {
+  if (model === "karvonen") return "Z2 z tepové rezervy, max. a klidový tep z profilu";
+  if (model === "hrMax5") return "Z2 ze 70 % max. tepu";
+  return lthr ? "Z2 z LTHR " + lthr : "Z2";
+}
+
 export function explainWorkout(workout, { coach = {}, environment = "indoor", thresholds = {}, planned = null, sport = workout.sport || "ride" } = {}) {
   let structure = [];
   try { structure = JSON.parse(workout.structure_json || "[]"); } catch {}
@@ -166,6 +173,9 @@ export function explainWorkout(workout, { coach = {}, environment = "indoor", th
   if (ftp && estimated) how.unshift("Na trenažéru počítám watty z indoor FTP " + ftp + " W – odhad 95 % z tvého FTP " + thresholds.ftp + " W, protože indoor se stejný výkon drží hůř. Vlastní indoor FTP nastavíš v Intervals.icu.");
   else if (ftp) how.unshift("Watty počítám z tvého " + (environment === "indoor" && thresholds.indoorFtp ? "indoor " : "") + "FTP " + ftp + " W" + ({ manual: " (nastaveno v aplikaci)", "latest-ride": " (z poslední jízdy)" }[thresholds.source] || " (z Intervals.icu)") + ".");
   else how.unshift("FTP neznám – cíle jsou v % FTP. Zadej nebo spočítej FTP v Nastavení → FTP a zóny.");
+  // Without FTP an easy ride is steered by heart rate.
+  const rideZ2 = (thresholds.hrZones || []).find(z => z.zone === 2);
+  if (!ftp && ["recovery", "endurance"].includes(system) && rideZ2?.bpmHigh) how.push("Tep drž do " + rideZ2.bpmHigh + " bpm (" + hrReference(thresholds.hrModel, thresholds.lthr) + ").");
   return {
     title: SYSTEM_LABEL[system] || system,
     why, how,
@@ -203,7 +213,7 @@ function explainRun(workout, structure, { coach, environment, thresholds, planne
   else how.unshift("Prahové tempo neznám – cíle jsou v % prahového tempa. Zadej nebo spočítej ho v Nastavení → FTP a zóny → Běh.");
   const lthr = thresholds.runLthr;
   const hrZ2 = (thresholds.runHrZones || []).find(z => z.zone === 2);
-  if (["recovery", "endurance"].includes(system) && hrZ2?.bpmHigh) how.push("Tep drž do " + hrZ2.bpmHigh + " bpm (Z2 z LTHR " + lthr + ").");
+  if (["recovery", "endurance"].includes(system) && hrZ2?.bpmHigh) how.push("Tep drž do " + hrZ2.bpmHigh + " bpm (" + hrReference(thresholds.runHrModel, lthr) + ").");
   const opts = { environment, zones: thresholds.paceZones, sport: "run", thresholdPace: pace };
   return {
     title: RUN_LABEL[system] || system,

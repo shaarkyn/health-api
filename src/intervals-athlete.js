@@ -5,6 +5,7 @@
 import { getTrainingProfile } from "./training-profile.js";
 import { powerZones, hrZones, paceZones } from "./training-zones.js";
 import { intervalsAuthorization } from "./intervals-auth.js";
+import { loadEffectiveProfile } from "./profile-suggestions.js";
 const n = v => Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
 
 // On a trainer most riders hold a few per cent less than outdoors. Without an
@@ -14,6 +15,14 @@ export function rideFtpFor(t = {}, environment = "outdoor") {
   if (environment !== "indoor" || !t.ftp) return { ftp: t.ftp || null, estimated: false };
   if (t.indoorFtp) return { ftp: t.indoorFtp, estimated: false };
   return { ftp: Math.round(t.ftp * INDOOR_FTP_FACTOR), estimated: true };
+}
+
+// Zones from LTHR need a threshold test; a beginner usually knows only the max
+// and resting heart rate. Without an LTHR the default model falls back to the
+// heart-rate reserve (Karvonen), or to % of max without a resting rate.
+function hrModelFor(model, lthr, maxHr, restHr) {
+  if (!["frielLthr", "frielRun"].includes(model) || lthr) return model;
+  return maxHr && restHr ? "karvonen" : maxHr ? "hrMax5" : model;
 }
 
 export async function athleteThresholds(env, fetchImpl = fetch) {
@@ -50,14 +59,22 @@ export async function athleteThresholds(env, fetchImpl = fetch) {
   // A manual FTP replaces the Intervals values, including its indoor FTP.
   if (profile.ftp) { out.ftp = profile.ftp; out.indoorFtp = null; out.source = "manual"; }
   for (const key of ["lthr", "maxHr"]) if (profile[key]) out[key] = profile[key];
-  out.restHr = profile.restHr || null;
+  // Max and resting heart rate from the personal profile (Nastavení → Profil)
+  // when neither the training settings nor Intervals.icu have them.
+  let personal = null;
+  if (env.DB && (!out.maxHr || !profile.restHr)) { try { personal = await loadEffectiveProfile(env.DB, env.USER_ID); } catch (error) { console.error("Profile unavailable", error.message); } }
+  if (!out.maxHr && n(personal?.hrmax)) out.maxHr = n(personal.hrmax);
+  out.restHr = profile.restHr || n(personal?.rhr) || null;
   if (profile.runThresholdPace) { out.runThresholdPace = profile.runThresholdPace; out.runPaceSource = "manual"; }
   if (profile.runLthr) out.runLthr = profile.runLthr;
   out.paceZones = paceZones(profile, out.runThresholdPace);
   // Running LTHR only – the cycling LTHR is usually lower and would mislead.
-  out.runHrZones = hrZones({ ...profile, hrZoneModel: ["frielLthr", "frielRun", "custom"].includes(profile.hrZoneModel || "frielLthr") ? "frielRun" : profile.hrZoneModel, lthr: out.runLthr, maxHr: out.runMaxHr || out.maxHr, restHr: out.restHr });
+  const runModel = ["frielLthr", "frielRun", "custom"].includes(profile.hrZoneModel || "frielLthr") ? "frielRun" : profile.hrZoneModel;
+  out.runHrModel = hrModelFor(runModel, out.runLthr, out.runMaxHr || out.maxHr, out.restHr);
+  out.runHrZones = hrZones({ ...profile, hrZoneModel: out.runHrModel, lthr: out.runLthr, maxHr: out.runMaxHr || out.maxHr, restHr: out.restHr });
   out.profile = profile;
   out.powerZones = powerZones(profile, out.ftp);
-  out.hrZones = hrZones({ ...profile, lthr: out.lthr, maxHr: out.maxHr, restHr: out.restHr });
+  out.hrModel = hrModelFor(profile.hrZoneModel || "frielLthr", out.lthr, out.maxHr, out.restHr);
+  out.hrZones = hrZones({ ...profile, hrZoneModel: out.hrModel, lthr: out.lthr, maxHr: out.maxHr, restHr: out.restHr });
   return out;
 }
