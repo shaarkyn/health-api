@@ -97,7 +97,7 @@ function macroChart(id,days){
   chart.innerHTML='<div class="macro-legend"><span><i style="background:#60a5fa"></i>Bílkoviny</span><span><i style="background:#f59e0b"></i>Sacharidy</span><span><i style="background:#a78bfa"></i>Tuky</span></div><p class="small">Zapsaný příjem / denní cíl · kcal</p><div class="macro-chart-scroll"><div class="macro-columns">'+shown.map(d=>{
     const v=calorieChartDay(d),label=dateFormat({weekday:'short'}).format(new Date(d.date+'T12:00:00Z')),tip=v.macros.map(m=>m.label+' '+fmt(m.grams,1)+' g').join(' · '),fill=v.progress==null?0:Math.min(100,v.progress),progress=v.progress==null?'Cíl chybí':!v.logged?'Bez zápisu':v.progress>0&&v.progress<1?'<1 % cíle':fmt(v.progress)+' % cíle';
     const segments=v.macros.some(m=>m.share>0)?v.macros.filter(m=>m.share>0).map(m=>'<i style="height:'+m.share+'%;background:'+m.color+'" title="'+esc(m.label+' '+fmt(m.grams,1)+' g')+'"></i>').join(''):'<i style="height:100%;background:#91e5c9"></i>';
-    return '<div class="macro-day'+(d.date===pragueToday()?' current':'')+'" title="'+esc(longDate(d.date)+' · '+(v.logged?v.eaten+' kcal · '+tip:'bez zápisu'))+'"><span class="macro-day-name">'+esc(label)+'</span><strong>'+(v.logged?fmt(v.eaten):'—')+'</strong><small>/ '+(v.target?fmt(v.target):'—')+'</small><div class="macro-day-track" role="img" aria-label="'+esc(longDate(d.date)+': '+(v.logged?v.eaten+' z '+v.target+' kcal':'bez zapsaného příjmu'))+'"><div class="macro-day-fill" style="height:'+fill+'%">'+(v.logged?segments:'')+'</div></div><span class="macro-day-progress'+(v.progress>100?' over':'')+'">'+progress+'</span></div>';
+    return '<div class="macro-day'+(d.date===pragueToday()?' current':'')+'" title="'+esc(longDate(d.date)+' · '+(v.logged?v.eaten+' kcal · '+tip:uiText('bez zápisu','no entries')))+'"><span class="macro-day-name">'+esc(label)+'</span><strong>'+(v.logged?fmt(v.eaten):'—')+'</strong><small>/ '+(v.target?fmt(v.target):'—')+'</small><div class="macro-day-track" role="img" aria-label="'+esc(longDate(d.date)+': '+(v.logged?v.eaten+uiText(' z ',' of ')+v.target+' kcal':uiText('bez zapsaného příjmu','no intake logged')))+'"><div class="macro-day-fill" style="height:'+fill+'%">'+(v.logged?segments:'')+'</div></div><span class="macro-day-progress'+(v.progress>100?' over':'')+'">'+progress+'</span></div>';
   }).join('')+'</div></div>';
 }
 function isoWeek(date){
@@ -364,7 +364,7 @@ function renderPmcChart(){
   const box=$('pmcRange'),range=num(box.dataset?.value??box.value,14),rows=(state.fitness?.wellness||[]).filter(r=>r.id>=dateShift(pragueToday(),1-range)&&r.id<=pragueToday()),svg=$('pmcChart'),W=chartWidth(svg,1000),H=W<600?300:420,L=W<600?44:72,R=30,T=48,B=40;
   svg.setAttribute?.('viewBox','0 0 '+W+' '+H);if(svg.style)svg.style.height=H+'px';
   box.onclick=e=>{const b=e.target.closest?.('button[data-value]');if(!b)return;box.dataset.value=b.dataset.value;box.querySelectorAll('button').forEach(x=>{x.classList.toggle('selected',x===b);x.setAttribute('aria-pressed',String(x===b));});renderPmcChart();};
-  const series=[['Kondice','ctl','#3b82f6'],['Únava','atl','#ef6b73'],['Forma','tsb','#35c48b']],values=rows.flatMap(r=>series.map(s=>r[s[1]]).filter(measured).map(Number));
+  const series=[[uiText('Kondice','Fitness'),'ctl','#3b82f6'],[uiText('Únava','Fatigue'),'atl','#ef6b73'],[uiText('Forma','Form'),'tsb','#35c48b']],values=rows.flatMap(r=>series.map(s=>r[s[1]]).filter(measured).map(Number));
   if(!values.length){svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="color-mix(in srgb,var(--muted) 89%,var(--bg))">Bez dat v tomto období</text>';return}
   const vmin=Math.min(0,...values),axis=niceTicks(vmin,Math.max(vmin+10,...values),W<600?4:5,true),lo=axis.ticks[0],hi=axis.ticks.at(-1),x=date=>L+(W-L-R)*(new Date(date+'T12:00:00Z')-new Date(dateShift(pragueToday(),1-range)+'T12:00:00Z'))/((range-1)*86400000),y=v=>H-B-(H-T-B)*(v-lo)/(hi-lo);
   let out='';for(const v of axis.ticks){const yy=y(v);out+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+yy+'" y2="'+yy+'" stroke="color-mix(in srgb,var(--cyan) 22%,var(--bg))"/><text x="'+(L-12)+'" y="'+(yy+5)+'" text-anchor="end" fill="color-mix(in srgb,var(--muted) 86%,var(--text))" font-size="15">'+fmt(v)+'</text>'}
@@ -444,7 +444,7 @@ function renderRecovery(){
   $("rAvg").textContent=avg?hm(avg):"—";
   $("rAvgLabel").textContent=range>=3000?"all time":range===365?"poslední rok":range===180?"posledních 6 měsíců":range===30?"poslední měsíc":"posledních 7 dní";
   const sleepScore=sleepIndex(last);
-  const baselineRows=ss.filter(x=>new Date(x.endTime||x.startTime||(x.date?x.date+'T07:00:00':0)).getTime()>=Date.now()-30*86400000),baseline=baselineRows.length?baselineRows.reduce((a,x)=>a+Math.min(100,Math.max(0,(num(x.durationMin)/480)*70+(num(x.stages?.DEEP)/90)*15+(num(x.stages?.REM)/90)*15)),0)/baselineRows.length:null,delta=sleepScore!=null&&baseline!=null?Math.round(sleepScore-baseline):null,restorative=num(last?.stages?.DEEP)+num(last?.stages?.REM),sleepWord=sleepScore==null?"Čekám na spánek":sleepScore>=85?"Silná regenerace":sleepScore>=65?"Použitelná regenerace":"Regenerace pod tlakem";
+  const baselineRows=ss.filter(x=>new Date(x.endTime||x.startTime||(x.date?x.date+'T07:00:00':0)).getTime()>=Date.now()-30*86400000),baselineScores=baselineRows.map(sleepIndex).filter(v=>v!=null),baseline=baselineScores.length?baselineScores.reduce((a,v)=>a+v,0)/baselineScores.length:null,delta=sleepScore!=null&&baseline!=null?Math.round(sleepScore-baseline):null,restorative=num(last?.stages?.DEEP)+num(last?.stages?.REM),sleepWord=sleepScore==null?"Čekám na spánek":sleepScore>=85?"Silná regenerace":sleepScore>=65?"Použitelná regenerace":"Regenerace pod tlakem";
   $("rRestorative").textContent=last?hm(restorative):"—";
   $("recoveryOrb").style.setProperty("--orb-value",sleepScore??0);$("recoveryOrb").style.setProperty("--orb-color",sleepScore>=85?"#35c48b":sleepScore>=65?"#e9b44c":"#ef6b73");$("recoveryScore").textContent=sleepScore??"—";$("recoveryTitle").textContent=sleepWord;$("recoveryVsBaseline").textContent=delta==null?"čekám na 30denní baseline":"vs. 30 dní "+(delta>=0?"+":"")+delta+" bodů";$("recoverySignal").textContent=last?"Spánek · poslední noc":"Bez aktuálního záznamu";$("recoveryInsight").textContent=last?(delta!=null&&delta>=0?"Dnešní spánek je nad tvou osobní normou. Drž plán, ale respektuj lokální únavu nohou.":"Dnešní spánek je pod osobní normou. Kvalitu můžeš držet, ale objem uprav podle pocitu."):"Po načtení spánku vyhodnotím připravenost proti vlastnímu trendu.";$("recoveryGuide").textContent=sleepScore==null?"Doplň data":sleepScore>=85?"Kvalita může zůstat":sleepScore>=65?"Drž plán s rezervou":"Sniž objem";$("recoveryGuideMeta").textContent=sleepScore==null?"bez poslední noci":sleepScore>=85?"dnes není potřeba kompenzovat únavu":sleepScore>=65?"nechoď zbytečně do selhání":"priorita je spánek a lehká aktivita";
   $("sleepScore").innerHTML=sleepScore!=null?scoreBadge(sleepScore,"Kvalita"):'<span class="muted">Bez dat</span>';
@@ -960,7 +960,7 @@ function renderDetails(){
   metricDetail('detail-weight','Hmotnost',weights.map(r=>({date:String(r.sample_time).slice(0,10),value:r.value_numeric})),'kg','#64d2ff');
   metricDetail('detail-load','Denní tréninková zátěž',wellness.map(r=>({date:r.id,value:r.ctlLoad??r.atlLoad})),'TSS','#a978ff',{bars:true});
   const last=sleep[0],stages=['DEEP','REM','LIGHT','AWAKE'],colors=['#7563ff','#b184ff','#66d4ff','#ffc45c'],names=['Hluboký','REM','Lehký','Bdění'];
-  $('readinessCaption').textContent='Orientační index spánku · '+(last?'poslední záznam '+dateLabel(last.date||String(last.endTime).slice(0,10)):'bez záznamu');
+  $('readinessCaption').textContent=uiText('Orientační index spánku · ','Approximate sleep index · ')+(last?uiText('poslední záznam ','last record ')+dateLabel(last.date||String(last.endTime).slice(0,10)):'bez záznamu');
   if(last){const age=Math.floor((Date.parse(pragueToday())-Date.parse(last.date||String(last.endTime).slice(0,10)))/86400000);if(age>1){$('readinessTitle').textContent='Chybí aktuální spánek';$('readinessInsight').textContent='Poslední noc je stará '+age+' dní. Dnešní připravenost nelze odvodit ze staršího záznamu.';$('recoveryTitle').textContent='Poslední dostupný spánek';$('recoverySignal').textContent='Záznam '+dateLabel(last.date||String(last.endTime).slice(0,10));$('recoveryGuide').textContent='Doplň aktuální noc';$('recoveryGuideMeta').textContent='Ze staršího spánku nelze určit dnešní regeneraci.';$('recoveryInsight').textContent='Zobrazuji poslední dostupný spánek. Pro dnešní rozhodnutí chybí aktuální noc.';}}
   const total=last?stages.reduce((s,k)=>s+num(last.stages?.[k]),0):0;
   $('sleepBreakdown').innerHTML=last&&total?'<div class="label">Složení poslední noci · souhrn, nikoli časová osa</div><div class="sleep-composition">'+stages.map((k,i)=>'<span style="width:'+num(last.stages?.[k])/total*100+'%;background:'+colors[i]+'" title="'+names[i]+' '+hm(last.stages?.[k])+'"></span>').join('')+'</div><div class="stage-details">'+stages.map((k,i)=>{const mins=num(last.stages?.[k]),history=sleep.slice(1).filter(r=>r.date>=dateShift(last.date||pragueToday(),-30)&&measured(r.stages?.[k])),average=history.length?history.reduce((s,r)=>s+num(r.stages[k]),0)/history.length:null;return '<div><span><i style="background:'+colors[i]+'"></i>'+names[i]+'</span><strong>'+hm(mins)+'</strong><small>'+fmt(mins/total*100)+' % · baseline '+(average==null?'—':hm(average))+'</small></div>';}).join('')+'</div>':'<div class="muted">Fáze spánku nejsou dostupné.</div>';
@@ -1253,10 +1253,10 @@ function experienceBars(rows,{height=260,max=10,colors=['#7ec8ff'],labels=true}=
 function renderExperience(){
   if(!$('dailyPulse'))return;
   const daily=state.daily||{},food=daily.nutrition?.foodLog?.totals||{},target=num(daily.nutrition?.calorieTarget),sessions=primarySleepSessions(state.sleep?.sessions).map(r=>({...r,date:r.date||String(r.endTime||r.startTime||'').slice(0,10)})).filter(r=>r.date<=selectedHistoryDate),last=sessions[0],wellness=(state.fitness?.wellness||[]).filter(r=>r.id<=selectedHistoryDate),latest=wellness.at(-1)||{},done=(daily.training?.completed||[]).filter(a=>!isNutritionItem(a)),plan=(daily.training?.planned||[]).filter(a=>!isNutritionItem(a)),actualTss=done.reduce((s,a)=>s+num(a.tss),0),plannedTss=plan.reduce((s,m)=>s+num(m.tss),0)||(daily.training?.matched||[]).reduce((s,m)=>s+num(m.planned?.tss),0),hasSleep=last&&last.date>=dateShift(selectedHistoryDate,-1),sleepScore=hasSleep?Math.round(Math.min(100,num(last.durationMin)/480*100)):null;
-  $('dailyPulse').innerHTML='<div class="pulse-header"><div><div class="eyebrow">TVŮJ DEN · '+esc(longDate(pragueToday()))+'</div><h1>Výkon začíná rovnováhou.</h1><p>Spánek, pohyb a jídlo v jednom pohledu.</p></div><button class="btn" id="pulseHealth">Prozkoumat zdravotní data ↗</button></div><div class="pulse-grid">'+experienceRing('Spánek vs. 8 h',sleepScore==null?'—':sleepScore+'%',sleepScore,'#a99bff',last?hm(last.durationMin):'Čekám na noc',last?'Poslední záznam '+dateLabel(last.date)+' · '+(hasSleep?'orientační cíl, ne recovery skóre':'starší noc, ne dnešní připravenost'):'Připoj zdroj spánku')+experienceRing('Tréninková zátěž',actualTss?fmt(actualTss):'—',plannedTss?actualTss/plannedTss*100:0,'#83e9c3',actualTss?'TSS dokončených aktivit':'Dnes bez evidované zátěže',plannedTss?'Plán '+fmt(plannedTss)+' TSS · poměr není známka kvality':'Bez srovnatelného TSS plánu; žádné fiktivní strain skóre')+experienceRing('Příjem energie',target?fmt(num(food.kcal)/target*100)+'%':'—',target?num(food.kcal)/target*100:0,'#ffc274',fmt(food.kcal)+' / '+(target?fmt(target):'—')+' kcal','Z evidovaných jídel · '+(target?fmt(Math.max(0,target-num(food.kcal)))+' kcal zbývá':'čekám na denní cíl'))+'</div><div class="pulse-insight"><span>↗</span><span>'+esc(done.length?'Aktivita je dokončená. Níže najdeš její hodnocení a zbývající výživu.':plan.length?'Před tebou je '+(plan[0].name||'plánovaný trénink')+'. Zkontroluj připravenost a doporučení trenéra.':'Dnes bez evidovaného tréninku. Přehled se změní, jakmile přijde nová aktivita.')+'</span></div>';
+  $('dailyPulse').innerHTML='<div class="pulse-header"><div><div class="eyebrow">'+uiText('TVŮJ DEN · ','YOUR DAY · ')+esc(longDate(pragueToday()))+'</div><h1>Výkon začíná rovnováhou.</h1><p>Spánek, pohyb a jídlo v jednom pohledu.</p></div><button class="btn" id="pulseHealth">Prozkoumat zdravotní data ↗</button></div><div class="pulse-grid">'+experienceRing('Spánek vs. 8 h',sleepScore==null?'—':sleepScore+'%',sleepScore,'#a99bff',last?hm(last.durationMin):'Čekám na noc',last?'Poslední záznam '+dateLabel(last.date)+' · '+(hasSleep?'orientační cíl, ne recovery skóre':'starší noc, ne dnešní připravenost'):'Připoj zdroj spánku')+experienceRing('Tréninková zátěž',actualTss?fmt(actualTss):'—',plannedTss?actualTss/plannedTss*100:0,'#83e9c3',actualTss?'TSS dokončených aktivit':'Dnes bez evidované zátěže',plannedTss?'Plán '+fmt(plannedTss)+' TSS · poměr není známka kvality':'Bez srovnatelného TSS plánu; žádné fiktivní strain skóre')+experienceRing('Příjem energie',target?fmt(num(food.kcal)/target*100)+'%':'—',target?num(food.kcal)/target*100:0,'#ffc274',fmt(food.kcal)+' / '+(target?fmt(target):'—')+' kcal','Z evidovaných jídel · '+(target?fmt(Math.max(0,target-num(food.kcal)))+' kcal zbývá':'čekám na denní cíl'))+'</div><div class="pulse-insight"><span>↗</span><span>'+esc(done.length?'Aktivita je dokončená. Níže najdeš její hodnocení a zbývající výživu.':plan.length?'Před tebou je '+(plan[0].name||'plánovaný trénink')+'. Zkontroluj připravenost a doporučení trenéra.':'Dnes bez evidovaného tréninku. Přehled se změní, jakmile přijde nová aktivita.')+'</span></div>';
   $('pulseHealth').onclick=()=>activate('recovery');
   const older=sessions.filter(r=>r.date<last?.date&&r.date>=dateShift(last?.date||pragueToday(),-30)),sleepMean=older.length?older.reduce((s,r)=>s+num(r.durationMin),0)/older.length:null;
-  $('oSleepMeta').textContent=last?'Poslední noc '+dateLabel(last.date)+(sleepMean==null?'':' · '+(last.durationMin>=sleepMean?'+':'')+fmt(last.durationMin-sleepMean)+' min vs. 30 dní'):'Bez měření';
+  $('oSleepMeta').textContent=last?uiText('Poslední noc ','Last night ')+dateLabel(last.date)+(sleepMean==null?'':' · '+(last.durationMin>=sleepMean?'+':'')+fmt(last.durationMin-sleepMean)+uiText(' min vs. 30 dní',' min vs. 30 days')):'Bez měření';
   $('recoveryScore').textContent=last?hm(last.durationMin):'—';$('recoveryScore').style.fontSize='25px';$('recoveryOrb').style.setProperty('--orb-value',sleepScore??0);$('recoveryVsBaseline').textContent=last?'Záznam '+dateLabel(last.date)+' · délka spánku, ne recovery skóre':'Čekám na noc';
   const stages=['DEEP','REM','LIGHT','AWAKE'],stageColors=['#7564e9','#afa2ff','#83c7ff','#ffcb83'],recent=sessions.filter(r=>r.date>=dateShift(pragueToday(),-13)).sort((a,b)=>a.date.localeCompare(b.date)),nightRows=recent.map(r=>({label:dateLabel(r.date),title:longDate(r.date),values:stages.map(k=>measured(r.stages?.[k])?Number(r.stages[k])/60:null)})),maximum=Math.max(10,...nightRows.map(r=>r.values.reduce((s,v)=>s+(v||0),0)));
   $('sleepNights').innerHTML='<div class="experience-heading"><h3>Jak vypadaly tvoje noci</h3><small>Posledních 14 dní · hodiny</small></div><div class="experience-legend">'+['Hluboký','REM','Lehký','Bdění'].map((n,i)=>'<span><i style="background:'+stageColors[i]+'"></i>'+n+'</span>').join('')+'</div>'+(nightRows.length?experienceBars(nightRows,{max:maximum,colors:stageColors}):'<div class="data-gap">Pro toto období chybí fáze spánku.</div>');
@@ -1282,7 +1282,7 @@ function googleWellness(){return state.googleHealth?.wellness||[];}
 // sync there, and those athletes would otherwise see no recovery at all.
 function vitalWellness(){
   const byDate=new Map(googleWellness().map(r=>[r.id,{...r}]));
-  for(const r of state.fitness?.wellness||[]){const row=byDate.get(r.id)||{id:r.id};let filled=false;for(const key of ['hrv','restingHR'])if(!measured(row[key])&&measured(r[key])&&Number(r[key])>0){row[key]=Number(r[key]);filled=true;}if(filled)byDate.set(r.id,row);}
+  for(const r of state.fitness?.wellness||[]){const row=byDate.get(r.id)||{id:r.id};let filled=false;for(const key of ['hrv','restingHR','respiration'])if(!measured(row[key])&&measured(r[key])&&Number(r[key])>0){row[key]=Number(r[key]);filled=true;}if(filled)byDate.set(r.id,row);}
   return [...byDate.values()].sort((a,b)=>String(a.id).localeCompare(String(b.id)));
 }
 function latestGoogleMetric(key){return googleWellness().filter(r=>measured(r[key])).at(-1);}
@@ -1299,23 +1299,151 @@ function labelSelectedDay(){
     if(node.textContent==='Kroky dnes'||node.textContent==='Kroky dne')node.textContent=past?'Kroky dne':'Kroky dnes';
   }
 }
-function sleepIndex(night){
-  if(!night||!(Number(night.durationMin)>0))return null;
-  const duration=Number(night.durationMin),bed=Number(night.timeInBedMin),deep=Number(night.stages?.DEEP),rem=Number(night.stages?.REM);
-  if(!(bed>=duration)||!Number.isFinite(deep)||!Number.isFinite(rem))return null;
-  return Math.round(50*Math.min(1,duration/480)+30*Math.min(1,duration/bed)+10*Math.min(1,deep/90)+10*Math.min(1,rem/90));
+// <recovery-model>
+// Generated from src/recovery-model.js by scripts/sync-recovery-model.mjs; edit the module, not this copy.
+function personalBaseline(rows, date, key, options) {
+  const days = (options && options.days) || 60, min = (options && options.min) || 14, log = !!(options && options.log);
+  const end = Date.parse(date + "T12:00:00Z"), values = [];
+  for (const r of rows || []) {
+    if (!r || !(r.id < date)) continue;
+    const age = (end - Date.parse(r.id + "T12:00:00Z")) / 86400000, v = Number(r[key]);
+    if (age > days || !Number.isFinite(v) || v <= 0) continue;
+    values.push(log ? Math.log(v) : v);
+  }
+  if (values.length < min) return { count: values.length, mean: null, sd: null };
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  const sd = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1));
+  return { count: values.length, mean, sd };
 }
-function recoveryIndex(rows,night,today){
-  const current=rows.find(r=>r.id===today),prior=rows.filter(r=>r.id<today&&r.id>=dateShift(today,-30));
-  const stats=key=>{const values=prior.map(r=>Number(r[key])).filter(v=>Number.isFinite(v)&&v>0),mean=values.reduce((s,v)=>s+v,0)/values.length,sd=Math.sqrt(values.reduce((s,v)=>s+(v-mean)**2,0)/values.length);return {count:values.length,mean,sd};};
-  const h=stats('hrv'),r=stats('restingHR'),sleep=sleepIndex(night);
-  if(night?.date!==today||sleep==null||!(Number(current?.hrv)>0)||!(Number(current?.restingHR)>0)||h.count<14||r.count<14)return {score:null,current,h,r};
-  const clamp=v=>Math.max(0,Math.min(100,v)),hrv=clamp(50+20*(Number(current.hrv)-h.mean)/Math.max(5,h.sd)),heart=clamp(50-20*(Number(current.restingHR)-r.mean)/Math.max(3,r.sd));
-  return {score:Math.round(.5*hrv+.3*heart+.2*sleep),current,h,r};
+function sleepNeedMinutes(options) {
+  const age = options && options.age != null ? Number(options.age) : null, strain = options && options.strain != null ? Number(options.strain) : null;
+  let need = age != null && age >= 65 ? 450 : 480;
+  if (strain >= 18) need += 30; else if (strain >= 14) need += 15;
+  return Math.max(420, Math.min(540, need));
 }
+function sleepDebtMinutes(nights, date, need) {
+  const want = need || 480, end = Date.parse(date + "T12:00:00Z"), byDay = new Map();
+  for (const s of nights || []) {
+    const d = s && (s.date || String(s.endTime || "").slice(0, 10));
+    const age = d ? (end - Date.parse(d + "T12:00:00Z")) / 86400000 : NaN;
+    if (age >= 0 && age <= 6 && Number(s.durationMin) > 0) byDay.set(d, (byDay.get(d) || 0) + Number(s.durationMin));
+  }
+  if (!byDay.size) return null;
+  const days = [...byDay.values()];
+  const net = days.reduce((s, m) => s + Math.max(-60, want - m), 0);
+  return { minutes: Math.max(0, Math.round(net)), nights: days.length, average: days.reduce((s, m) => s + m, 0) / days.length, need: want };
+}
+function hrvStatusLow(rows, date) {
+  const end = Date.parse(date + "T12:00:00Z"), start = new Date(end - 6 * 86400000).toISOString().slice(0, 10);
+  const week = (rows || []).filter(r => r && r.id >= start && r.id <= date && Number(r.hrv) > 0).map(r => Math.log(Number(r.hrv)));
+  const base = personalBaseline(rows, start, "hrv", { log: true });
+  if (week.length < 3 || base.mean == null) return false;
+  return week.reduce((s, v) => s + v, 0) / week.length < base.mean - 0.5 * Math.max(base.sd, 0.05);
+}
+function sleepNeedFor(input) {
+  const date = input.date, prev = new Date(Date.parse(date + "T12:00:00Z") - 86400000).toISOString().slice(0, 10);
+  const rows = input.rows || [], sessions = input.sessions || [];
+  const prevRow = rows.find(r => r && r.id === prev);
+  const strain = input.strain != null ? input.strain : (prevRow ? strainScore(heartRateLoad(prevRow.hrZoneMinutes)) : null);
+  const base = sleepNeedMinutes({ age: input.age, strain });
+  const hrv = hrvStatusLow(rows, prev) ? 15 : 0;
+  const debtState = sleepDebtMinutes(sessions.filter(s => (s.date || String(s.endTime || "").slice(0, 10)) <= prev), prev, sleepNeedMinutes({ age: input.age }));
+  const debt = debtState ? Math.min(30, Math.round(debtState.minutes / 4)) : 0;
+  const naps = sessions.filter(s => (s.nap || Number(s.durationMin) < 180) && (s.date || String(s.endTime || "").slice(0, 10)) === prev).reduce((t, s) => t + (Number(s.durationMin) || 0), 0);
+  const need = Math.max(420, Math.min(540, base + hrv + debt) - Math.round(naps));
+  return { need, base, hrv, debt, naps: Math.round(naps) };
+}
+function sleepIndexScore(night, need) {
+  if (!night || !(Number(night.durationMin) > 0)) return null;
+  const duration = Number(night.durationMin), bed = Number(night.timeInBedMin), want = need || 480;
+  if (!(bed >= duration)) return null;
+  const durationPoints = 50 * Math.max(0, Math.min(1, (duration / want - 0.5) / 0.5));
+  const efficiency = Math.max(0, Math.min(1, (duration / bed - 0.65) / 0.2));
+  const latency = Number(night.latencyMin), waso = Number(night.wasoMin);
+  const hasLatency = night.latencyMin != null && Number.isFinite(latency), hasWaso = night.wasoMin != null && Number.isFinite(waso);
+  // With the device's sleep summary, 35 points split into efficiency (20),
+  // falling asleep within 30 min (7.5, none from 60) and wake after sleep
+  // onset up to 20 min (7.5, none from 50): the NSF good-quality ranges.
+  const efficiencyPoints = hasLatency && hasWaso
+    ? 20 * efficiency + 7.5 * Math.max(0, Math.min(1, (60 - latency) / 30)) + 7.5 * Math.max(0, Math.min(1, (50 - waso) / 30))
+    : 35 * efficiency;
+  const deep = Number(night.stages && night.stages.DEEP), rem = Number(night.stages && night.stages.REM);
+  if (!Number.isFinite(deep) || !Number.isFinite(rem)) return Math.round((durationPoints + efficiencyPoints) / 85 * 100);
+  const stagePoints = 7.5 * Math.min(1, deep / duration / 0.13) + 7.5 * Math.min(1, rem / duration / 0.2);
+  return Math.round(durationPoints + efficiencyPoints + stagePoints);
+}
+function recoveryComponentScore(z) {
+  return Math.round(Math.max(0, Math.min(100, 70 + 20 * z)));
+}
+function recoveryReadiness(input) {
+  const rows = (input && input.rows) || [], date = input && input.date, night = input && input.night, need = (input && input.sleepNeed) || 480;
+  const today = rows.find(r => r && r.id === date) || {};
+  const end = Date.parse(date + "T12:00:00Z"), components = {}, flags = [];
+  const hb = personalBaseline(rows, date, "hrv", { log: true });
+  if (Number(today.hrv) > 0 && hb.mean != null) {
+    const sd = Math.max(hb.sd, 0.05), z = (Math.log(Number(today.hrv)) - hb.mean) / sd;
+    const week = rows.filter(r => r && r.id <= date && (end - Date.parse(r.id + "T12:00:00Z")) / 86400000 < 7 && Number(r.hrv) > 0).map(r => Math.log(Number(r.hrv)));
+    const diff = week.length >= 3 ? week.reduce((s, v) => s + v, 0) / week.length - hb.mean : null, swc = 0.5 * sd;
+    components.hrv = { value: Number(today.hrv), baseline: Math.exp(hb.mean), low: Math.exp(hb.mean - sd), high: Math.exp(hb.mean + sd), z, score: recoveryComponentScore(z), trend: diff == null ? null : diff < -swc ? "down" : diff > swc ? "up" : "stable", days: hb.count };
+    if (components.hrv.trend === "down") flags.push("hrv_trend_down");
+  }
+  const rb = personalBaseline(rows, date, "restingHR");
+  if (Number(today.restingHR) > 0 && rb.mean != null) {
+    const sd = Math.max(rb.sd, 1.5), z = (Number(today.restingHR) - rb.mean) / sd;
+    components.restingHR = { value: Number(today.restingHR), baseline: rb.mean, z, score: recoveryComponentScore(-z), days: rb.count };
+  }
+  const bb = personalBaseline(rows, date, "respiration");
+  if (Number(today.respiration) > 0 && bb.mean != null) {
+    const rise = Number(today.respiration) - bb.mean, elevated = rise >= 1 && rise >= 2 * Math.max(bb.sd, 0.3);
+    components.respiration = { value: Number(today.respiration), baseline: bb.mean, elevated };
+    if (elevated) flags.push("respiration_elevated");
+  }
+  // Skin temperature in sleep against Google's 30-day baseline: ≥ 0.5 °C and
+  // two of its nightly SDs above it is flagged and costs 10 points. Nightly
+  // skin temperature from a wearable picks up fever onset, often before
+  // symptoms (Smarr 2020); Oura counts the deviation in its readiness. The
+  // luteal phase alone raises it by less than this.
+  const dev = Number(today.skinTempDeviation);
+  if (today.skinTempDeviation != null && Number.isFinite(dev)) {
+    const sd = Number(today.skinTempSd), elevated = dev >= 0.5 && (!(sd > 0) || dev >= 2 * sd);
+    components.skinTemp = { deviation: dev, sd: sd > 0 ? sd : null, elevated };
+    if (elevated) flags.push("skin_temp_elevated");
+  }
+  const nightDate = night && (night.date || String(night.endTime || "").slice(0, 10));
+  if (night && nightDate === date && Number(night.durationMin) > 0) {
+    const performance = Math.min(105, Number(night.durationMin) / need * 100);
+    components.sleep = { minutes: Number(night.durationMin), need, performance: Math.round(performance), score: Math.round(Math.max(0, Math.min(100, 70 + 2 * (performance - 90)))) };
+  }
+  const weights = { hrv: 0.5, restingHR: 0.25, sleep: 0.25 };
+  const used = Object.keys(weights).filter(k => components[k]);
+  const missing = Object.keys(weights).filter(k => !components[k]);
+  if (!(components.hrv || components.restingHR) || used.reduce((s, k) => s + weights[k], 0) < 0.5) return { score: null, zone: null, components, flags, missing };
+  let score = used.reduce((s, k) => s + weights[k] * components[k].score, 0) / used.reduce((s, k) => s + weights[k], 0);
+  if (components.respiration && components.respiration.elevated) score -= 10;
+  if (components.skinTemp && components.skinTemp.elevated) score -= 10;
+  score = Math.round(Math.max(0, Math.min(100, score)));
+  return { score, zone: score >= 67 ? "green" : score >= 34 ? "yellow" : "red", components, flags, missing };
+}
+function heartRateLoad(zoneMinutes) {
+  if (!zoneMinutes) return null;
+  const z = zoneMinutes, total = ["light", "moderate", "vigorous", "peak"].reduce((s, k) => s + (Number(z[k]) || 0), 0);
+  if (!(total > 0)) return null;
+  return Math.round(2 * (Number(z.light) || 0) + 3 * (Number(z.moderate) || 0) + 4 * (Number(z.vigorous) || 0) + 5 * (Number(z.peak) || 0));
+}
+function strainScore(load) {
+  return load > 0 ? Math.round(21 * (1 - Math.exp(-load / 225)) * 10) / 10 : 0;
+}
+// </recovery-model>
+// Sleep, recovery and strain come from the shared model in src/recovery-model.js
+// (copied above between the recovery-model markers). Sleep need: age from the
+// profile, the strain of the day before, HRV status, sleep debt and naps
+// (sleepNeedFor).
+function nightNeed(date){return date?sleepNeedFor({date,age:appProfile().age,strain:daywideStrain(dateShift(date,-1))?.score??null,rows:vitalWellness(),sessions:state.sleep?.sessions||[]}).need:sleepNeedMinutes({age:appProfile().age});}
+function sleepIndex(night){return night?sleepIndexScore(night,nightNeed(night.date||String(night.endTime||'').slice(0,10))):null;}
+function recoveryIndex(rows,night,today){return {...recoveryReadiness({rows,date:today,night,sleepNeed:nightNeed(today)}),current:rows.find(r=>r.id===today)};}
 function correctDataPresentation(){
   const nights=primarySleepSessions(state.sleep?.sessions).filter(n=>(n.date||String(n.endTime||'').slice(0,10))<=selectedHistoryDate),last=nights[0],prior=nights.filter(n=>n.date<last?.date&&n.date>=dateShift(last?.date||selectedHistoryDate,-30)),avg=prior.length?prior.reduce((s,n)=>s+num(n.durationMin),0)/prior.length:null;
-  const pulseDay=$('dailyPulse')?.querySelector('.pulse-header .eyebrow');if(pulseDay)pulseDay.textContent='TVŮJ DEN · '+longDate(selectedHistoryDate);
+  const pulseDay=$('dailyPulse')?.querySelector('.pulse-header .eyebrow');if(pulseDay)pulseDay.textContent=uiText('TVŮJ DEN · ','YOUR DAY · ')+longDate(selectedHistoryDate);
   const score=sleepIndex(last),delta=last&&avg!=null?last.durationMin-avg:null,cards=$('dailyPulse')?.querySelectorAll('.pulse-card'),stale=last?.date!==selectedHistoryDate;
   if(cards?.[0])cards[0].outerHTML=experienceRing('Spánek',score==null?'—':score+'%',score||0,'#a99bff','Spánkový index',last?(delta==null?'':(delta>=0?'+':'−')+hm(Math.abs(delta))+uiText(' proti průměru 30 dní · ', ' vs. 30-day average · '))+dateLabel(last.date)+(stale?' · starší noc':''):'Čekám na noc');
   const food=state.daily?.nutrition?.foodLog?.totals||{},target=num(state.daily?.nutrition?.calorieTarget),macroEnergy=num(food.protein_g)*4+num(food.carbs_g)*4+num(food.fat_g)*9,fill=target?Math.min(100,num(food.kcal)/target*100):0,p=macroEnergy?num(food.protein_g)*4/macroEnergy*fill:0,c=macroEnergy?num(food.carbs_g)*4/macroEnergy*fill:0;
@@ -1324,16 +1452,16 @@ function correctDataPresentation(){
     calorieCard.querySelector('.pulse-macros')?.remove();
     calorieCard.querySelector('div:not(.pulse-ring)')?.insertAdjacentHTML('beforeend','<div class="pulse-macros">'+row('Bílkoviny','protein','#60a5fa',num(food.protein_g))+row('Sacharidy','carbs','#f59e0b',num(food.carbs_g))+row('Tuky','fat','#a78bfa',num(food.fat_g))+'</div>');const ring=calorieCard.querySelector('.pulse-ring');if(ring){ring.style.background='conic-gradient(#60a5fa 0 '+p+'%,#f59e0b '+p+'% '+(p+c)+'%,#a78bfa '+(p+c)+'% '+fill+'%,color-mix(in srgb,var(--muted) 22%,var(--bg)) '+fill+'% 100%)';const strong=ring.querySelector('strong');if(strong)strong.textContent='';}}
   $('recoveryScore').textContent=score==null?'—':score+'%';$('recoveryOrb').style.setProperty('--orb-value',score||0);$('recoveryOrb').querySelector('span').textContent='Spánek';$('recoveryVsBaseline').textContent='';
-  $('recoveryTitle').textContent='Spánek a regenerace';$('recoveryInsight').textContent=last?'Poslední noc '+dateLabel(last.date)+' · skutečný spánek '+hm(last.durationMin)+(last.timeInBedMin?' · v posteli '+hm(last.timeInBedMin):''):'Čekám na měření';
+  $('recoveryTitle').textContent='Spánek a regenerace';$('recoveryInsight').textContent=last?uiText('Poslední noc ','Last night ')+dateLabel(last.date)+uiText(' · skutečný spánek ',' · actual sleep ')+hm(last.durationMin)+(last.timeInBedMin?uiText(' · v posteli ',' · in bed ')+hm(last.timeInBedMin):''):'Čekám na měření';
   const signal=recoverySignals(vitalWellness(),last,selectedHistoryDate);$('recoveryGuide').textContent=signal.title;$('recoveryGuideMeta').textContent=signal.text;
   const recovery=recoveryIndex(vitalWellness(),last,selectedHistoryDate);
   let panel=$('recoveryIndices');if(!panel){panel=document.createElement('div');panel.id='recoveryIndices';panel.className='recovery-indices';$('recoveryOrb').parentElement.after(panel);}
   panel.innerHTML='<div class="score-orb" style="--orb-value:'+(recovery.score??0)+';--orb-color:#83e9c3"><div><strong>'+(recovery.score??'—')+'</strong><span>Regenerace</span></div></div><div class="score-caption">Vlastní index · 0–100'+infoTip('recoveryScore','index regenerace')+'</div>';
   let metrics=$('recoveryVitals');if(!metrics){metrics=document.createElement('div');metrics.id='recoveryVitals';metrics.className='recovery-vitals';document.querySelector('.recovery-command').append(metrics);}
-  metrics.innerHTML=[['HRV',recovery.current?.hrv,recovery.h,'ms',1,2],['Klidový tep',recovery.current?.restingHR,recovery.r,'bpm',-1,1]].map(([label,value,baseline,unit,dir,flat])=>'<div class="vital-tile"><span class="label">'+label+'</span><strong>'+(value>0?fmt(value,1)+' <small>'+unit+'</small>':'—')+'</strong>'+(baseline.count>=14&&value>0?'<span class="vital-delta">'+deltaBadge(value-baseline.mean,unit,dir,Math.max(flat,baseline.sd*.5),1)+uiText('<span class="small">proti 30dennímu průměru ', '<span class="small">vs. 30-day average ')+fmt(baseline.mean,1)+' '+unit+'</span></span>':'<span class="small">Čekám na aktuální data a 14 dní historie</span>')+'</div>').join('');
+  const rc=recovery.components||{};metrics.innerHTML=[['HRV',recovery.current?.hrv,rc.hrv,'ms',1,2],['Klidový tep',recovery.current?.restingHR,rc.restingHR,'bpm',-1,1]].map(([label,value,c,unit,dir,flat])=>'<div class="vital-tile"><span class="label">'+label+'</span><strong>'+(value>0?fmt(value,1)+' <small>'+unit+'</small>':'—')+'</strong>'+(c?'<span class="vital-delta">'+deltaBadge(value-c.baseline,unit,dir,flat,1)+'<span class="small">'+(c.low!=null?uiText('běžné pásmo ','normal range ')+fmt(c.low)+'–'+fmt(c.high)+' '+unit:uiText('proti průměru ','vs. average ')+fmt(c.baseline,1)+' '+unit)+' · '+c.days+uiText(' dní',' days')+'</span></span>':'<span class="small">Čekám na aktuální data a 14 dní historie</span>')+'</div>').join('');
   $('recoveryScore').style.fontSize='39px';$('recoveryVsBaseline').textContent='Vlastní spánkový index';{const cap=$('recoveryVsBaseline');if(!cap.nextElementSibling?.matches('.info-tip'))cap.insertAdjacentHTML('afterend',infoTip('sleepScore','spánkový index'));}$('sleepScore').innerHTML=score==null?'Bez dostatečných dat':scoreBadge(score,'Spánek');
   const w=vitalWellness();metricDetail('detail-hrv','Variabilita srdečního tepu · HRV',w.map(r=>({date:r.id,value:r.hrv})),'ms','#3fda9c');metricDetail('detail-rhr','Klidový tep',w.map(r=>({date:r.id,value:r.restingHR})),'bpm','#ff9b80');
-  const healthMetrics=$('healthspan').querySelectorAll('.healthspan-metrics>div');for(const [i,key,unit]of [[0,'restingHR','bpm'],[1,'hrv','ms'],[2,'vo2max','ml/kg/min']]){const rows=w.filter(r=>measured(r[key])),reading=key==='vo2max'?latestVo2():null,value=reading?.value??(rows.length?rows.reduce((s,r)=>s+Number(r[key]),0)/rows.length:null);if(healthMetrics[i]){healthMetrics[i].querySelector('strong').textContent=value==null?'—':fmt(value,1)+' '+unit;healthMetrics[i].querySelector('small').textContent=reading?reading.source+' · '+reading.date:rows.length?'průměr · poslední '+dateLabel(rows.at(-1).id):'bez měření';}}
+  const healthMetrics=$('healthspan').querySelectorAll('.healthspan-metrics>div');for(const [i,key,unit]of [[0,'restingHR','bpm'],[1,'hrv','ms'],[2,'vo2max','ml/kg/min']]){const rows=w.filter(r=>measured(r[key])),reading=key==='vo2max'?latestVo2():null,value=reading?.value??(rows.length?rows.reduce((s,r)=>s+Number(r[key]),0)/rows.length:null);if(healthMetrics[i]){healthMetrics[i].querySelector('strong').textContent=value==null?'—':fmt(value,1)+' '+unit;healthMetrics[i].querySelector('small').textContent=reading?reading.source+' · '+reading.date:rows.length?uiText('průměr · poslední ','average · last ')+dateLabel(rows.at(-1).id):'bez měření';}}
   document.querySelector('.recovery-command .eyebrow')?.remove();
   const g=state.googleHealth||{};$('sourceCoverage').innerHTML='<h3>Dostupnost dat · Google Health</h3>'+[['Spánek',last?.date],['HRV',latestGoogleMetric('hrv')?.id],['Klidový tep',latestGoogleMetric('restingHR')?.id],['Kroky',g.coverage?.steps],['Aktivní energie',g.coverage?.['active-energy-burned']]].map(([label,date])=>'<div class="metric-line"><span>'+label+'</span><strong>'+(date?dateLabel(date):'Bez měření')+'</strong></div>').join('')+'<p class="small">Synchronizace: '+esc(g.sync?.status||'neznámý stav')+(g.sync?.error?' · '+esc(g.sync.error):'')+'</p>';
   const labels={P:'Bílkoviny',C:'Sacharidy',F:'Tuky',Protein:'Bílkoviny',Tuk:'Tuky',Deep:'Hluboký spánek',Light:'Lehký spánek',Awake:'Bdění','Daily readiness':'Denní připravenost','Recovery & Health':'Spánek a zdraví','Recovery & Health ↗':'Spánek a zdraví ↗','rolling average':'klouzavý průměr','all time':'celá historie'};
@@ -1341,37 +1469,44 @@ function correctDataPresentation(){
   if(document.documentElement.lang==='en')return;
   const walker=document.createTreeWalker(document.querySelector('.shell'),NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode()){const text=node.textContent.trim();if(labels[text])node.textContent=node.textContent.replace(text,labels[text]);else node.textContent=node.textContent.replace(/ · P (?=\d)/g,' · B ').replace(/ · C (?=\d)/g,' · S ').replace(/ · F (?=\d)/g,' · T ').replace(/kg · rolling average/g,'kg · klouzavý průměr');}
 }
+// All-day strain: time in Google Health's heart-rate zones as Edwards' TRIMP
+// (heartRateLoad, strainScore). It already holds training. Without zone data,
+// a fallback from active calories against the 30-day median.
 function daywideStrain(date){
-  const rows=googleWellness(),row=rows.find(r=>r.id===date);
+  const rows=googleWellness(),row=rows.find(r=>r.id===date),load=heartRateLoad(row?.hrZoneMinutes);
+  if(load!=null)return {score:strainScore(load),load,source:'heart-rate',zones:row.hrZoneMinutes,activeCalories:measured(row.activeCalories)?Math.round(Number(row.activeCalories)):null};
   if(!row||!measured(row.activeCalories))return null;
   const prior=rows.filter(r=>r.id<date&&r.id>=dateShift(date,-30)&&measured(r.activeCalories)&&Number(r.activeCalories)>0).map(r=>Number(r.activeCalories)).sort((a,b)=>a-b);
   const activeCalories=Math.round(Number(row.activeCalories)),baseline=prior.length>=7?prior[Math.floor(prior.length/2)]:null;
-  return {activeCalories,baseline:baseline?Math.round(baseline):null,score:baseline?Math.round(Math.min(21,21*(1-Math.exp(-activeCalories/(baseline*1.2))))*10)/10:null};
+  return {source:'energy',activeCalories,baseline:baseline?Math.round(baseline):null,score:baseline?Math.round(Math.min(21,21*(1-Math.exp(-activeCalories/(baseline*1.2))))*10)/10:null};
 }
-// Day strain on the Whoop scale 0–21: the higher of the all-day activity score
-// (active calories against the 30-day median) and the training load, whose TSS
-// is put on a saturating curve (1 h endurance ≈ 10, 2 h ≈ 15, a hard 3–4 h ≈ 19).
-// The higher one counts, because active calories already include training.
+// Planned or completed training on the same 0–21 scale, from TSS (1 h
+// endurance ≈ 10, 2 h ≈ 15, a hard 3–4 h ≈ 19). With heart-rate zones the
+// all-day strain counts alone (it holds the training); otherwise the higher
+// of the two, because active calories already include training.
 function trainingStrain(tss){return tss>0?Math.round(21*(1-Math.exp(-tss/90))*10)/10:0}
 function strainBand(s){return s>=18?'Maximální':s>=14?'Vysoká':s>=10?'Střední':'Lehká'}
-function dayStrain(date,tss){const s=Math.max(daywideStrain(date)?.score||0,trainingStrain(tss));return s>0?Math.round(s*10)/10:null}
+function dayStrain(date,tss){const d=daywideStrain(date);if(d?.source==='heart-rate')return d.score>0?d.score:null;const s=Math.max(d?.score||0,trainingStrain(tss));return s>0?Math.round(s*10)/10:null}
+function strainCaption(s){if(!s)return 'Celodenní tep ani aktivní energie nejsou dostupné. Wahoo aktivita sama nezměří celý den.';if(s.source==='heart-rate'){const z=s.zones||{};return uiText('Google Health · tepové zóny: lehká ','Google Health · heart-rate zones: light ')+fmt(num(z.light))+uiText(' · střední ',' · moderate ')+fmt(num(z.moderate))+uiText(' · intenzivní ',' · vigorous ')+fmt(num(z.vigorous))+uiText(' · špičková ',' · peak ')+fmt(num(z.peak))+' min.';}return s.score!=null?uiText('Odhad z aktivní energie: ','Estimate from active energy: ')+s.activeCalories+uiText(' kcal · osobní baseline ',' kcal · personal baseline ')+s.baseline+uiText(' kcal. Přesnější je z tepových zón.',' kcal. Heart-rate zones are more accurate.'):'Google Health · '+s.activeCalories+uiText(' aktivních kcal. Pro skóre potřebuji 7 předchozích dní.',' active kcal. I need 7 previous days for a score.');}
 function recoverySignals(rows,last,today){
-  const current=rows.find(r=>r.id===today),baseline=rows.filter(r=>r.id<today&&r.id>=dateShift(today,-30)),summarize=key=>{const values=baseline.map(r=>r[key]).filter(v=>measured(v)).map(Number),mean=values.length?values.reduce((s,v)=>s+v,0)/values.length:null,sd=mean==null?null:Math.sqrt(values.reduce((s,v)=>s+(v-mean)**2,0)/values.length);return {count:values.length,mean,sd};},h=summarize('hrv'),r=summarize('restingHR'),details=[];
-  let adverse=0,signals=0;
-  if(measured(current?.hrv)&&h.count>=7){signals++;if(Number(current.hrv)<h.mean-Math.max(5,h.sd))adverse++;details.push('HRV '+fmt(current.hrv,1)+' ms proti průměru '+fmt(h.mean,1)+' ms');}
-  if(measured(current?.restingHR)&&r.count>=7){signals++;if(Number(current.restingHR)>r.mean+Math.max(3,r.sd))adverse++;details.push('klidový tep '+fmt(current.restingHR)+' proti '+fmt(r.mean,1)+' bpm');}
-  if(last?.date===today){signals++;if(num(last.durationMin)<360)adverse++;details.push('spánek '+hm(last.durationMin));}
-  return {title:!signals?'Regenerace · čekám na dnešní měření':adverse>=2?'Regenerace · dnes zvolni':adverse===1?'Regenerace · jeden slabší signál':'Regenerace · obvyklé pásmo',text:details.join(' · ')+(signals?'. '+(adverse>=2?'Více signálů je oslabených. Upřednostni odpočinek a další intenzitu přizpůsob pocitu únavy.':adverse?'Sleduj únavu; jeden ukazatel sám nerozhoduje o tréninku.':'Dostupné signály nejsou výrazně oslabené; zohledni i svalovou únavu.'):' Pro srovnání potřebuji aktuální měření a alespoň 7 předchozích hodnot.')};
+  const r=recoveryIndex(rows,last,today),c=r.components||{},details=[];
+  if(c.hrv)details.push('HRV '+fmt(c.hrv.value,1)+' ms, tvoje běžné pásmo '+fmt(c.hrv.low)+'–'+fmt(c.hrv.high)+' ms'+(c.hrv.trend==='down'?', 7denní průměr klesá':''));
+  if(c.restingHR)details.push('klidový tep '+fmt(c.restingHR.value)+' proti '+fmt(c.restingHR.baseline,1)+' bpm');
+  if(c.sleep)details.push('spánek '+hm(c.sleep.minutes)+' z potřeby '+hm(c.sleep.need));
+  if(c.respiration?.elevated)details.push('dech '+fmt(c.respiration.value,1)+' proti '+fmt(c.respiration.baseline,1)+' za minutu');
+  if(c.skinTemp?.elevated)details.push('teplota kůže ve spánku +'+fmt(c.skinTemp.deviation,1)+' °C nad průměrem');
+  if(r.score==null)return {title:'Regenerace · čekám na dnešní měření',text:(details.length?details.join(' · ')+'. ':'')+'Pro srovnání potřebuji dnešní HRV nebo klidový tep a aspoň 14 předchozích měření.'};
+  return {title:r.zone==='red'?'Regenerace · dnes zvolni':r.zone==='yellow'?'Regenerace · slabší den':'Regenerace · obvyklé pásmo',text:details.join(' · ')+'. '+(r.zone==='red'?'Signály jsou výrazně mimo tvoje běžné pásmo. Upřednostni odpočinek nebo lehký trénink.':r.zone==='yellow'?'Část signálů je mimo tvoje běžné pásmo. Intenzitu přizpůsob pocitu únavy.':'Signály jsou v tvém běžném pásmu.')+(c.hrv?.trend==='down'&&r.zone==='green'?' HRV ale týden klesá; sleduj, jestli únava neroste.':'')+(c.respiration?.elevated||c.skinTemp?.elevated?' Zvýšený dech nebo teplota ve spánku mohou předcházet nemoci.':'')};
 }
 function renderTrainingClarity(){
-  const days=state.week?.days||[],rows=days.map(d=>{const s=daywideStrain(d.date);return {label:dateLabel(d.date),values:[s?.score??null],title:longDate(d.date)+(s?.score!=null?' · celodenní zátěž '+fmt(s.score,1):s?' · '+s.activeCalories+uiText(' kcal aktivní energie, čekám na 7 dní baseline', ' kcal active energy, waiting for a 7-day baseline'):' · celodenní aktivní energie není dostupná')};});
-  const chart=$('loadChart'),card=chart.parentElement;card.querySelector('h3').innerHTML='Celodenní zátěž · vybraný týden'+infoTip('allDayLoad','celodenní zátěž');chart.outerHTML='<div id="loadChart">'+(rows.some(r=>r.values[0]!=null)?experienceBars(rows,{max:21,height:290,colors:['#a99bff']}):'<div class="empty-state">Za tento týden chybí celodenní aktivní energie. Zátěž se spočítá z Google Health, jakmile bude připojený a bude mít aspoň 7 dní historie. <button type="button" class="link-btn" data-open-view="settings" data-open-section="connections">Zkontrolovat propojení</button></div>')+'</div>';
+  const days=state.week?.days||[],rows=days.map(d=>{const s=daywideStrain(d.date);return {label:dateLabel(d.date),values:[s?.score??null],title:longDate(d.date)+(s?.score!=null?uiText(' · celodenní zátěž ',' · all-day strain ')+fmt(s.score,1)+(s.source==='heart-rate'?uiText(' z tepových zón',' from heart-rate zones'):uiText(' z aktivní energie',' from active energy')):s?' · '+s.activeCalories+uiText(' kcal aktivní energie, čekám na 7 dní baseline',' kcal active energy, waiting for a 7-day baseline'):uiText(' · celodenní tep ani aktivní energie nejsou dostupné',' · neither all-day heart rate nor active energy is available'))};});
+  const chart=$('loadChart'),card=chart.parentElement;card.querySelector('h3').innerHTML='Celodenní zátěž · vybraný týden'+infoTip('allDayLoad','celodenní zátěž');chart.outerHTML='<div id="loadChart">'+(rows.some(r=>r.values[0]!=null)?experienceBars(rows,{max:21,height:290,colors:['#a99bff']}):'<div class="empty-state">Za tento týden chybí celodenní tep i aktivní energie. Zátěž se spočítá z tepových zón Google Health, jakmile bude připojený. <button type="button" class="link-btn" data-open-view="settings" data-open-section="connections">Zkontrolovat propojení</button></div>')+'</div>';
   const selected=days.find(d=>d.date===selectedHistoryDate)||days.find(d=>d.date===pragueToday())||days[0],activities=(selected?.daily?.training?.completed||[]).filter(a=>!isNutritionItem(a));
   $('trainingActivityTable').innerHTML='<div class="notice">Vybraný den: <strong>'+esc(selected?longDate(selected.date):'—')+'</strong></div>'+(activities.length?'<div class="scroll"><table><thead><tr><th>Aktivita</th><th>Délka</th><th>Stav</th></tr></thead><tbody>'+activities.map(a=>'<tr><td>'+esc(a.name||'Aktivita')+'</td><td>'+hm(num(a.durationHours)*60)+'</td><td><span class="pill good">Dokončeno</span></td></tr>').join('')+'</tbody></table></div>':'<p class="small">Zatím žádná dokončená aktivita.</p>');
 }
 function renderRequestedExperience(done,latest,vo2,daily){
   const strain=daywideStrain(selectedHistoryDate),cards=$('dailyPulse').querySelectorAll('.pulse-card');
-  if(cards[1])cards[1].outerHTML=experienceRing('Celodenní zátěž',strain?.score!=null?fmt(strain.score,1):'—',strain?.score!=null?strain.score/21*100:0,'#83e9c3','Zátěž',strain?.score!=null?'Google Health · '+strain.activeCalories+' aktivních kcal · osobní baseline '+strain.baseline+' kcal.':strain?'Google Health · '+strain.activeCalories+uiText(' aktivních kcal. Pro skóre potřebuji 7 předchozích dní.', ' active kcal. I need 7 previous days for a score.'):'Celodenní aktivní energie není dostupná. Wahoo aktivita sama nezměří celý den.');
+  if(cards[1])cards[1].outerHTML=experienceRing('Celodenní zátěž',strain?.score!=null?fmt(strain.score,1):'—',strain?.score!=null?strain.score/21*100:0,'#83e9c3','Zátěž',strainCaption(strain));
   const vo2Reading=latestVo2();vo2=vo2Reading?.value;const note=$('healthspan').querySelector('.healthspan-note');
   $('healthspan').querySelector('.healthspan-title').textContent='Kondice a dlouhodobý trend';
   note.innerHTML='<strong>VO₂ max · '+(measured(vo2)?fmt(vo2,1)+' ml/kg/min':'bez měření')+'</strong><p>'+(vo2Reading?esc(vo2Reading.source)+' · '+esc(vo2Reading.date)+'. ':'')+'Intervals.icu využívám pro jízdy a tréninkovou zátěž; samotné Wahoo aktivity nejsou přímé měření VO₂ max. Kondiční věk z jediné hodnoty nevyvozuji.</p>';
@@ -1731,13 +1866,13 @@ const INFO_TEXTS={
   generateWeek:['Vygenerovat tréninky','Na pozadí připraví konkrétní tréninky pro dny z plánu týdne podle časových možností, únavy, spánku, poslední zátěže a počasí: kolo a běh z knihovny, gym jako sestavu cviků.','Kolo a běh se do Intervals.icu zapíšou samy do 15 s (v kartičce je můžeš zastavit). Gym se uloží rovnou do plánu, stejně jako když Gym přetáhneš na den: klikni na něj a uvidíš panáčka a cviky, upravíš je ručně nebo s AI a spustíš režim tréninku.','Změny už naplánovaných tréninků probereš s asistentem.'],
   recommend:['Doporučené tréninky','Knihovna workoutů seřazená podle toho, jak sedí na vybraný den: typ, délka, obtížnost proti tvé úrovni, únava a pestrost.','Nahoře přepínáš zaměření (vytrvalost, práh…), filtry rozbalíš tlačítkem Filtry. Když na dnešek nemáš nic v plánu, nahoře je i denní doporučení pro jakýkoli sport.'],
   trend:['Osobní trend','Přerušovaná čára je tvůj průměr z předchozích 30 dní, pásmo kolem ní běžné rozmezí (±1 směrodatná odchylka).','Klikni nebo ťukni na bod a uvidíš jeho hodnotu.'],
-  allDayLoad:['Celodenní zátěž','Vlastní stupnice 0–21 z celodenní aktivní energie Google Health vůči osobnímu mediánu posledních 30 dní (minimálně 7 dní).','Zahrnuje měřený běžný pohyb i sport, nikoli jen dokončené aktivity. Není to skóre WHOOP ani Bevel. Chybějící měření není nula.'],
+  allDayLoad:['Celodenní zátěž','Stupnice 0–21: čas ve čtyřech tepových zónách Google Health za celý den, vážený jako TRIMP podle Edwardse (lehká ×2, střední ×3, intenzivní ×4, špičková ×5). Zóny počítá Google z tvé tepové rezervy, takže stejný trénink je pro trénovanějšího lehčí.','Body přibývají stále pomaleji: hodina ve střední zóně ≈ 12, dlouhá smíšená jízda ≈ 19–20. Zahrnuje běžný pohyb i trénink.','Bez tepových zón odhad z aktivní energie proti tvému mediánu za 30 dní. Je méně přesný: hodinky se u kalorií mýlí o 20 % i víc.',{href:'https://pubmed.ncbi.nlm.nih.gov/11708692/',text:'Foster 2001: TRIMP a vnímaná námaha ↗'},{href:'https://pubmed.ncbi.nlm.nih.gov/28538708/',text:'Shcherbina 2017: přesnost kalorií z hodinek ↗'}],
   muscleLoad:['Svalová zátěž','Zátěž za posledních 7 dní proti průměrnému týdnu za 6 týdnů. Zelený oblouk je produktivní pásmo.','Počítá se ze sérií v posilovně (váha a opakování, únavnost cviku, RPE) a z kola a běhu (TSS na zapojené svaly).'],
   cardioPoints:['Kardio body','Čas v zóně se násobí její intenzitou, takže krátké tvrdé intervaly váží víc než dlouhá lehká jízda.','Pruhy ukazují, jaký podíl bodů připadá na lehkou aerobní, tvrdou aerobní a anaerobní zónu.'],
   records:['Osobní rekordy','Rekord je nejlepší výkon v období, šipka ukazuje změnu proti nejlepšímu před ním (FTP: platné na konci proti začátku období).','Když starší data chybí, porovnávám s prvním záznamem v období. U tempa je šipka dolů zlepšení.'],
   strengthTrend:['Silový progres','Nejvyšší použitá váha z dokončených pracovních sérií každého dne.','Vyšší váha sama o sobě neznamená progres, pokud se změnil počet opakování nebo technika.'],
-  sleepScore:['Spánkový index','Vlastní index 0–100: délka vůči 8 h (50 bodů), efektivita spánku (30), hluboký spánek a REM vůči 90 minutám (po 10). Každá složka má vlastní strop.','Nejde o skóre Google, Bevel ani WHOOP.'],
-  recoveryScore:['Index regenerace','Vlastní index 0–100: HRV 50 %, klidový tep 30 %, spánek 20 %. Tep a HRV porovnáváme s předchozími 30 dny, tvůj průměr odpovídá 50 bodům.','Potřebuje aspoň 14 měření a dnešní hodnoty. Není to procento zotavení ani klinicky ověřený model WHOOP.'],
+  sleepScore:['Spánkový index','Index 0–100: délka spánku proti tvé potřebě (50 bodů, nula při polovině potřeby), kvalita podle NSF (35: efektivita od 85 %, usnutí do 30 min a bdění během noci do 20 min) a podíl hlubokého spánku a REM proti běžným hodnotám dospělých (15).','Potřeba spánku je 8 h (od 65 let 7,5 h); po náročném dni až o 30 min víc, při nízkém HRV o 15 min, se spánkovým dluhem až o 30 min. Zdřímnutí ji sníží. Vždy v rozmezí 7–9 h. Fáze spánku mají nejmenší váhu: hodinky je určují mnohem méně přesně než délku spánku.',{href:'https://pubmed.ncbi.nlm.nih.gov/29073412/',text:'NSF: doporučená délka spánku ↗'},{href:'https://doi.org/10.1016/j.sleh.2016.11.006',text:'NSF: ukazatele kvality spánku ↗'}],
+  recoveryScore:['Index regenerace','Index 0–100: HRV (50 %), klidový tep (25 %) a spánek proti potřebě (25 %). Každý ukazatel porovnávám s tvým průměrem a rozptylem za 60 dní; HRV v logaritmu (lnRMSSD), jak to dělají studie.','Tvůj běžný den je kolem 70. Hodnota o směrodatnou odchylku horší dává 50, o dvě 30. 67 a víc je zelená, 34–66 žlutá, pod 34 červená. Dech ve spánku výrazně nad průměrem ubere 10 bodů, teplota kůže o 0,5 °C a víc nad průměrem dalších 10.','Šipka trendu porovnává 7denní průměr HRV s nejmenší významnou změnou (0,5 SD). Potřebuje aspoň 14 předchozích měření. Stejné číslo používá i trenér.',{href:'https://pubmed.ncbi.nlm.nih.gov/22367011/',text:'Plews 2012: 7denní průměr HRV ↗'},{href:'https://pubmed.ncbi.nlm.nih.gov/24578692/',text:'Buchheit 2014: HRV a klidový tep ↗'}],
   rhythm:['Spánkový rytmus','Rozptyl (SD) ukazuje, o kolik se čas usnutí typicky liší od tvého průměru. Menší rozptyl znamená pravidelnější režim, ne automaticky kvalitnější spánek.','Usnutí po půlnoci patří ke stejnému večeru. Chybějící noci se nepočítají jako nuly.'],
   water:['Pití','Počítáme vypitý objem včetně kávy, čaje a mléka. Nápoje z jídelníčku v ml se přičtou automaticky.',{href:'https://pmc.ncbi.nlm.nih.gov/articles/PMC3886980/',text:'Proč se počítá i káva ↗'}],
   energy:['Energie dne','Cíl dne vychází z profilu: klidový výdej × tvoje běžná denní aktivita, minus deficit, plus trénink. Když se hýbeš víc než obvykle, přepne se na průběžný cíl z naměřeného výdeje: bazální metabolismus + aktivní energie + trávení (10 %), minus deficit.','Celodenní aktivní výdej zahrnuje běžný pohyb i sport. Stejné aktivity ani kroky nepřičítám podruhé.','Podíl maker vychází z 4 kcal/g bílkovin a sacharidů a 9 kcal/g tuku. Energie z obalu se může lišit.'],
@@ -1808,7 +1943,7 @@ function planChips(i,date){
 }
 function weekTargetText(){
   const t=state.weekPlan?.targets;if(!t||t.status!=='ok')return '';
-  return (t.recovery?uiText('Regenerační týden ', 'Recovery week ')+(t.recoveryReason==='three_weeks'?uiText('po třech týdnech nad udržovací zátěží', 'after three weeks above maintenance load'):uiText('po náročném týdnu (', 'after a hard week (')+t.lastWeekLoad+' TSS)')+uiText(' · platí i pro posilovnu · cíl ≈ ', ' · applies to the gym too · goal ≈ ')+t.target+uiText(' TSS (70 % z udržovacích ', ' TSS (70 % of maintenance ')+t.base+')':uiText('Cíl týdne ≈ ', 'Weekly goal ≈ ')+t.target+uiText(' TSS (udržení kondice CTL ', ' TSS (maintaining fitness CTL ')+t.ctl+' × 7 + 5 %)')+uiText(' · hotovo a v plánu ', ' · done and planned ')+t.committed+' TSS'+(t.shortfall?uiText(' · do cíle chybí ~', ' · ~')+t.shortfall+uiText(' TSS, přidej další den', ' TSS short of the goal, add another day'):'')+(t.runCap?.limited?uiText(' · běh tento týden nejvýš ', ' · running this week at most ')+hm(t.runCap.cap)+uiText(' (+10 % proti posledním týdnům, ', ' (+10 % over recent weeks, ')+hm(t.runCap.base)+uiText('); návrhy běhu jsou kratší', '); run proposals are shorter'):'');
+  return (t.recovery?uiText('Regenerační týden ', 'Recovery week ')+(t.recoveryReason==='three_weeks'?uiText('po třech týdnech nad udržovací zátěží', 'after three weeks above maintenance load'):t.recoveryReason==='hrv_trend'?uiText('· HRV za poslední týden pod tvým běžným pásmem','· HRV over the last week below your usual range'):uiText('po náročném týdnu (', 'after a hard week (')+t.lastWeekLoad+' TSS)')+uiText(' · platí i pro posilovnu · cíl ≈ ', ' · applies to the gym too · goal ≈ ')+t.target+uiText(' TSS (70 % z udržovacích ', ' TSS (70 % of maintenance ')+t.base+')':uiText('Cíl týdne ≈ ', 'Weekly goal ≈ ')+t.target+' TSS ('+(t.rampHold?uiText('CTL roste o víc než 8 za týden, proto jen udržení CTL ','CTL is rising by more than 8 a week, so only maintaining CTL ')+t.ctl+' × 7':uiText('udržení kondice CTL ','maintaining fitness CTL ')+t.ctl+' × 7 + 5 %')+')')+uiText(' · hotovo a v plánu ', ' · done and planned ')+t.committed+' TSS'+(t.shortfall?uiText(' · do cíle chybí ~', ' · ~')+t.shortfall+uiText(' TSS, přidej další den', ' TSS short of the goal, add another day'):'')+(t.runCap?.limited?uiText(' · běh tento týden nejvýš ', ' · running this week at most ')+hm(t.runCap.cap)+uiText(' (+10 % proti posledním týdnům, ', ' (+10 % over recent weeks, ')+hm(t.runCap.base)+uiText('); návrhy běhu jsou kratší', '); run proposals are shorter'):'');
 }
 // IF from load and length (TSS = h × IF² × 100); gym load has no IF.
 function intensityOf(tss,minutes){const t=num(tss),h=num(minutes)/60;return t>0&&h>0?Math.sqrt(t/(h*100)):null}
@@ -1848,7 +1983,7 @@ function plannerQuiet(){return Boolean(state.weekPlan?.dirty)||Date.now()<(state
 async function renderWeekHub(){
   const el=$('hubWeek');if(!el)return;
   if(!state.hubWeek)state.hubWeek=pragueMonday();
-  $('hubWeekTitle').textContent='Týden '+isoWeek(state.hubWeek)+' · '+dateLabel(state.hubWeek)+' – '+dateLabel(dateShift(state.hubWeek,6));
+  $('hubWeekTitle').textContent=uiText('Týden ','Week ')+isoWeek(state.hubWeek)+' · '+dateLabel(state.hubWeek)+' – '+dateLabel(dateShift(state.hubWeek,6));
   const plan=await loadWeekPlan();$('hubLocationName').textContent=plan.prefs?.location?.name||'Kutná Hora';
   let week;try{[week]=await Promise.all([hubWeekData(),loadWeather()]);}catch(error){el.innerHTML='<div class="notice status-error">'+esc(error.message)+'</div>';return;}
   applyPendingPlanned(week.days);
@@ -2489,11 +2624,11 @@ function recordsCardHtml(rec){
   const rows=(t.strength||[]).map(x=>({x,ch:at(x)})).filter(r=>r.ch).slice(0,10);
   const tile=(icon,label,value,badge,date)=>'<div><span>'+icon+'</span><strong>'+value+'</strong>'+badge+'<small>'+esc(label)+' · '+esc(dateLabel(date))+'</small></div>';
   // Two rows: the bike (FTP, longest ride, most climbing), then the run (pace, longest run).
-  const distance=k=>at(c[k])&&at(c[k]).value>0?tile({longestRide:'🚴',mostElevation:'⛰',longestRun:'🏃'}[k],{longestRide:'Nejdelší jízda',mostElevation:'Nejvíc převýšení',longestRun:'Nejdelší běh'}[k],cz(at(c[k]).value,1)+' '+c[k].unit,trendBadge(at(c[k]),{unit:c[k].unit}),at(c[k]).date):'';
+  const distance=k=>at(c[k])&&at(c[k]).value>0?tile({longestRide:'🚴',mostElevation:'⛰',longestRun:'🏃'}[k],{longestRide:uiText('Nejdelší jízda','Longest ride'),mostElevation:uiText('Nejvíc převýšení','Most climbing'),longestRun:uiText('Nejdelší běh','Longest run')}[k],cz(at(c[k]).value,1)+' '+c[k].unit,trendBadge(at(c[k]),{unit:c[k].unit}),at(c[k]).date):'';
   const ride=[at(c.ftp)&&at(c.longestRide)?tile('⚡','FTP',fmt(at(c.ftp).value)+' W',trendBadge(at(c.ftp),{unit:'W',format:v=>fmt(Math.abs(v))}),at(c.ftp).date):'',distance('longestRide'),distance('mostElevation')].filter(Boolean);
-  const run=[at(c.runPace)?tile('⏱','Nejrychlejší běh 5 km+',fmtPaceText(at(c.runPace).value)+' /km',trendBadge(at(c.runPace),{lowerIsBetter:true,format:v=>fmtPaceText(v)}),at(c.runPace).date):'',distance('longestRun')].filter(Boolean);
+  const run=[at(c.runPace)?tile('⏱',uiText('Nejrychlejší běh 5 km+','Fastest run 5 km+'),fmtPaceText(at(c.runPace).value)+' /km',trendBadge(at(c.runPace),{lowerIsBetter:true,format:v=>fmtPaceText(v)}),at(c.runPace).date):'',distance('longestRun')].filter(Boolean);
   const tiles=[ride,run].filter(r=>r.length).map(r=>'<div class="pr-cardio">'+r.join('')+'</div>');
-  const day=d=>dateFormat({day:'numeric',month:'numeric',year:'numeric'}).format(new Date(d+'T12:00:00Z')),span=period?(period.kind==='all'?'Všechna data v aplikaci od '+day(period.start):period.kind==='year'?'Rok '+period.label:'Od '+day(period.start)+' do dneška'):'';
+  const day=d=>dateFormat({day:'numeric',month:'numeric',year:'numeric'}).format(new Date(d+'T12:00:00Z')),span=period?(period.kind==='all'?uiText('Všechna data v aplikaci od ','All data in the app since ')+day(period.start):period.kind==='year'?uiText('Rok ','Year ')+period.label:uiText('Od ','From ')+day(period.start)+uiText(' do dneška',' to today')):'';
   return '<article class="card insight-records"><div class="detail-heading"><div><div class="label">Výkonnost</div><h3>Osobní rekordy'+infoTip('records','osobní rekordy')+'</h3><p class="small pr-span">'+esc(span)+'</p></div>'+prPeriodControls(t,key)+'</div>'+
     (rows.length?'<div class="scroll"><table class="pr-table"><thead><tr><th>Cvik</th><th>Max. váha</th><th>Datum</th><th>Změna</th></tr></thead><tbody>'+rows.map(({x,ch})=>'<tr><td>'+esc(x.exercise)+'</td><td>'+cz(ch.value,1)+' kg'+(ch.reps?' <span class="small">× '+ch.reps+'</span>':'')+'</td><td>'+esc(dateLabel(ch.date))+'</td><td>'+(trendBadge(ch,{unit:'kg'})||'—')+'</td></tr>').join('')+'</tbody></table></div>':'<p class="small">V tomto období žádné série s váhou.</p>')+
     tiles.join('')+'</article>';
@@ -2567,7 +2702,7 @@ async function awaitReflection(date){
 }
 function openCoachSheet(date){
   const notes=(state.reflections?.[date]||[]).map(r=>'<div class="coach-note"><small>'+esc(r.source==='ai'?uiText('AI kouč','AI coach'):uiText('Kouč','Coach'))+(r.rpe!=null?' · RPE '+fmt(r.rpe):'')+(r.notes?' · „'+esc(r.notes)+'“':'')+'</small><p>'+esc(r.text)+'</p></div>').join('');
-  openSheet('Kouč · '+(date===pragueToday()?'dnes':longDate(date)),notes+'<label class="coach-ask"><span class="small">Jak ses cítil? Co bylo jinak? (volitelné)</span><textarea id="coachNotes" rows="3" maxlength="1000" placeholder="např. těžké nohy, ráno procházka se psy"></textarea></label><div class="rpe-scale" id="coachRpe" role="group" aria-label="RPE">'+[1,2,3,4,5,6,7,8,9,10].map(n=>'<button type="button" data-rpe="'+n+'">'+n+'</button>').join('')+'</div><p class="small">RPE je volitelné. Kouč projde timeline dne, předchozí dny, formu (TSB), spánek, HRV a tvoje poznámky.</p><button type="button" class="btn primary sheet-wide" id="coachAsk">Zeptat se kouče</button>',body=>{
+  openSheet(uiText('Kouč · ','Coach · ')+(date===pragueToday()?uiText('dnes','today'):longDate(date)),notes+'<label class="coach-ask"><span class="small">Jak ses cítil? Co bylo jinak? (volitelné)</span><textarea id="coachNotes" rows="3" maxlength="1000" placeholder="např. těžké nohy, ráno procházka se psy"></textarea></label><div class="rpe-scale" id="coachRpe" role="group" aria-label="RPE">'+[1,2,3,4,5,6,7,8,9,10].map(n=>'<button type="button" data-rpe="'+n+'">'+n+'</button>').join('')+'</div><p class="small">RPE je volitelné. Kouč projde timeline dne, předchozí dny, formu (TSB), spánek, HRV a tvoje poznámky.</p><button type="button" class="btn primary sheet-wide" id="coachAsk">Zeptat se kouče</button>',body=>{
     let rpe=null;$('coachRpe').onclick=e=>{const b=e.target.closest('[data-rpe]');if(!b)return;rpe=rpe===Number(b.dataset.rpe)?null:Number(b.dataset.rpe);$('coachRpe').querySelectorAll('button').forEach(x=>x.classList.toggle('active',Number(x.dataset.rpe)===rpe));};
     $('coachAsk').onclick=async()=>{const b=$('coachAsk');b.disabled=true;b.textContent='Kouč přemýšlí…';try{const r=await jsonFetch('/app/api/coach/reflections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,notes:$('coachNotes').value,rpe})});state.reflections={...(state.reflections||{}),[date]:[r.reflection,...(state.reflections?.[date]||[])]};renderDayTimeline();openCoachSheet(date);}catch(error){toast(error.message);b.disabled=false;b.textContent='Zeptat se kouče';}};
   });
@@ -3295,7 +3430,7 @@ function installEnergyProfile(){
     auto('profileRhr',s.rhr,s.rhr+uiText(' (průměr 30 dní)', ' (30-day average)'));
     auto('profileHrmax',s.hrmax,s.hrmax+(s.sources?.hrmax==='age-estimate'?uiText(' (odhad podle věku, upřesní se z aktivit)', ' (estimate from age, refined from activities)'):uiText(' (max. z aktivit, 6 měs.)', ' (max from activities, 6 months)')));
     // A date field has no placeholder: show the Google birth date under it.
-    if(s.birthDate&&!$('profileBirthDate').value&&!$('profileBirthDateAuto')){const [y,m,d]=s.birthDate.split('-');$('profileBirthDate').insertAdjacentHTML('afterend',uiText('<small class="small" id="profileBirthDateAuto">Automaticky z Google účtu: ', '<small class="small" id="profileBirthDateAuto">Automatically from your Google account: ')+Number(d)+'. '+Number(m)+'. '+y+'</small>');const age=ageFromBirthDate(s.birthDate);if(age!=null&&!$('profileAge').value)$('profileAge').placeholder='Automaticky: '+age;}
+    if(s.birthDate&&!$('profileBirthDate').value&&!$('profileBirthDateAuto')){$('profileBirthDate').insertAdjacentHTML('afterend',uiText('<small class="small" id="profileBirthDateAuto">Automaticky z Google účtu: ', '<small class="small" id="profileBirthDateAuto">Automatically from your Google account: ')+esc(dateFormat({day:'numeric',month:'numeric',year:'numeric'}).format(new Date(s.birthDate+'T12:00:00Z')))+'</small>');const age=ageFromBirthDate(s.birthDate);if(age!=null&&!$('profileAge').value)$('profileAge').placeholder='Automaticky: '+age;}
     try{renderExperience();}catch{}
   }).catch(()=>{});
   const previous=form.onsubmit;form.onsubmit=e=>{e.preventDefault();localStorage.setItem('fitnessProfile',JSON.stringify({...savedProfile(),birthDate:$('profileBirthDate').value,activity:$('profileActivity').value,sportHours:$('profileSportHours').value,goal:$('profileGoal').value,targetWeight:$('profileTargetWeight').value}));return previous(e);};
@@ -3628,13 +3763,8 @@ function openRatingSheet({date=pragueToday(),name=null}={}){
 }
 // ---- Zdraví: the tiles that matter. Sleep and weight as in Dnes, sleep debt
 // and VO₂ max instead of the averages; the long-term card is gone. ----
-const SLEEP_NEED_MIN=480;
-function sleepDebt(sessions,date){
-  const nights=sessions.filter(s=>{const d=s.date||String(s.endTime||'').slice(0,10);return d<=date&&d>=dateShift(date,-6);});
-  if(!nights.length)return null;
-  const net=nights.reduce((s,n)=>s+SLEEP_NEED_MIN-num(n.durationMin),0);
-  return {minutes:Math.max(0,Math.round(net)),nights:nights.length,average:nights.reduce((s,n)=>s+num(n.durationMin),0)/nights.length};
-}
+// Naps count toward the day's sleep, so all sessions go in, not only the nights.
+function sleepDebt(sessions,date){return sleepDebtMinutes((state.sleep?.sessions||sessions).filter(s=>(s.date||String(s.endTime||'').slice(0,10))<=date),date,sleepNeedMinutes({age:appProfile().age}));}
 function healthTile(label,value,meta,tone=''){return '<div class="metric-tile'+(tone?' tone-'+tone:'')+'"><div class="label">'+label+'</div><div class="metric-number">'+value+'</div><div class="small">'+meta+'</div></div>';}
 function renderHealthTiles(){
   const recovery=$('recovery');if(!recovery)return;
@@ -3645,7 +3775,7 @@ function renderHealthTiles(){
   const sleepDelta=last&&mean!=null?Math.round(last.durationMin-mean):null;
   const sleep=healthTile('Spánek',last?hm(last.durationMin):'—',last?'Noc '+esc(dateLabel(last.date))+(score!=null?' · skóre '+score+'/100':'')+(sleepDelta!=null?' '+deltaBadge(sleepDelta,'min',1,15):''):'Bez záznamu');
   const debt=sleepDebt(sessions,date);
-  const debtTile=healthTile('Spánkový dluh',debt?(debt.minutes?hm(debt.minutes):'0 h'):'—',debt?uiText('7 nocí vs. potřeba 8 h · Ø ', '7 nights vs. 8 h needed · Ø ')+hm(debt.average)+(debt.nights<7?uiText(' · změřeno ', ' · measured ')+debt.nights+'/7':''):'Chybí noci za posledních 7 dní',debt?(debt.minutes<120?'good':debt.minutes<300?'warn':'bad'):'');
+  const debtTile=healthTile('Spánkový dluh',debt?(debt.minutes?hm(debt.minutes):'0 h'):'—',debt?uiText('7 nocí vs. potřeba ','7 nights vs. a need of ')+hm(debt.need)+' · Ø '+hm(debt.average)+(debt.nights<7?uiText(' · změřeno ', ' · measured ')+debt.nights+'/7':''):'Chybí noci za posledních 7 dní',debt?(debt.minutes<120?'good':debt.minutes<300?'warn':'bad'):'');
   const vo2=latestVo2(),prev=vo2?googleWellness().concat(state.fitness?.wellness||[]).filter(r=>r.id<=dateShift(vo2.date,-28)&&measured(r.vo2max??r.vo2Max)).sort((a,b)=>a.id.localeCompare(b.id)).at(-1):null,vo2Delta=prev?Number(vo2.value)-Number(prev.vo2max??prev.vo2Max):null;
   const vo2Tile=healthTile('VO₂ max',vo2&&measured(vo2.value)?fmt(vo2.value,1)+' <small>ml/kg/min</small>':'—',vo2?esc(vo2.source||'')+' · '+esc(dateLabel(vo2.date))+(vo2Delta!=null?' '+deltaBadge(vo2Delta,'',1,0.5,1):''):'Bez měření z hodinek');
   const w=state.weight||{},hist=(w.records||[]).filter(x=>num(x.value_numeric)>0&&/^\d{4}-\d{2}-\d{2}/.test(String(x.sample_time||''))&&String(x.sample_time).slice(0,10)<=date).sort((a,b)=>String(a.sample_time).localeCompare(String(b.sample_time))),lastW=hist.at(-1);
