@@ -1,4 +1,4 @@
-import app from "./strength-gateway.js";
+import app, { appDailyTarget } from "./strength-gateway.js";
 import { buildCoachCouncil } from "./coach-engine.js";
 import { trainingStatus } from './training-status.js';
 import { handleMcpCompat } from "./mcp-compat.js";
@@ -1532,13 +1532,14 @@ async function handleNutritionNotesAutomation(request, rawEnv) {
     const remove=String(body?.action || "").toLowerCase() !== "sync";
     const users=await forEachUser(rawEnv,["intervals"],async env=>{
       if (remove) return deleteDailyNutritionNotes(env,{oldest,newest});
-      let weightKg=Number(body?.weightKg);
+      // A weight given to the automation is the owner's; everyone else uses their own,
+      // and a user without a weight gets no note (syncDailyNutritionNotes skips).
+      let weightKg=env.USER_IS_OWNER===true?Number(body?.weightKg):NaN;
       if(!Number.isFinite(weightKg)){
         const row=await env.DB.prepare(`SELECT value_numeric FROM health_datapoints WHERE user_id=? AND data_type IN ('weight','weight-written') AND value_numeric IS NOT NULL ORDER BY COALESCE(sample_time,start_time) DESC LIMIT 1`).bind(env.USER_ID).first();
         weightKg=Number(row?.value_numeric);
       }
-      if(!Number.isFinite(weightKg)||weightKg<=0) weightKg=88;
-      return syncDailyNutritionNotes(env,{oldest,newest,weightKg});
+      return syncDailyNutritionNotes(env,{oldest,newest,weightKg,appTarget:date=>appDailyTarget(env,{waitUntil(){}},date)});
     });
     const failed=users.filter(u=>u.error);
     return Response.json({status:failed.length&&failed.length===users.length?"error":"ok",users},{status:failed.length&&failed.length===users.length?500:200});

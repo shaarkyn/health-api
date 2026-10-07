@@ -235,7 +235,7 @@ async function renderSetupDone(body){
   const n=daily.nutrition||{},target=num(n.calorieTarget),missing=n.missing||[];
   const services=(connections.providers||[]).map(p=>'<li>'+(p.connected?'<span class="pill good">Připojeno</span> ':'<span class="pill">Nepřipojeno</span> ')+esc(p.name)+'</li>').join('');
   body.innerHTML='<div class="eyebrow">Hotovo</div><h2 id="setupTitle">Můžeš začít</h2>'+
-    (target?'<div class="setup-target"><span class="small">Denní kalorický cíl</span><strong>'+fmt(target)+' kcal</strong><p class="small">Klidový výdej podle profilu × pohyb přes den, upravený o cíl. Během dne ho navyšujeme o naměřený pohyb.</p></div>':'<div class="notice"><span>Kalorický cíl zatím nepočítám.</span>'+(missing.length?' <span>Chybí:</span> '+missing.map(k=>'<span>'+esc(ENERGY_MISSING[k]||k)+'</span>').join(', ')+'.':'')+' <span>Doplníš ho v Nastavení → Profil a cíl.</span></div>')+
+    (target?'<div class="setup-target"><span class="small">Denní kalorický cíl</span><strong>'+fmt(target)+' kcal</strong><p class="small">Klidový výdej podle profilu × pohyb přes den, upravený o cíl. Během dne ho navyšujeme o naměřený pohyb.</p>'+calorieTargetNotes(n)+'</div>':'<div class="notice"><span>Kalorický cíl zatím nepočítám.</span>'+(missing.length?' <span>Chybí:</span> '+missing.map(k=>'<span>'+esc(ENERGY_MISSING[k]||k)+'</span>').join(', ')+'.':'')+' <span>Doplníš ho v Nastavení → Profil a cíl.</span></div>')+
     '<ul class="setup-services">'+services+'</ul><p class="small">Služby připojíš nebo odpojíš kdykoli v Nastavení → Propojení.</p>'+
     '<ul class="setup-next small"><li><strong>Dnes</strong> ukáže plán dne, jídlo a regeneraci.</li><li><strong>Tréninky</strong> navrhnou posilovnu, kolo i běh podle tvého času.</li><li><strong>Asistent</strong> poradí a upraví plán podle toho, jak se cítíš.</li></ul>'+
     '<div class="setup-actions"><button class="btn" type="button" id="setupBack">Zpět</button><button class="btn primary" type="button" id="setupFinish">Začít používat Loadwise</button></div>';
@@ -1411,12 +1411,18 @@ function renderRequestedExperience(done,latest,vo2,daily){
   $('healthspan').querySelector('.healthspan-title').textContent='Kondice a dlouhodobý trend';
   note.innerHTML='<strong>VO₂ max · '+(measured(vo2)?fmt(vo2,1)+' ml/kg/min':'bez měření')+'</strong><p>'+(vo2Reading?esc(vo2Reading.source)+' · '+esc(vo2Reading.date)+'. ':'')+'Intervals.icu využívám pro jízdy a tréninkovou zátěž; samotné Wahoo aktivity nejsou přímé měření VO₂ max. Kondiční věk z jediné hodnoty nevyvozuji.</p>';
 }
+// Why the target is not exactly profile minus goal: the safety floor, or the weight trend.
+function calorieTargetNotes(n){const b=n?.calorieBreakdown||{},notes=[];
+  if(b.floorApplied)notes.push('Cíl drží bezpečné minimum '+Math.round(b.minTarget)+' kcal, takže hubnutí půjde pomaleji než zvolené tempo.');
+  if(b.trendAdjustment)notes.push(b.trendAdjustment<0?'Podle vývoje váhy ubírám '+Math.abs(b.trendAdjustment)+' kcal denně.':'Podle vývoje váhy přidávám '+b.trendAdjustment+' kcal denně.');
+  return notes.map(t=>'<p class="small calorie-note">'+esc(t)+'</p>').join('');}
 function renderFuelingBreakdown(daily){
   const profile=appProfile(),done=(daily.training?.completed||[]).filter(a=>!isNutritionItem(a));
   const weight=Number(daily.weight?.current??daily.nutrition?.currentWeight),bmr=weight>0&&profile.age&&profile.height&&profile.sex?10*weight+6.25*Number(profile.height)-5*Number(profile.age)+(profile.sex==='male'?5:-161):null;
   const today=googleWellness().find(r=>r.id===selectedHistoryDate)||{},active=measured(today.activeCalories)?Number(today.activeCalories):null,steps=measured(today.steps)?fmt(today.steps):'—';
   const budget=daily.nutrition?.energyBudget;
   if(budget)$('nutritionBalance').insertAdjacentHTML('beforeend','<p class="small">'+(budget.basis==='profile'?'Cíl podle profilu':'Průběžný cíl podle naměřeného výdeje, během dne se mění')+(budget.deficit>0?' · deficit '+fmt(budget.deficit)+' kcal':'')+'.</p>');
+  $('nutritionBalance').insertAdjacentHTML('beforeend',calorieTargetNotes(daily.nutrition));
   $('nutritionBalance').insertAdjacentHTML('beforeend','<div class="experience-stats"><div><span>Dnešní cíl</span><strong>'+fmt(daily.nutrition?.calorieTarget)+' kcal</strong></div><div><span title="Výpočet Mifflin–St Jeor z hmotnosti, věku, výšky a referenčního pohlaví">Bazální metabolismus</span>'+(bmr?'<strong>'+fmt(bmr)+' kcal</strong>':'<strong class="is-empty"><button type="button" class="link-btn" data-open-view="settings" data-open-section="profile">Doplň profil v Nastavení</button></strong>')+'</div><div><span>Aktivní výdej · celý den</span>'+(active==null?'<strong class="is-empty">'+(serviceConnected('google')?'Čeká na data z Google Health':'Jen s Google Health')+'</strong>':'<strong>'+fmt(active)+' kcal</strong>')+'</div><div><span>Kroky dnes</span>'+(steps==='—'?'<strong class="is-empty">Bez měření</strong>':'<strong>'+steps+'</strong>')+'</div></div><p class="small">'+done.map(a=>esc(a.name)+esc(activityEnergyLabel(a)||' · výdej chybí')).join(' · ')+'</p>'+(active==null?'<p class="small">Dnešní energie z Googlu zatím chybí, cíl vychází z tréninkového plánu.</p>':''));
 }
 function installRequestedExperience(){

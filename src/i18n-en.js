@@ -1686,6 +1686,9 @@ export const EN = {
 };
 
 export const EN_TEMPLATES = {
+"Cíl drží bezpečné minimum {n} kcal, takže hubnutí půjde pomaleji než zvolené tempo.": "The target stays at the safe minimum of {n} kcal, so weight loss will be slower than the chosen pace.",
+"Podle vývoje váhy ubírám {n} kcal denně.": "Based on your weight trend I take off {n} kcal a day.",
+"Podle vývoje váhy přidávám {n} kcal denně.": "Based on your weight trend I add {n} kcal a day.",
 "AI dnes: {n} USD · bez limitu": "AI today: {n} USD · no limit",
 "AI dnes: {n} USD z {n} USD": "AI today: {n} USD of {n} USD",
 "Denní limit AI je vyčerpaný (${n}). Zítra se obnoví.": "Today's AI limit is used up (${n}). It resets tomorrow.",

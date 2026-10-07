@@ -1,5 +1,5 @@
 import { buildStrengthContext } from "./strength-context.js";
-import { buildNutritionPlan } from "./nutrition-intelligence.js";
+import { buildNutritionPlan, withAppTarget } from "./nutrition-intelligence.js";
 import { getFoodDay, recommendFood } from "./food-log.js";
 import { intervalsAuthorization } from "./intervals-auth.js";
 
@@ -80,8 +80,9 @@ export async function deleteDailyNutritionNotes(env, options = {}) {
 export async function syncDailyNutritionNotes(env, options = {}) {
   const oldest = String(options.oldest);
   const newest = String(options.newest || oldest);
-  let weightKg = Number(options.weightKg);
-  if (!Number.isFinite(weightKg) || weightKg <= 0) weightKg = 88;
+  // The user's own weight; without it there is no honest target to write.
+  const weightKg = Number(options.weightKg);
+  if (!Number.isFinite(weightKg) || weightKg <= 0) return { status: "skipped", reason: "no weight", oldest, newest };
 
   // Make the operation idempotent. Existing nutrition notes are updated in
   // place and duplicate notes for the same date are removed.
@@ -107,7 +108,9 @@ export async function syncDailyNutritionNotes(env, options = {}) {
     const context = await buildStrengthContext(env, date);
     if (context.status !== "ok") throw new Error(`Strength context not ready for ${date}`);
 
-    const nutrition = buildNutritionPlan(context, { weightKg });
+    // The note shows the same target as the app (options.appTarget gives the
+    // app's day); without one it keeps the plan's own estimate.
+    const nutrition = withAppTarget(buildNutritionPlan(context, { weightKg }), options.appTarget ? await options.appTarget(date) : null);
     const foodDay = await getFoodDay(env.DB, date);
     const food = {
       ...foodDay,

@@ -15,7 +15,7 @@ function localDate(offsetDays = 0) {
   return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
 }
 function n(v, fallback = 0) { const x = Number(v); return Number.isFinite(x) ? x : fallback; }
-async function d1WeightTrend(env, endDate) {
+export async function d1WeightTrend(env, endDate) {
   try {
     const end = String(endDate || localDate()).slice(0,10);
     const start = localDate(-35);
@@ -39,7 +39,7 @@ async function d1WeightTrend(env, endDate) {
     const first=daily[0], latest=daily[daily.length-1];
     const days=Math.max(1,(new Date(latest.date)-new Date(first.date))/86400000);
     const weeklyRateKg=Math.round(((latest.kg-first.kg)/days)*7*100)/100;
-    return {samples:daily.length,latestKg:Math.round(latest.kg*10)/10,average7Kg:mean(last)==null?null:Math.round(mean(last)*10)/10,average28Kg:mean(last28)==null?null:Math.round(mean(last28)*10)/10,weeklyRateKg,points:daily.slice(-14)};
+    return {samples:daily.length,spanDays:Math.round(days),latestKg:Math.round(latest.kg*10)/10,average7Kg:mean(last)==null?null:Math.round(mean(last)*10)/10,average28Kg:mean(last28)==null?null:Math.round(mean(last28)*10)/10,weeklyRateKg,points:daily.slice(-14)};
   } catch (_) { return {samples:0,latestKg:null,weeklyRateKg:null,average7Kg:null,average28Kg:null}; }
 }
 function durationHours(a) {
