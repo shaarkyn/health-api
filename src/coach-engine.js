@@ -14,8 +14,11 @@ const isGym=x=>/weight|strength|weights|posil|gym/i.test(txt(x?.name)+' '+txt(x?
 const isHard=x=>/threshold|vo2|interval|sweet spot|tempo/i.test(txt(x?.name))||isQualityName(x?.name);
 function sleepFacts(sessions,date){
   const rows=sessions.filter(s=>n(s.durationMin)>=180&&(!date||!s.date||s.date<=date)).sort((a,b)=>txt(b.endTime||b.date).localeCompare(txt(a.endTime||a.date))).slice(0,7);
-  const last=rows[0],fresh=!date||!last?.date||last.date===date;
-  return {last:fresh?n(last?.durationMin):null,avg:rows.length?rows.reduce((sum,s)=>sum+n(s.durationMin),0)/rows.length:null};
+  const last=rows[0],day=last?.date||txt(last?.endTime).slice(0,10),fresh=!date||!day||day===date;
+  // Whether this athlete's nights reach the app at all, and whether last night has arrived:
+  // the morning card waits for it (and starts at the wake-up time when the night has one).
+  return {last:fresh?n(last?.durationMin):null,avg:rows.length?rows.reduce((sum,s)=>sum+n(s.durationMin),0)/rows.length:null,
+    tracked:rows.length>0,today:Boolean(last&&day===date),wokeAt:last&&day===date&&last.endTime?txt(last.endTime):null};
 }
 function rideFuel(hours,hard){
   const carbs=L(' g sacharidů/h',' g of carbs/h');
@@ -37,7 +40,7 @@ function morningSummary({date,sleep,fitness,yesterday,planned,policy}){
   if(!facts.length&&!policy.paused)return null;
   const low=sleep.last!=null&&sleep.last<360||n(fitness.tsb)!=null&&n(fitness.tsb)<-25,heavy=load.reduce((a,b)=>a+b,0)>150||minutes>=180;
   const next=policy.paused?policy.guidance[0]:low?L('Dnes drž rezervu: u posilování uber sérii, u vytrvalosti zvol lehké tempo. Před těžkou jednotkou zapiš, jak se cítíš.','Keep something in reserve today: drop a set in the gym and keep endurance work easy. Before a hard session, log how you feel.'):heavy?L('Po včerejší velké zátěži začni zvolna; objem uprav podle pocitu a nech si rezervu.','After yesterday\'s big load, start easy; adjust the volume to how you feel and keep something in reserve.'):planned.length?L('Dnešní plán můžeš dodržet; při rozcvičení ověř, že se cítíš dobře.','You can stick to today\'s plan; check during the warm-up that you feel good.'):L('Dnes máš prostor pro regeneraci; další aktivitu přizpůsob chuti a času, který máš.','You have room to recover today; fit any further activity to your mood and the time you have.');
-  return {date,headline:policy.paused?policy.label+L(' · dnešní přehled',' · today\'s overview'):low?L('Dnes s větší rezervou','Take it easier today'):heavy?L('Navazujeme na náročný včerejšek','Following a demanding yesterday'):L('Jak dnes začít','How to start today'),text:facts.join(' '),recommendation:next};
+  return {date,headline:policy.paused?policy.label+L(' · dnešní přehled',' · today\'s overview'):low?L('Dnes s větší rezervou','Take it easier today'):heavy?L('Navazujeme na náročný včerejšek','Following a demanding yesterday'):L('Jak dnes začít','How to start today'),text:facts.join(' '),recommendation:next,sleepSync:{tracked:Boolean(sleep.tracked),today:Boolean(sleep.today),wokeAt:sleep.wokeAt||null}};
 }
 const dec=(v,d=1)=>{const s=String(Math.round(v*10**d)/10**d);return L(s.replace('.',','),s);};
 const pctRange=(lo,hi)=>hi!=null&&hi!==lo?Math.round(lo)+'–'+Math.round(hi)+' % FTP':Math.round(lo)+' % FTP';

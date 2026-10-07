@@ -301,13 +301,22 @@ function trainingDayMarkup(x){
   return '<div class="plan-day '+(x.date===pragueToday()?"today":"")+'" data-training-date="'+esc(x.date)+uiText('" tabindex="0" role="button" aria-label="Detail tréninku ', '" tabindex="0" role="button" aria-label="Workout details ')+esc(longDate(x.date))+'"><div class="dow">'+esc(longDate(x.date))+'</div>'+(items||'<div class="muted">Volno</div>')+'</div>';
 }
 
-// "How to start today" belongs to the morning: 4:00–11:59 on the device's own clock (the user's time zone).
-function morningWindow(now=new Date()){const h=now.getHours();return h>=4&&h<12;}
+// "How to start today" belongs to the morning, on the device's own clock (the user's time zone).
+// When the athlete's nights reach the app, it waits for last night's sleep and shows from
+// waking up until noon (at least 4 hours after a late wake-up); without sleep data 4:00–11:59.
+function morningWindow(now=new Date(),sync=null){
+  const noon=new Date(now);noon.setHours(12,0,0,0);
+  if(sync?.tracked&&!sync.today)return false;
+  if(sync?.today){const woke=sync.wokeAt?new Date(sync.wokeAt):null,valid=woke&&!isNaN(woke);
+    if(valid&&woke>now)return false;
+    const until=valid?Math.max(+noon,+woke+4*3600e3):+noon;return +now<until&&(valid||now.getHours()>=4);}
+  const h=now.getHours();return h>=4&&h<12;
+}
 function renderCoachCouncil(){
   const council=state.coaches||{},cards=[...(council.coaches||[]),...(council.reviews||[])];
   const p=$("coachPriorities"),c=$("coachCards");if(!p||!c)return;
   let summary=$('morningSummary');if(!summary){p.insertAdjacentHTML('beforebegin','<div id="morningSummary" class="morning-summary"></div>');summary=$('morningSummary');}
-  const morning=morningWindow()&&selectedHistoryDate===pragueToday()?council.morningSummary:null;summary.hidden=!morning;summary.innerHTML=morning?'<div class="eyebrow">DNEŠNÍ PŘIPRAVENOST</div><h3>'+esc(morning.headline)+'</h3><p>'+esc(morning.text)+'</p><strong>'+esc(morning.recommendation)+'</strong>':'';
+  const morning=council.morningSummary&&morningWindow(new Date(),council.morningSummary.sleepSync)&&selectedHistoryDate===pragueToday()?council.morningSummary:null;summary.hidden=!morning;summary.innerHTML=morning?'<div class="eyebrow">DNEŠNÍ PŘIPRAVENOST</div><h3>'+esc(morning.headline)+'</h3><p>'+esc(morning.text)+'</p><strong>'+esc(morning.recommendation)+'</strong>':'';
   // A priority that only repeats a card's headline and first line is left to the card.
   const heads=cards.map(x=>String(x.headline||'')).filter(Boolean),priorities=(council.priorities||[]).filter(x=>!heads.some(h=>String(x).startsWith(h)));
   p.hidden=!priorities.length;p.innerHTML=priorities.length?'<div class="eyebrow">KOORDINÁTOR · DNEŠNÍ PRIORITY</div><ol class="coach-actions">'+priorities.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ol>':'';

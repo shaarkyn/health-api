@@ -91,8 +91,16 @@ test('the Today screen shows "how to start today" only in the morning, and draws
   const ctx = { esc: v => String(v), window: { innerWidth: 1200 } };
   vm.createContext(ctx);
   vm.runInContext(['morningWindow', 'niceTicks', 'rideReviewCard', 'rideReviewChart', 'gymSetsChart'].map(fn).join('\n') + ';this.m=morningWindow;this.card=rideReviewCard;', ctx);
-  const at = h => ({ getHours: () => h });
+  const at = (h, m = 0) => new Date(2026, 9, 7, h, m);
+  // Without sleep data: 4:00–11:59.
   assert.deepEqual([3, 4, 9, 11, 12, 19].map(h => ctx.m(at(h))), [false, true, true, true, false, false]);
+  // Nights tracked but last night not synced yet: wait for it.
+  assert.equal(ctx.m(at(7), { tracked: true, today: false }), false);
+  // Synced: from waking up until noon, at least 4 hours after a late wake-up.
+  const woke = h => ({ tracked: true, today: true, wokeAt: at(h).toISOString() });
+  assert.deepEqual([[5, 6], [7, 6], [11, 6], [12, 6], [19, 6]].map(([h, w]) => ctx.m(at(h), woke(w))), [false, true, true, false, false]);
+  assert.deepEqual([[12, 10], [13, 10], [14, 10]].map(([h, w]) => ctx.m(at(h), woke(w))), [true, true, false]);
+  assert.equal(ctx.m(at(8), { tracked: true, today: true, wokeAt: null }), true);
   const r = review('cs'), html = ctx.card({ title: 'Kolo · hodnocení jízdy', headline: 'Threshold', ...r });
   assert.match(html, /<svg/);
   assert.equal((html.match(/class="review-bar"/g) || []).length, 15);
