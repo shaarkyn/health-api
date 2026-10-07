@@ -59,7 +59,6 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
     <button class="navbtn" data-view="nutrition">${icon('apple')}<span>Výživa</span></button>
     <button class="navbtn" data-view="settings" aria-label="Nastavení">${icon('sliders')}<span>Nastavení</span></button>
   </nav>
-  <div class="sidebar-foot">Private training workspace<br>Data is loaded server-side</div>
 </aside>
 <main class="main">
 <header class="topbar">
@@ -92,7 +91,7 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
     <div class="card"><div class="label">Nárůst kondice</div><div id="tRamp" class="value">—</div><div class="small">změna kondice za týden</div></div>
   </div>
   <div class="section" id="trainingInsightsAnchor">Vývoj v čase</div>
-  <div class="card" style="margin-top:12px"><div class="weekbar"><h3>Kondice · únava · forma</h3><select id="pmcRange" aria-label="Období grafu zátěže"><option value="14">14 dní</option><option value="30">30 dní</option><option value="90">90 dní</option></select></div><svg id="pmcChart" class="chart" style="height:420px" viewBox="0 0 1000 420"></svg><div id="pmcInsight" class="notice" style="margin-top:10px"></div></div>
+  <div class="card" style="margin-top:12px"><div class="weekbar"><h3>Kondice · únava · forma</h3><div class="range-tabs" id="pmcRange" role="group" aria-label="Období grafu zátěže" data-value="14"><button type="button" class="btn selected" data-value="14" aria-pressed="true">14 dní</button><button type="button" class="btn" data-value="30" aria-pressed="false">30 dní</button><button type="button" class="btn" data-value="90" aria-pressed="false">90 dní</button></div></div><svg id="pmcChart" class="chart" style="height:420px" viewBox="0 0 1000 420"></svg><div id="pmcInsight" class="notice" style="margin-top:10px"></div></div>
   <div class="card" style="margin-top:12px"><h3>Týdenní zátěž · plán a skutečnost</h3><svg id="tssChart" class="chart" style="height:320px" viewBox="0 0 1000 320"></svg><div id="tssInsight" class="notice" style="margin-top:10px"></div></div>
   <div class="grid2" style="margin-top:12px">
     <div class="card"><h3>Tréninkový load · posledních 42 dní</h3><svg id="loadChart" class="chart" viewBox="0 0 1000 250"></svg></div>
@@ -105,7 +104,7 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
 
 <section id="workouts" class="view">
   <div class="hero section-hero">
-    <div><div class="eyebrow" id="workoutsEyebrow">Plán a knihovna · kolo</div><h1>Plán tréninků</h1><p>Plán týdne, doporučené tréninky a posilovna na jednom místě.</p><div class="sport-switch" role="group" aria-label="Sport"><button class="btn primary" type="button" data-sport="ride" aria-pressed="true">🚴 Kolo</button><button class="btn" type="button" data-sport="run" aria-pressed="false">🏃 Běh</button><button class="btn" type="button" data-sport="gym" aria-pressed="false">🏋️ Posilovna</button></div></div>
+    <div><div class="eyebrow" id="workoutsEyebrow">Plán a knihovna · kolo</div><h1>Plán tréninků</h1><div class="sport-switch" role="group" aria-label="Sport"><button class="btn primary" type="button" data-sport="ride" aria-pressed="true">🚴 Kolo</button><button class="btn" type="button" data-sport="run" aria-pressed="false">🏃 Běh</button><button class="btn" type="button" data-sport="gym" aria-pressed="false">🏋️ Posilovna</button></div></div>
     <div class="hero-status"><span>PERSONALIZACE</span><strong>Úroveň → výzva → hodnocení</strong></div>
   </div>
   <div class="card week-hub">

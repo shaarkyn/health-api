@@ -3,7 +3,8 @@
 export const workoutsHubTheme = `
 .info-tip{display:inline-grid;place-items:center;width:17px;height:17px;margin-left:4px;padding:0;border:1px solid color-mix(in srgb,var(--muted) 53%,var(--bg));border-radius:50%;background:transparent;color:color-mix(in srgb,var(--muted) 59%,var(--text));font:700 10px/1 Georgia,serif;font-style:italic;vertical-align:middle;cursor:pointer}
 .info-tip:hover,.info-tip:focus-visible,.info-tip[aria-expanded="true"]{border-color:var(--primary);color:var(--text);background:var(--primary-surface);outline:none}
-.section .info-tip{text-transform:none;letter-spacing:0}
+.section .info-tip,.label .info-tip,.eyebrow .info-tip{text-transform:none;letter-spacing:0}
+.info-tip{position:relative}.info-tip::after{content:"";position:absolute;inset:-4px}
 #infoPop{position:fixed;z-index:60;max-width:min(340px,calc(100vw - 24px));padding:12px 14px;border:1px solid var(--primary-line);border-radius:10px;background:var(--panel);color:color-mix(in srgb,var(--muted) 21%,var(--text));font-size:12px;line-height:1.5;box-shadow:0 14px 40px #000a}
 #infoPop strong{display:block;margin-bottom:4px;font-size:13px;color:var(--text)}
 #infoPop p{margin:0 0 6px}#infoPop p:last-child{margin:0}
@@ -208,7 +209,7 @@ export const workoutsHubTheme = `
 /* Dnes (all screens), quick add, bottom sheets, gym workout mode */
 .today-head h1{font-size:34px;margin:2px 0 12px}
 .mini-rings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
-.mini-ring{display:grid;justify-items:center;gap:3px;padding:12px 4px 10px;border-radius:16px;border:1px solid color-mix(in srgb,var(--cyan) 17%,var(--bg));background:color-mix(in srgb,var(--blue) 6%,var(--bg));color:color-mix(in srgb,var(--muted) 8%,var(--text));text-align:center}
+.mini-ring{display:grid;justify-items:center;align-content:start;gap:3px;padding:12px 4px 10px;border-radius:16px;border:1px solid color-mix(in srgb,var(--cyan) 17%,var(--bg));background:color-mix(in srgb,var(--blue) 6%,var(--bg));color:color-mix(in srgb,var(--muted) 8%,var(--text));text-align:center}
 .mini-ring-dial{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at center,color-mix(in srgb,var(--blue) 6%,var(--bg)) 63%,transparent 64%),conic-gradient(var(--c) calc(var(--p)*1%),color-mix(in srgb,var(--muted) 21%,var(--bg)) 0)}
 .mini-ring-dial b{font-size:15px}.mini-ring-label{font-size:12px;font-weight:700}.mini-ring small{font-size:12px;color:color-mix(in srgb,var(--muted) 94%,var(--bg));line-height:1.2}
 .today-card{padding:14px!important;margin-bottom:12px}
