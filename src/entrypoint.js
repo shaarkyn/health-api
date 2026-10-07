@@ -64,7 +64,7 @@ import { buildCyclingCoachV2 } from "./cycling-coach-v2.js";
 import { athleteThresholds, rideFtpFor } from "./intervals-athlete.js";
 import { renderForEnvironment } from "./workout-model.js";
 import { plannedEventWorkout } from "./planned-detail.js";
-import { getWeekPlan, saveWeekPlan, addWeekSport, resetWeekPlan, planWeekRoles, roleFor, weekTargets, targetFor, nightlyGymSkip, weekLoadsBefore, weeklyRunCap, capRunVolume } from "./week-planner.js";
+import { getWeekPlan, saveWeekPlan, addWeekSport, resetWeekPlan, planWeekRoles, roleFor, weekTargets, targetFor, nightlyGymSkip, weekLoadsBefore, hrvWeekTrendDown, weeklyRunCap, capRunVolume } from "./week-planner.js";
 import { availabilityOn, trainingBudget, validDay as validTrainingDay } from './training-availability.js';
 import { getAthleteState, updateAthleteState, explicitPreference, assertTrainingAllowed, proactiveAdvice } from './athlete-state.js';
 import { capWeekTargets, weekProposal, weekWeather, environmentFor, activityHistoryEstimate, indoorMinutes } from './adaptive-week.js';
@@ -395,7 +395,7 @@ async function computeWeekTargets(env,ctx,start,prefs){
   // The forecast decides outdoor or indoor (and so the length) unless the athlete chose.
   const weather=await weekWeather(prefs.location,start).catch(()=>({}));
   const runCap=weeklyRunCap(await planningHistory(env,start,28).catch(()=>[]),start);
-  return capWeekTargets(capRunVolume(weekTargets({roles:planWeekRoles(prefs.days),ctl,lastWeekLoad,weekLoads:weekLoadsBefore(wellness,start),days,today,weekStart:start}),runCap,runCommitted),prefs,[],weather);
+  return capWeekTargets(capRunVolume(weekTargets({roles:planWeekRoles(prefs.days),ctl,lastWeekLoad,weekLoads:weekLoadsBefore(wellness,start),hrvDown:hrvWeekTrendDown(wellness,start),days,today,weekStart:start}),runCap,runCommitted),prefs,[],weather);
 }
 const mondayOfDate=iso=>shiftDate(iso,-((new Date(iso+'T12:00:00Z').getUTCDay()+6)%7));
 

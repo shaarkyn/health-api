@@ -31,3 +31,14 @@ test('deep endurance fatigue (TSB) protects the legs instead of a load ratio',()
   assert.match(JSON.stringify(tired),/forma TSB -30/);
   assert.doesNotMatch(JSON.stringify(fresh),/forma TSB/);
 });
+
+test('a falling 7-day HRV before the week makes it a recovery week for everything',async()=>{
+  const { hrvWeekTrendDown, recoveryWeek } = await import('../src/week-planner.js');
+  const monday='2026-10-05',d=o=>new Date(Date.parse(monday+'T12:00:00Z')+o*86400000).toISOString().slice(0,10);
+  const rows=Array.from({length:60},(_,i)=>({id:d(-67+i),hrv:70+(i%5)}));
+  assert.equal(hrvWeekTrendDown([...rows,...Array.from({length:7},(_,i)=>({id:d(-7+i),hrv:72}))],monday),false);
+  assert.equal(hrvWeekTrendDown([...rows,...Array.from({length:7},(_,i)=>({id:d(-7+i),hrv:60}))],monday),true);
+  assert.equal(hrvWeekTrendDown([...rows,...Array.from({length:3},(_,i)=>({id:d(-3+i),hrv:50}))],monday),false);
+  assert.deepEqual(recoveryWeek({base:500,weekLoads:[400],hrvDown:true}),{recovery:true,reason:'hrv_trend'});
+  assert.deepEqual(recoveryWeek({base:500,weekLoads:[400]}),{recovery:false,reason:null});
+});

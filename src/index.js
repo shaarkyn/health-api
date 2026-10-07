@@ -2264,8 +2264,9 @@ async function energyForDate(env, date) {
   // Rest-day intake is the personal resting expenditure minus the weekly goal;
   // tracked training adds 70 % of its cost, untracked sport its daily average.
   const deficit = baseline.ready ? baseline.deficit : 0;
-  // Today and ahead, the weight trend corrects the estimate by ±100 kcal when
-  // the weight moves clearly off the chosen goal (trendAdjustment).
+  // Today and ahead, the weight trend corrects the estimate by energy balance
+  // (up to ±250 kcal) when the weight moves clearly off the chosen goal
+  // (trendAdjustment).
   const trend = baseline.ready && !isCompleteDay ? trendAdjustment(profile?.goal, await d1WeightTrend(env, date)) : { adjustment: 0, reason: null };
   const restIntakeTarget = baseline.ready ? baseline.baselineRestTDEE - deficit + trend.adjustment : null;
   const plannedTrainingCalories = baseline.ready && estimatedTDEE != null ? Math.max(0, estimatedTDEE - baseline.baselineRestTDEE - baseline.sportDaily) : 0;
@@ -2445,7 +2446,7 @@ async function analysisDaily(
         : energy.nutritionContext?.training
           ? "Dnešní cíl zohledňuje plánovaný/dokončený trénink a " + goalPhrase(energy) + "."
           : "Dnešní cíl vychází z klidového energetického základu a " + goalPhrase(energy) + ".")
-        + (energy.calorieBreakdown?.trendAdjustment ? " Podle vývoje váhy: " + TREND_REASONS[energy.calorieBreakdown.trendReason] + "." : "")
+        + (energy.calorieBreakdown?.trendAdjustment ? " Podle vývoje váhy: " + TREND_REASONS[energy.calorieBreakdown.trendReason] + ", o " + Math.abs(energy.calorieBreakdown.trendAdjustment) + " kcal " + (energy.calorieBreakdown.trendAdjustment < 0 ? "méně" : "víc") + "." : "")
         + (energy.calorieBreakdown?.floorApplied ? ` Cíl drží bezpečné minimum ${energy.calorieBreakdown.minTarget} kcal, takže hubnutí půjde pomaleji než zvolené tempo.` : ""),
       foodLog:
         await foodLogForDate(env, date)

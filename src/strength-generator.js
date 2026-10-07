@@ -527,7 +527,7 @@ export function generateStrengthPlan(context, options = {}) {
   // The shared recovery week decides when it is known; four solid gym weeks
   // in a row are the fallback for athletes without Intervals.icu loads.
   const shared = context?.recoveryWeek;
-  const deload = options.noDeload ? null : shared?.recovery ? { shared: true, reason: "Regenerační týden pro celý trénink (" + (shared.reason === "three_weeks" ? "po třech týdnech nad udržovací zátěží" : "po náročném týdnu") + "): posilovna je odlehčená – méně sérií, váha se drží, RPE do 7." } : shared?.known ? null : strengthDeload(context?.strength?.recentCompletedSets, context.date);
+  const deload = options.noDeload ? null : shared?.recovery ? { shared: true, reason: "Regenerační týden pro celý trénink (" + (shared.reason === "three_weeks" ? "po třech týdnech nad udržovací zátěží" : shared.reason === "hrv_trend" ? "HRV za poslední týden pod tvým běžným pásmem" : "po náročném týdnu") + "): posilovna je odlehčená – méně sérií, váha se drží, RPE do 7." } : shared?.known ? null : strengthDeload(context?.strength?.recentCompletedSets, context.date);
   // A deload week holds the loads (no increase, no set to failure).
   const chosen = choosePlan(context, options), factor = deload ? Math.min(recoveryFactor(context), 0.89) : recoveryFactor(context), history = context?.strength?.recentCompletedSets || [], historyMap = recentExerciseMap(history);
   const firstSession = !history.length;

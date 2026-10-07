@@ -1896,7 +1896,7 @@ function planChips(i,date){
 }
 function weekTargetText(){
   const t=state.weekPlan?.targets;if(!t||t.status!=='ok')return '';
-  return (t.recovery?'Regenerační týden '+(t.recoveryReason==='three_weeks'?'po třech týdnech nad udržovací zátěží':'po náročném týdnu ('+t.lastWeekLoad+' TSS)')+' · platí i pro posilovnu · cíl ≈ '+t.target+' TSS (70 % z udržovacích '+t.base+')':'Cíl týdne ≈ '+t.target+' TSS (udržení kondice CTL '+t.ctl+' × 7 + 5 %)')+' · hotovo a v plánu '+t.committed+' TSS'+(t.shortfall?' · do cíle chybí ~'+t.shortfall+' TSS, přidej další den':'')+(t.runCap?.limited?' · běh tento týden nejvýš '+hm(t.runCap.cap)+' (+10 % proti posledním týdnům, '+hm(t.runCap.base)+'); návrhy běhu jsou kratší':'');
+  return (t.recovery?'Regenerační týden '+(t.recoveryReason==='three_weeks'?'po třech týdnech nad udržovací zátěží':t.recoveryReason==='hrv_trend'?'· HRV za poslední týden pod tvým běžným pásmem':'po náročném týdnu ('+t.lastWeekLoad+' TSS)')+' · platí i pro posilovnu · cíl ≈ '+t.target+' TSS (70 % z udržovacích '+t.base+')':'Cíl týdne ≈ '+t.target+' TSS (udržení kondice CTL '+t.ctl+' × 7 + 5 %)')+' · hotovo a v plánu '+t.committed+' TSS'+(t.shortfall?' · do cíle chybí ~'+t.shortfall+' TSS, přidej další den':'')+(t.runCap?.limited?' · běh tento týden nejvýš '+hm(t.runCap.cap)+' (+10 % proti posledním týdnům, '+hm(t.runCap.base)+'); návrhy běhu jsou kratší':'');
 }
 // IF from load and length (TSS = h × IF² × 100); gym load has no IF.
 function intensityOf(tss,minutes){const t=num(tss),h=num(minutes)/60;return t>0&&h>0?Math.sqrt(t/(h*100)):null}
