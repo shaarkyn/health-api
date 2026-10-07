@@ -48,6 +48,28 @@ export function missingHealthPermissions(env) {
   return Object.entries(HEALTH_PERMISSIONS).filter(([, scope]) => !hasGoogleScope(env, scope)).map(([name]) => name);
 }
 
+// Which base permission each synced Google Health data type needs. Types the
+// user did not grant are skipped instead of failing the sync; a type missing
+// here is always asked for.
+const TYPE_PERMISSION = {
+  sleep: "sleep", "respiratory-rate-sleep-summary": "sleep",
+  "heart-rate": "metrics", "heart-rate-variability": "metrics", "oxygen-saturation": "metrics",
+  "daily-resting-heart-rate": "metrics", "daily-heart-rate-variability": "metrics", "daily-oxygen-saturation": "metrics",
+  "daily-respiratory-rate": "metrics", weight: "metrics", "body-fat": "metrics",
+  "active-energy-burned": "activity", "active-minutes": "activity", "active-zone-minutes": "activity", steps: "activity",
+  distance: "activity", floors: "activity", "sedentary-period": "activity", "time-in-heart-rate-zone": "activity",
+  "daily-heart-rate-zones": "activity", "daily-vo2-max": "activity", exercise: "activity", "total-calories": "activity"
+};
+export function googleTypeAllowed(env, type) {
+  const permission = TYPE_PERMISSION[type];
+  return !permission || hasGoogleScope(env, HEALTH_PERMISSIONS[permission]);
+}
+// A refusal for a data type when the user gave only some permissions is a
+// permission the user chose not to give, not a failed sync.
+export function skippedForPermission(env, error) {
+  return /HTTP 403/.test(String(error?.message || "")) && missingHealthPermissions(env).length > 0;
+}
+
 // Scopes for a Google Health access token: the granted base ones plus weight
 // writing when granted. Asking a refresh for a scope the user did not grant
 // fails the whole token. People API scopes get their own token (see

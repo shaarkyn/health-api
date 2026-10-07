@@ -62,6 +62,24 @@ test("a Google token asks only for what the user granted, and never without a co
   } finally { globalThis.fetch = realFetch; }
 });
 
+test("a sync skips Google data the user gave no permission for and still ends ok", async () => {
+  const db = profileDb();
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async url => { calls.push(String(url)); return Response.json(String(url).includes("oauth2") ? { access_token: "t" } : { dataPoints: [] }); };
+  try {
+    const env = { DB: db, USER_ID: 7, GOOGLE_REFRESH_TOKEN: "r", GOOGLE_SCOPES: [HEALTH_PERMISSIONS.activity, HEALTH_PERMISSIONS.sleep], CONNECTED_PROVIDERS: ["google"] };
+    const body = await (await legacy.fetch(new Request("https://internal/sync/google/recent", { method: "POST" }), env, ctx)).json();
+    assert.equal(body.status, "ok");
+    const health = calls.filter(url => url.includes("health.googleapis.com"));
+    assert.ok(health.some(url => url.includes("/dataTypes/steps/")) && health.some(url => url.includes("/dataTypes/sleep/")));
+    for (const type of ["weight", "daily-resting-heart-rate", "daily-heart-rate-variability"]) {
+      assert.ok(!health.some(url => url.includes(`/dataTypes/${type}/`)), type);
+      assert.equal(body.results.find(r => r.type === type).status, "skipped");
+    }
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test("the connection status names Google permissions that were not given", async () => {
   const status = await connectionStatus({ GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "s", GOOGLE_REFRESH_TOKEN: "r", GOOGLE_SCOPES: [HEALTH_PERMISSIONS.activity] });
   const google = status.providers.find(p => p.id === "google");
@@ -229,4 +247,10 @@ test("without a service the app does not offer what needs it", () => {
   assert.match(client, /serviceConnected\('intervals'\)\?'Přidat do Intervals\.icu':'Připojit Intervals\.icu'/);
   // Food entries carry no "Google · není připojené" badge without Google Health.
   assert.match(client, /function foodExportHtml\(entry\)\{\n  if\(!serviceConnected\('google'\)\)return '';/);
+});
+
+test("without Intervals.icu the fitness and form cards say where the numbers come from", () => {
+  assert.match(client, /Kondice · jen s Intervals\.icu/);
+  assert.match(client, /const ownLoad=serviceConnected\('intervals'\);\n  \$\("oFitness"\)\.innerHTML=ownLoad\?/);
+  assert.doesNotMatch(dashboardPage.toString() + client, /targetWeightKg\|\|80/);
 });

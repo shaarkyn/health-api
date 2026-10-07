@@ -374,14 +374,17 @@ function renderOverview(){
   $("oMacros").innerHTML='<div class="macro-line"><b class="ink" style="--c:#60a5fa">P</b><span>'+fmt(f.protein_g)+' / '+fmt(m.protein)+' g</span></div><div class="macro-line"><b class="ink" style="--c:#f59e0b">C</b><span>'+fmt(f.carbs_g)+' / '+fmt(m.carbs)+' g</span></div><div class="macro-line"><b class="ink" style="--c:#a78bfa">F</b><span>'+fmt(f.fat_g)+' / '+fmt(m.fat)+' g</span></div>';
   const days=state.week?.days||[];
   const fw=(state.fitness?.wellness||[]).filter(r=>r.id<=selectedHistoryDate),latest=fw[fw.length-1]||{},prev=fw[fw.length-8]||{};
-  $("oFitness").innerHTML=(measured(latest.ctl)?fmt(latest.ctl):"—")+trendArrow(latest.ctl,prev.ctl,false,"");
-  $("oForm").innerHTML=formText(latest.tsb)+trendArrow(latest.tsb,prev.tsb,false,"");
+  // Fitness and form come only from Intervals.icu; without it the cards say so.
+  const ownLoad=serviceConnected('intervals');
+  $("oFitness").innerHTML=ownLoad?(measured(latest.ctl)?fmt(latest.ctl):"—")+trendArrow(latest.ctl,prev.ctl,false,""):"—";
+  $("oForm").innerHTML=ownLoad?formText(latest.tsb)+trendArrow(latest.tsb,prev.tsb,false,""):"—";
   const wr=(d.weight?.records||[]).filter(x=>x.value_numeric!=null&&String(x.sample_time).slice(0,10)<=selectedHistoryDate).sort((a,b)=>String(a.sample_time).localeCompare(String(b.sample_time)));
   const currentW=wr.length?Number(wr[wr.length-1].value_numeric):selectedHistoryDate===pragueToday()?Number(d.weight?.current):NaN;
   const startW=wr[0];
   const weightDelta=Number.isFinite(currentW)&&startW?currentW-num(startW.value_numeric):null;
   const weightTrend=weightDelta==null||Math.abs(weightDelta)<.05?"":'<div class="trend '+(weightDelta<0?"good":"bad")+'">'+(weightDelta>0?"↑ +":"↓ ")+fmt(weightDelta,1)+' kg od počáteční váhy</div>';
-  const targetW=Number(d.nutrition?.targetWeightKg||80),remainingW=Number.isFinite(currentW)?currentW-targetW:null; $("oWeight").innerHTML=Number.isFinite(currentW)?fmt(currentW,1)+" kg"+weightTrend:"—"; $("oWeightMeta").textContent=Number.isFinite(remainingW)?"Aktuálně · cíl "+fmt(targetW,1)+" kg · zbývá "+fmt(Math.max(0,remainingW),1)+" kg":"aktuálně · cíl "+fmt(targetW,1)+" kg";
+  // Without a target weight in the profile there is no goal line.
+  const targetW=Number(d.nutrition?.targetWeightKg)||null,remainingW=targetW&&Number.isFinite(currentW)?currentW-targetW:null; $("oWeight").innerHTML=Number.isFinite(currentW)?fmt(currentW,1)+" kg"+weightTrend:"—"; $("oWeightMeta").textContent=!targetW?"aktuálně":Number.isFinite(remainingW)?"Aktuálně · cíl "+fmt(targetW,1)+" kg · zbývá "+fmt(Math.max(0,remainingW),1)+" kg":"aktuálně · cíl "+fmt(targetW,1)+" kg";
   macroChart("calChart",days);
   renderMealDiary();
 }
@@ -4291,14 +4294,16 @@ function projectedForm(date){
 }
 function renderFutureSignals(){
   const date=selectedHistoryDate,future=date>pragueToday();if(!$('oFitness'))return;
-  for(const [id,text] of [['oFitness','CTL · odhad'],['oForm','TSB · odhad na ráno']]){const small=$(id).closest('.card')?.querySelector(':scope>.small');if(!small)continue;if(small.dataset.original==null)small.dataset.original=small.textContent;small.textContent=future?text:small.dataset.original;}
+  const ownLoad=serviceConnected('intervals');
+  for(const [id,text,none] of [['oFitness','CTL · odhad','Kondice · jen s Intervals.icu'],['oForm','TSB · odhad na ráno','Forma · jen s Intervals.icu']]){const small=$(id).closest('.card')?.querySelector(':scope>.small');if(!small)continue;if(small.dataset.original==null)small.dataset.original=small.textContent;small.textContent=!ownLoad?none:future?text:small.dataset.original;}
   if(!future)return;
   const p=projectedForm(date),note=p?(p.unknown?'odhad · '+p.unknown+' '+(p.unknown===1?'den':p.unknown<5?'dny':'dní')+' bez plánu počítám jako volno':'odhad podle plánu'):'';
-  if(p){$('oFitness').innerHTML=fmt(p.ctl,1)+'<div class="trend">'+esc(note)+'</div>';$('oForm').innerHTML=formText(p.form)+'<div class="trend">'+esc(note)+'</div>';}
+  if(!ownLoad){$('oFitness').innerHTML='—';$('oForm').innerHTML='—';}
+  else if(p){$('oFitness').innerHTML=fmt(p.ctl,1)+'<div class="trend">'+esc(note)+'</div>';$('oForm').innerHTML=formText(p.form)+'<div class="trend">'+esc(note)+'</div>';}
   else{$('oFitness').innerHTML='<span class="is-empty">Bez dat z Intervals.icu</span>';$('oForm').innerHTML='<span class="is-empty">Bez dat z Intervals.icu</span>';}
   const weights=(state.weight?.records||[]).filter(r=>measured(r.value_numeric)).sort((a,b)=>String(a.sample_time).localeCompare(String(b.sample_time))),w=weights.at(-1);
   $('oWeight').innerHTML=w?fmt(num(w.value_numeric),1)+' kg':'<span class="is-empty">Bez záznamu</span>';
-  if($('oWeightMeta'))$('oWeightMeta').textContent=w?'Poslední záznam '+dateLabel(pragueDay(w.sample_time))+' · cíl '+fmt(Number(state.daily?.nutrition?.targetWeightKg||80),1)+' kg':'';
+  if($('oWeightMeta'))$('oWeightMeta').textContent=w?'Poslední záznam '+dateLabel(pragueDay(w.sample_time))+(Number(state.daily?.nutrition?.targetWeightKg)?' · cíl '+fmt(Number(state.daily.nutrition.targetWeightKg),1)+' kg':''):'';
   $('oSleep').innerHTML='<span class="is-empty">Noc ještě nebyla</span>';
   const nights=primarySleepSessions(state.sleep?.sessions).slice(0,30),avg=nights.length?nights.reduce((s,r)=>s+num(r.durationMin),0)/nights.length:null;
   if($('oSleepMeta'))$('oSleepMeta').textContent='Cíl 8 h'+(avg?' · tvůj průměr '+hm(avg):'');

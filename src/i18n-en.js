@@ -1677,6 +1677,11 @@ export const EN = {
 "Kolo a běh se do kalendáře zapisují přes Intervals.icu; připojíš ho v Nastavení → Propojení.": "Rides and runs reach your calendar through Intervals.icu; connect it in Settings → Connections.",
 "Jen s Google Health": "Only with Google Health",
 "kolo a běh: připoj Intervals.icu": "rides and runs: connect Intervals.icu",
+"Kondice · jen s Intervals.icu": "Fitness · only with Intervals.icu",
+"Forma · jen s Intervals.icu": "Form · only with Intervals.icu",
+"CTL · odhad": "CTL · estimate",
+"Bez dat z Intervals.icu": "No Intervals.icu data",
+"aktuálně": "current"
 };
 
 export const EN_TEMPLATES = {

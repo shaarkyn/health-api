@@ -73,7 +73,7 @@ body{background:var(--bg);font-size:14px;letter-spacing:-.01em}.shell{grid-templ
 <section id="overview" class="view">
   <div class="readiness-hero"><div><div class="readiness-kicker">Performance readiness · <span id="overviewDate">—</span></div><h1 id="readinessTitle">Dnešní připravenost</h1><p id="readinessInsight">Načítám dnešní signály.</p><div id="readinessFocus" class="focus-chip">Dnešní priorita</div></div><div class="readiness-score"><div id="readinessOrb" class="score-orb"><div><strong id="readinessScore">—</strong><span>recovery</span></div></div><div id="readinessCaption" class="score-caption">čekám na spánek</div></div><div class="readiness-metrics"><div id="readinessDials" class="dial-row"></div></div></div>
   <div class="section">Denní signály</div><div class="quick-grid">
-    <div class="card"><div class="label">Hmotnost</div><div id="oWeight" class="value">—</div><div id="oWeightMeta" class="small">aktuálně · cíl 80 kg</div></div>
+    <div class="card"><div class="label">Hmotnost</div><div id="oWeight" class="value">—</div><div id="oWeightMeta" class="small">aktuálně</div></div>
     <div class="card"><div class="label">Spánek</div><div id="oSleep" class="value">—</div><div id="oSleepMeta" class="small">recovery vs. 30 dní</div></div>
     <div class="card"><div class="label">Fitness</div><div id="oFitness" class="value">—</div><div class="small">CTL · Intervals.icu</div></div>
     <div class="card"><div class="label">Form</div><div id="oForm" class="value">—</div><div class="small">TSB · dnes</div></div>

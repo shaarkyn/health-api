@@ -5,7 +5,7 @@ import {walkingEnergyCheck,activityTelemetryEnergy} from './activity-energy-chec
 import { energyBaseline, MISSING_LABELS } from "./energy-profile.js";
 import { loadEffectiveProfile } from "./profile-suggestions.js";
 import { writeIntervalsWeight } from "./weight-sync.js";
-import { healthScopes, hasGoogleScope, HEALTH_PERMISSIONS } from "./google-scopes.js";
+import { healthScopes, hasGoogleScope, HEALTH_PERMISSIONS, googleTypeAllowed, skippedForPermission } from "./google-scopes.js";
 import { dateFormat } from "./date-format.js";
 import { intervalsAuthorization } from "./intervals-auth.js";
 
@@ -1106,8 +1106,9 @@ async function saveGooglePointsBatch(env, family, type, points) {
 }
 async function syncGoogleRecent(env){
   const token=await googleToken(env),wanted=['sleep','daily-heart-rate-variability','daily-resting-heart-rate','steps','active-energy-burned','exercise','weight'],configs=GOOGLE_SYNC_CONFIGS.filter(c=>wanted.includes(c[0])).map(c=>c[0]==='weight'?['weight','weight','sample','all-sources',2]:c);
-  const results=await Promise.all(configs.map(async([type,filter,typeFilter,family])=>{let pageToken=null,saved=0;try{for(let i=0;i<8;i++){const page=await googleReconcilePage(token,type,filter,typeFilter,dateDaysAgo(2),'users/me/dataSourceFamilies/'+family,dateDaysFromNow(1),pageToken);saved+=await saveGooglePointsBatch(env,family,type,page.dataPoints);pageToken=page.nextPageToken;if(!pageToken)break;}return{type,saved,status:pageToken?'partial':'ok'};}catch(error){return{type,saved,status:'error',message:error.message};}}));
-  const result={status:results.some(r=>r.status!=='ok')?'partial':'ok',results};
+  const results=await Promise.all(configs.map(async([type,filter,typeFilter,family])=>{let pageToken=null,saved=0;if(!googleTypeAllowed(env,type))return{type,saved,status:'skipped'};try{for(let i=0;i<8;i++){const page=await googleReconcilePage(token,type,filter,typeFilter,dateDaysAgo(2),'users/me/dataSourceFamilies/'+family,dateDaysFromNow(1),pageToken);saved+=await saveGooglePointsBatch(env,family,type,page.dataPoints);pageToken=page.nextPageToken;if(!pageToken)break;}return{type,saved,status:pageToken?'partial':'ok'};}catch(error){return{type,saved,status:skippedForPermission(env,error)?'skipped':'error',message:error.message};}}));
+  // Data the user did not give permission for is not a failure.
+  const result={status:results.some(r=>r.status!=='ok'&&r.status!=='skipped')?'partial':'ok',results};
   await ensureSyncStatusTable(env);
   await env.DB.prepare("INSERT INTO sync_status(user_id,sync_name,status,details_json,updated_at) VALUES(?,'google_recent',?,?,datetime('now')) ON CONFLICT(user_id,sync_name) DO UPDATE SET status=excluded.status,details_json=excluded.details_json,updated_at=excluded.updated_at").bind(env.USER_ID,result.status,JSON.stringify(result)).run();
   return result;
@@ -1184,36 +1185,35 @@ async function processGoogleSyncBatch(env) {
     const [type, filterName, filterType, family, days] = GOOGLE_SYNC_CONFIGS[configIndex];
 
     try {
-      const token = await googleToken(env);
-      const start = dateDaysAgo(days);
-      const end = dateDaysFromNow(1);
-
-      const page = await googleReconcilePage(
-        token,
+      // A data type the user did not give permission for is skipped, not failed.
+      const allowed = googleTypeAllowed(env, type);
+      const page = allowed ? await googleReconcilePage(
+        await googleToken(env),
         type,
         filterName,
         filterType,
-        start,
+        dateDaysAgo(days),
         `users/me/dataSourceFamilies/${family}`,
-        end,
+        dateDaysFromNow(1),
         pageToken
-      );
+      ) : { dataPoints: [], nextPageToken: null };
 
-      const saved = await saveGooglePointsBatch(env, family, type, page.dataPoints);
+      const saved = allowed ? await saveGooglePointsBatch(env, family, type, page.dataPoints) : 0;
       const existing = results.find(x => x.data_type === type);
+      const status = !allowed ? "skipped" : page.nextPageToken ? "partial" : "ok";
 
       if (existing) {
         existing.records_found = Number(existing.records_found || 0) + page.dataPoints.length;
         existing.records_saved = Number(existing.records_saved || 0) + saved;
         existing.pages = Number(existing.pages || 0) + 1;
-        existing.status = page.nextPageToken ? "partial" : "ok";
+        existing.status = status;
       } else {
         results.push({
           data_type: type,
           records_found: page.dataPoints.length,
           records_saved: saved,
-          pages: 1,
-          status: page.nextPageToken ? "partial" : "ok"
+          pages: allowed ? 1 : 0,
+          status
         });
       }
 
@@ -1255,7 +1255,7 @@ async function processGoogleSyncBatch(env) {
         records_found: 0,
         records_saved: 0,
         pages: 0,
-        status: "error",
+        status: skippedForPermission(env, error) ? "skipped" : "error",
         message
       });
 
