@@ -8,7 +8,7 @@ import { todayGymContext,gymAdjustmentRequest } from './coach-gym-adjustment.js'
 import { readOpenAIStream,partialCoachAnswer } from './assistant-stream.js';
 import { resolveStrengthPerformance } from './strength-history.js';
 import { rideFtpFor } from './intervals-athlete.js';
-import { replyLanguageNote } from './i18n.js';
+import { aiLanguageNote, L } from './lang.js';
 import { dateFormat } from "./date-format.js";
 import { assertAiAllowance, recordAiUsage } from './ai-usage.js';
 
@@ -266,7 +266,7 @@ export async function callOpenAI(env, { instructions, input, maxOutputTokens = 5
       reasoning:{effort:reasoningEffort},
       store:false,
       ...(onText?{stream:true}:{}),
-      instructions,
+      instructions:instructions+aiLanguageNote(feature),
       input,
       max_output_tokens:maxOutputTokens,
       ...(tools ? {tools} : {}),
@@ -310,7 +310,7 @@ export async function askCoach(env, message, context, {model = null, focus = nul
   const brief=concise||task==='adjustment';
   let streamed='',lastAnswer='';
   const onText=onAnswer?delta=>{streamed+=delta;const answer=actions?partialCoachAnswer(streamed):streamed;if(answer!==lastAnswer){lastAnswer=answer;onAnswer(answer);}}:null;
-  const r = await callOpenAI(env, {feature:'assistant',instructions:withFocus(coachInstructions, focus)+replyLanguageNote(env)+(actions?'\n\n'+ACTION_INSTRUCTIONS:'')+(brief?'\nTento požadavek vyřiď stručně: answer nejvýše 90 slov, důvod každé akce jedna věta. Neopisuj celý kalendář.':''), input, model:chosen, reasoningEffort:light ? 'low' : complexEffort(env), maxOutputTokens:TASK_LIMITS[task]||TASK_LIMITS.planning,format:actions?COACH_ACTION_FORMAT:null,onText});
+  const r = await callOpenAI(env, {feature:'assistant',instructions:withFocus(coachInstructions, focus)+(actions?'\n\n'+ACTION_INSTRUCTIONS:'')+(brief?'\nTento požadavek vyřiď stručně: answer nejvýše 90 slov, důvod každé akce jedna věta. Neopisuj celý kalendář.':''), input, model:chosen, reasoningEffort:light ? 'low' : complexEffort(env), maxOutputTokens:TASK_LIMITS[task]||TASK_LIMITS.planning,format:actions?COACH_ACTION_FORMAT:null,onText});
   const reply=coachAnswerText(r.text,{actions,incomplete:r.incomplete});
   return {status:'ok', answer:reply.answer,visuals:reply.visuals,actions:reply.actions,incomplete:Boolean(r.incomplete), model:r.model || chosen, usage:r.usage, ms:Date.now() - started, coachEngine:context?.cyclingCoachV2?.version||null};
 }

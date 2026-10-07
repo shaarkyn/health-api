@@ -95,6 +95,7 @@ import { pragueToday } from './prague-date.js';
 import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.js';
 import { englishScript } from './i18n.js';
 import { dateFormat } from "./date-format.js";
+import { lang, withLang, storedLanguage, rememberLanguage } from "./lang.js";
 
 const OPENAPI_URL = "https://raw.githubusercontent.com/shaarkyn/health-api/main/openapi.json";
 
@@ -113,7 +114,8 @@ async function forEachUser(env, providers, fn) {
   for (const user of await usersWithProviders(env.DB, env, providers)) {
     try {
       const scoped = await connectionEnvironment(userEnv(env, user));
-      if (providers.some(p => (scoped.CONNECTED_PROVIDERS || []).includes(p))) results.push({ userId: user.id, result: await fn(scoped, user) });
+      // Texts written by a job (workouts sent to Intervals.icu, …) use the user's app language.
+      if (providers.some(p => (scoped.CONNECTED_PROVIDERS || []).includes(p))) results.push({ userId: user.id, result: await withLang(await storedLanguage(env.DB, user.id, { fresh: true }), () => fn(scoped, user)) });
     } catch (error) {
       console.error("Per-user job failed", user.id, error.message);
       results.push({ userId: user.id, error: error.message });
@@ -180,6 +182,18 @@ const worker = {
     }
     if (user) env = await connectionEnvironment(userEnv(rawEnv, user));
     else env = { ...rawEnv, DB: null, RAW_DB: rawEnv.DB };
+    // Everything written for the user in this request follows the app language:
+    // the app sends it with each request; otherwise the remembered choice.
+    const headerLang = request.headers.get('X-Interface-Language');
+    const cookieLang = /(?:^|;\s*)lw-lang=(cs|en)/.exec(request.headers.get('cookie') || '')?.[1];
+    if (user && headerLang) await rememberLanguage(rawEnv.DB, user.id, headerLang);
+    const language = headerLang || cookieLang || (user ? await storedLanguage(rawEnv.DB, user.id) : 'cs');
+    return withLang(language, () => routeRequest(request, env, ctx, { url, rawEnv, principal, user, isPublic }));
+  }
+};
+
+async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, isPublic }) {
+    {
     const signedIn = principal?.kind === "user" && Boolean(user);
     if(env.AI_PAYWALL_ENABLED==='true'&&/^\/app\/api\/(assistant(?:\/stream)?$|gym\/adjust$|food\/(ai-lookup|photo|chat)$|review(?:\/|$))/.test(url.pathname)){
       try{await assertAIAccess(env);}catch(error){return Response.json({status:'subscription_required',message:error.message},{status:402});}
@@ -228,8 +242,8 @@ const worker = {
     }
     if (!user) return unauthorizedResponse();
     return app.fetch(request, env, ctx);
-  }
-};
+    }
+}
 
 export default {
   scheduled: worker.scheduled,
@@ -484,7 +498,7 @@ function pragueDayStartUtc(date){
 }
 
 async function handleDashboardApi(request, env, ctx, url, session = {}) {
-  env={...env,INTERFACE_LANGUAGE:String(request.headers.get('X-Interface-Language')||'cs').slice(0,20)};
+  env={...env,INTERFACE_LANGUAGE:lang()};
   const internalAuth = { "Authorization": "Bearer " + String(env.STRENGTH_API_KEY || "") };
   if(url.pathname==='/app/api/athlete-state'){
     if(!session.signedIn)return Response.json({message:'Přihlas se do dashboardu.'},{status:401});
