@@ -17,23 +17,20 @@ Na produkci se nasazuje jen přes GitHub Actions (`.github/workflows/deploy-work
 
 ## Jak teče požadavek
 
-`src/entrypoint.js` je vstupní bod Workeru. Řeší přihlášení (`dashboard-auth.js`), uživatele (`tenancy.js`), dashboard API (`/app/api/*`), MCP (`/mcp`) a automatizace (`/automation/*`). Co nezpracuje sám, posílá dál vrstvami, z nichž každá přepisuje pár cest a zbytek předá níž:
+`src/entrypoint.js` je vstupní bod Workeru. Řeší přihlášení (`dashboard-auth.js`), uživatele (`tenancy.js`), dashboard API (`/app/api/*`), MCP (`/mcp`) a automatizace (`/automation/*`). Co nezpracuje sám, posílá dál:
 
 ```
-entrypoint.js → strength-gateway.js → v400.js → v323fix.js → v323.js → index.js
+entrypoint.js → strength-gateway.js → index.js
 ```
 
-- `strength-gateway.js`: síla, výživa, denní plán, rozhodnutí dne (`/strength/*`, `/nutrition/*`, `/daily/plan`, …).
-- `v400.js`: `/analysis/energy`, `/analysis/day-plan`, `/food/day-plan`.
-- `v323fix.js`: opravuje klasifikaci plánovaných tréninků z Intervals.icu pro všechny cesty pod sebou.
-- `v323.js`: `/food/recommend` (doporučení jídel k osobnímu cíli) a kontext tréninku k `/analysis/energy`.
-- `index.js`: původní API: synchronizace Google Health a Intervals.icu, `/analysis/daily`, deník jídla, cron.
+- `strength-gateway.js`: síla, výživa, denní plán, rozhodnutí dne (`/strength/*`, `/nutrition/*`, `/daily/plan`, …) a `/food/recommend` (návrhy jídel k osobnímu cíli z `food-recommend.js`).
+- `index.js`: původní API: synchronizace Google Health a Intervals.icu, `/analysis/daily`, `/analysis/energy`, deník jídla, cron.
 
 Vzhled dashboardu: barvy rozhraní jsou tokeny v `src/design-system.js` (načítá se jako poslední vrstva CSS), ikony jsou jedna SVG sada v `src/icons.js`. Ostatní odstíny se z tokenů míchají, např. `color-mix(in srgb,var(--text) 12%,var(--bg))`; barvu natvrdo pro plochy, čáry a šedé texty test `tests/design-tokens.test.mjs` nepustí. Světlý vzhled jen předefinuje tokeny (`:root[data-theme="light"]` a stejná sada pro systémové nastavení). Bez volby se vzhled řídí nastavením zařízení. Přepínač Světlý / Tmavý v horní liště nebo Nastavení ho přepíše přes cookie `lw-theme`, kterou stránka čte ještě před vykreslením; volba stejného vzhledu, jaký má zařízení, cookie smaže. Barvy dat v grafech (makra, fáze spánku, zóny) zůstávají u grafů.
 
 Veřejný web: úvodní stránka Přehled na `/` a stránky `/privacy`, `/terms`, `/support` jsou v `src/site-pages.js`. Berou stejné tokeny a přepínač vzhledu jako aplikace. Snímky obrazovek jsou v `public/site/` (statické soubory Workeru, každý ve světlé i tmavé verzi) (`phone-*` z mobilu 390×844 @2x, `today-*` z počítače) a vznikají ze sandboxu `scripts/sandbox-preview.mjs`. Anglický odstavec „Google Health data disclosure“ na úvodní stránce musí zůstat kvůli ověření aplikace u Googlu.
 
-Nová logika patří do samostatných modulů v `src/` volaných z `entrypoint.js` nebo `strength-gateway.js`, ne do vrstev `v*.js`. Ty se postupně ruší.
+Nová logika patří do samostatných modulů v `src/` volaných z `entrypoint.js` nebo `strength-gateway.js`.
 
 Kalorický cíl, který vidí uživatel, je vyšší ze dvou hodnot (`applyEnergyBudget` v `energy-budget.js`): očekávaný den z profilu (`nutrition.calorieTarget` z `/analysis/daily`) a průběžný rozpočet z aktivní energie naměřené Google Health. Ráno tak cíl neleží na minimu a během aktivního dne roste.
 
@@ -71,6 +68,23 @@ Nastavují se v Cloudflare (`wrangler secret put NAZEV`), ne v repozitáři.
 Google OAuth: připojení žádá jen scopes Google Health (`google-scopes.js`). Tlačítko „Rozšířit oprávnění Google“ v Nastavení si zvlášť vyžádá zápis váhy (`googlehealth.health_metrics_and_measurements.writeonly`) a datum narození (`user.birthday.read`, People API); obojí musí být povolené na OAuth consent screen a People API zapnuté v Google Cloud. Udělená oprávnění se ukládají k připojení uživatele.
 
 GitHub Actions potřebují `CLOUDFLARE_API_TOKEN` a `CLOUDFLARE_ACCOUNT_ID`; automatizace se k API přihlašují tokenem GitHub OIDC.
+
+## Testovací kopie (staging)
+
+Na https://staging.petrfitnessdata.eu/app běží kopie aplikace s vlastní databází `health-data-staging` (`env.staging` ve `wrangler.jsonc`). Workflow `deploy-staging.yml` na ni nasadí každý push do otevřeného pull requestu (nebo ručně vybranou větev), takže se změna dá vyzkoušet před „mergni“. Živá verze se nasazuje dál jen z `main`.
+
+- Prázdná databáze dostane strukturu živé databáze (bez dat) ze `staging/schema.sql`, potom běží migrace jako v produkci.
+- Data: `scripts/copy-owner-data.mjs` jednou zkopíruje data správce (`OWNER_EMAIL`) ze živé databáze, kterou jen čte. Nekopíruje přihlašovací klíče ke Googlu a Intervals.icu, stav synchronizace ani data pozvaných uživatelů. Znovu se kopíruje jen při ručním spuštění workflow s volbou `refresh_data` (přepíše, co v kopii je).
+- Každá stránka má dole štítek „TEST · staging“ a hlavičku `noindex`.
+- Nemá cron, sama nic nesynchronizuje do Google ani Intervals.icu.
+- Secrets se nastavují zvlášť u Workeru `health-api-staging` (v Cloudflare nebo `wrangler secret put NAZEV --env staging`). Pro přihlášení stačí `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (stejné jako v produkci) a `STRENGTH_API_KEY` (u stagingu vlastní, libovolný dlouhý náhodný řetězec); v Google Cloud musí OAuth klient mít navíc přesměrování `https://staging.petrfitnessdata.eu/auth/google/callback` a `https://staging.petrfitnessdata.eu/oauth/google/callback`. Pro asistenta a fotky jídla volitelně `OPENAI_API_KEY`.
+- `INTERVALS_API_KEY` ani připojení Google Health ve stagingu raději nenastavuj: pracují se skutečnými účty, takže by se zápisy (tréninky, váha) propsaly i tam.
+
+## Bezpečnost
+
+- Cloudflare spouští `src/main.js`: aplikaci z `entrypoint.js` za přesměrováním na HTTPS a bezpečnostními hlavičkami (`web-security.js`: HSTS, zákaz vložení do cizí stránky, `nosniff`, `Referrer-Policy`). Hlavičku, kterou si odpověď nastaví sama, nepřepisuje.
+- Repozitář je veřejný, a s ním i logy GitHub Actions. Workflow proto z odpovědí API vypisují jen souhrn ze `scripts/ci-summary.mjs` (stav, zpráva, počty), nikdy celé tělo, a nic necommitují zpět. Hlídá to `tests/ci-summary.test.mjs`.
+- Zápis dat patří do POST (nebo PUT, DELETE), ne do GET: odkaz z cizího webu je GET a cookie přihlášení s sebou nese.
 
 ## Další dokumentace
 
