@@ -251,7 +251,9 @@ function pageLang(request) {
 // secured, and what happens on disconnecting and deleting; the support page is the help on managing and
 // deleting data. Keep both in step with the code: scopes in google-scopes.js, the wellness copy in
 // wellness-sync.js, the download and deletion in account-data.js.
-const UPDATED = {cs: '6. října 2026', en: '6 October 2026'};
+const UPDATED = {cs: '8. října 2026', en: '8 October 2026'};
+// The controller's address for questions and data requests (privacy policy and support page).
+const CONTACT_EMAIL = 'petrbouma1994@icloud.com';
 const API_POLICY = 'https://developers.google.com/terms/api-services-user-data-policy';
 const HEALTH_POLICY = 'https://developers.google.com/health/policies/health-api-developer-user-data-policy';
 const GOOGLE_CONNECTIONS = 'https://myaccount.google.com/connections';
@@ -348,7 +350,7 @@ function doc(request, path, title, html) {
 export function privacyPage(request) {
   return doc(request, '/privacy', {cs: 'Zásady ochrany soukromí', en: 'Privacy Policy'}, {
     en: `<p class="muted">Last updated: ${UPDATED.en}</p>
-<p><strong>Loadwise</strong> (Petr Fitness Data, petrfitnessdata.eu) is a personal service for training, recovery and nutrition. It is run by a private individual in the Czech Republic who decides how your data is used (the operator, “we” below). Loadwise is currently available only by personal invitation.</p>
+<p><strong>Loadwise</strong> (Petr Fitness Data, petrfitnessdata.eu) is a personal service for training, recovery and nutrition. The controller of your personal data is Petr Bouma, a private individual in the Czech Republic (the operator, “we” below). You can reach the operator at <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Loadwise is currently available only by personal invitation.</p>
 <h2>In short</h2>
 <ul>
 <li>We use your data only to provide the Loadwise features you use.</li>
@@ -394,7 +396,7 @@ export function privacyPage(request) {
 <ul>
 <li><strong>Intervals.icu</strong>, if you connect it: the workouts you plan in Loadwise, nutrition notes and calorie targets in your calendar, your weight, and every hour a copy of your daily wellness from Google Health (sleep, average sleeping heart rate, steps, resting heart rate, HRV, oxygen saturation, respiration, VO2 max and body fat). Intervals.icu handles this data under its own privacy policy.</li>
 <li><strong>Google Health</strong>: the food and drinks you log and, if you allow it, your weight.</li>
-<li><strong>OpenAI</strong>, when you use an AI feature (such as the assistant, recognizing food from a photo, label or description, plan reviews, workout reflections or exercise descriptions): the data that request needs, such as your message, the photo and related training, sleep, health and nutrition data. OpenAI does not use data sent through its API to train its models and keeps it for up to 30 days to detect abuse.</li>
+<li><strong>OpenAI</strong> (USA), only if you allow AI features in the app and only when you use one (such as the assistant, recognizing food from a photo, label or description, plan reviews, workout reflections or exercise descriptions): the data that request needs, such as your message, the photo and related training, sleep, health and nutrition data. OpenAI processes it on our behalf, does not use data sent through its API to train its models and keeps it for up to 30 days to detect abuse.</li>
 <li><strong>Cloudflare</strong> runs Loadwise, stores its database in Europe and keeps the technical logs.</li>
 <li><strong>Open-Meteo</strong> gets only the place you enter for the weather in your training plan.</li>
 <li><strong>Authorities</strong>, only when the law requires it.</li>
@@ -410,9 +412,9 @@ export function privacyPage(request) {
 </ul>
 <h2>How long we keep data and how to delete it</h2>
 <ul>
-<li>We keep your data while you have an account.</li>
+<li>We keep your data while you have an account. An account nobody has signed in to for two years is deleted automatically with all its data.</li>
 <li><strong>Disconnecting a service</strong> in Settings stops Loadwise from reading from and writing to it and removes the stored access; for Google, Loadwise also gives up its access at Google. Data imported so far stays in your account until you delete it or the account.</li>
-<li><strong>Deleting your account</strong> in Settings → Account immediately and permanently deletes your account and all its data in Loadwise: profile, food, workouts, sleep and health data, connections and assistant history. Loadwise also gives up its access to your Google Account and clears its copy on the device you use. Database backups are overwritten within 30 days.</li>
+<li><strong>Deleting your account</strong> in Settings → Account immediately deletes your account and permanently deletes all its data in Loadwise (for a large account, the rest within minutes): profile, food, workouts, sleep and health data, connections and assistant history. The record of your consents is deleted with it. Loadwise also gives up its access to your Google Account and clears its copy on the device you use. Database backups are overwritten within 30 days.</li>
 <li>Data that Loadwise copied to Intervals.icu or Google Health stays there; you can delete it in those services.</li>
 <li>You can also remove Loadwise’s access at any time in your Google Account under <a href="${GOOGLE_CONNECTIONS}">Third-party apps and services</a>. Loadwise then can no longer read or write your Google data.</li>
 <li>You can stop using Sign in with Apple for Loadwise in your Apple ID settings, or unlink Apple in Settings → Account.</li>
@@ -420,16 +422,16 @@ export function privacyPage(request) {
 </ul>
 <p>The <a href="/support">Support</a> page explains step by step how to manage and delete your data.</p>
 <h2>Legal bases and your rights</h2>
-<p>We process your data to provide the service you asked for (Article 6(1)(b) GDPR). Health data, including data from Google Health, is processed only with your explicit consent (Article 9(2)(a) GDPR), which you give when you connect a service or enter the data yourself. You can withdraw it at any time by disconnecting the service or deleting the data or your account; this does not affect processing before the withdrawal. Technical logs rely on our legitimate interest in a secure service (Article 6(1)(f) GDPR).</p>
+<p>We process your data to provide the service you asked for (Article 6(1)(b) GDPR). Health data, from Google Health, Intervals.icu or entered by you, is processed only with your explicit consent (Article 9(2)(a) GDPR). You give it in the app before you first use it, and we record when and to which version of this text; syncing of your connected services in the background also runs only after it. Sending data to OpenAI for AI features is a separate, optional consent: the app works without it, and you can turn it off and on at any time in Settings, on the Account card. You withdraw your consent to health data by deleting your account; disconnecting a service stops new data from it. Withdrawing does not affect processing before it. Technical logs rely on our legitimate interest in a secure service (Article 6(1)(f) GDPR).</p>
 <p>You have the right to access, correct and delete your data, to restrict or object to its processing and to receive it in a portable format. Most of this you can do directly in the app: in Settings → Account you can download all your data as a JSON file or delete your account. You can also lodge a complaint with the Czech Office for Personal Data Protection (<a href="https://uoou.gov.cz">uoou.gov.cz</a>).</p>
 <h2>Children</h2>
 <p>Loadwise is not intended for children under 16, and we do not knowingly collect their data.</p>
 <h2>Changes</h2>
 <p>We update this policy when Loadwise or the way it uses data changes, and publish the current version on this page with its date. Before we use data you have already given us in a new way, we ask for your consent.</p>
 <h2>Contact</h2>
-<p>Loadwise is currently available only by personal invitation from its operator. For questions about this policy or your data, contact the operator directly, the same way you received your invitation.</p>`,
+<p>For questions about this policy or your data, or to exercise your rights, write to <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>`,
     cs: `<p class="muted">Poslední změna: ${UPDATED.cs}</p>
-<p><strong>Loadwise</strong> (Petr Fitness Data, petrfitnessdata.eu) je osobní služba pro trénink, regeneraci a výživu. Provozuje ji soukromá osoba v České republice, která rozhoduje o tom, jak se tvoje data používají (dále provozovatel nebo „my“). Loadwise je zatím dostupný jen na osobní pozvánku.</p>
+<p><strong>Loadwise</strong> (Petr Fitness Data, petrfitnessdata.eu) je osobní služba pro trénink, regeneraci a výživu. Správcem tvých osobních údajů je Petr Bouma, soukromá osoba v České republice (dále provozovatel nebo „my“). Provozovatele zastihneš na <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. Loadwise je zatím dostupný jen na osobní pozvánku.</p>
 <h2>Ve zkratce</h2>
 <ul>
 <li>Tvoje data používáme jen k funkcím Loadwise, které používáš.</li>
@@ -475,7 +477,7 @@ export function privacyPage(request) {
 <ul>
 <li><strong>Intervals.icu</strong>, když ho připojíš: tréninky, které naplánuješ v Loadwise, poznámky k výživě a cíle kalorií v kalendáři, tvoji váhu a každou hodinu kopii denních wellness údajů z Google Health (spánek, průměrný tep ve spánku, kroky, klidový tep, HRV, okysličení krve, dech, VO₂max a tělesný tuk). Intervals.icu s nimi zachází podle svých zásad ochrany soukromí.</li>
 <li><strong>Google Health</strong>: jídlo a pití, které zapíšeš, a když to povolíš, i tvoje váha.</li>
-<li><strong>OpenAI</strong>, když použiješ AI funkci (třeba asistenta, rozpoznání jídla z fotky, etikety nebo popisu, revizi plánu, zhodnocení tréninku nebo popis cviku): data, která daný požadavek potřebuje, třeba tvoji zprávu, fotku a související údaje o tréninku, spánku, zdraví a výživě. OpenAI data poslaná přes své API nepoužívá k trénování modelů a uchovává je nejvýš 30 dní kvůli odhalování zneužití.</li>
+<li><strong>OpenAI</strong> (USA), jen když v aplikaci povolíš AI funkce, a jen když nějakou použiješ (třeba asistenta, rozpoznání jídla z fotky, etikety nebo popisu, revizi plánu, zhodnocení tréninku nebo popis cviku): data, která daný požadavek potřebuje, třeba tvoji zprávu, fotku a související údaje o tréninku, spánku, zdraví a výživě. OpenAI je zpracovává naším jménem, data poslaná přes své API nepoužívá k trénování modelů a uchovává je nejvýš 30 dní kvůli odhalování zneužití.</li>
 <li><strong>Cloudflare</strong> provozuje Loadwise, ukládá jeho databázi v Evropě a uchovává technické záznamy.</li>
 <li><strong>Open-Meteo</strong> dostane jen místo, které zadáš pro počasí v plánu tréninků.</li>
 <li><strong>Úřady</strong>, jen když to vyžaduje zákon.</li>
@@ -491,9 +493,9 @@ export function privacyPage(request) {
 </ul>
 <h2>Jak dlouho data uchováváme a jak je smazat</h2>
 <ul>
-<li>Data uchováváme, dokud máš účet.</li>
+<li>Data uchováváme, dokud máš účet. Účet, do kterého se nikdo dva roky nepřihlásil, automaticky smažeme i se všemi daty.</li>
 <li><strong>Odpojení služby</strong> v Nastavení zastaví čtení i zápis do ní a smaže uložený přístup; u Googlu se Loadwise vzdá přístupu i přímo u Googlu. Data, která se do té doby načetla, zůstanou v tvém účtu, dokud je nesmažeš, nebo nesmažeš účet.</li>
-<li><strong>Smazání účtu</strong> v Nastavení → Účet okamžitě a natrvalo smaže tvůj účet a všechna data v Loadwise: profil, jídla, tréninky, spánek a zdravotní data, připojení služeb i historii asistenta. Loadwise se zároveň vzdá přístupu k tvému účtu Google a smaže svou kopii v zařízení, ve kterém účet mažeš. Zálohy databáze se přepíšou do 30 dní.</li>
+<li><strong>Smazání účtu</strong> v Nastavení → Účet okamžitě smaže tvůj účet a natrvalo všechna data v Loadwise (u velkého účtu zbytek do několika minut): profil, jídla, tréninky, spánek a zdravotní data, připojení služeb i historii asistenta. Smaže se i záznam o tvých souhlasech. Loadwise se zároveň vzdá přístupu k tvému účtu Google a smaže svou kopii v zařízení, ve kterém účet mažeš. Zálohy databáze se přepíšou do 30 dní.</li>
 <li>Co Loadwise zkopíroval do Intervals.icu nebo Google Health, tam zůstane; smazat to můžeš v těchto službách.</li>
 <li>Přístup Loadwise můžeš kdykoli odebrat i ve svém účtu Google v části <a href="${GOOGLE_CONNECTIONS}">Aplikace a služby třetích stran</a>. Loadwise pak už tvoje data z Googlu nepřečte ani nezapíše.</li>
 <li>Přihlašování přes Apple pro Loadwise ukončíš v nastavení svého Apple ID, nebo Apple odpojíš v Nastavení → Účet.</li>
@@ -501,14 +503,14 @@ export function privacyPage(request) {
 </ul>
 <p>Na stránce <a href="/support">Podpora</a> najdeš postup krok za krokem, jak data spravovat a smazat.</p>
 <h2>Právní základ a tvoje práva</h2>
-<p>Data zpracováváme, abychom ti poskytli službu, o kterou stojíš (čl. 6 odst. 1 písm. b) GDPR). Údaje o zdraví, včetně dat z Google Health, zpracováváme jen s tvým výslovným souhlasem (čl. 9 odst. 2 písm. a) GDPR), který dáváš při připojení služby nebo zadání údajů. Souhlas můžeš kdykoli odvolat odpojením služby nebo smazáním dat či účtu; zpracování před odvoláním tím nepřestává být zákonné. Technické záznamy vedeme na základě oprávněného zájmu na bezpečné službě (čl. 6 odst. 1 písm. f) GDPR).</p>
+<p>Data zpracováváme, abychom ti poskytli službu, o kterou stojíš (čl. 6 odst. 1 písm. b) GDPR). Údaje o zdraví, z Google Health, Intervals.icu i ty, které zadáš sám, zpracováváme jen s tvým výslovným souhlasem (čl. 9 odst. 2 písm. a) GDPR). Dáváš ho v aplikaci před prvním použitím a my zaznamenáme kdy a ke které verzi tohoto textu; synchronizace propojených služeb na pozadí běží až po něm. Posílání dat do OpenAI kvůli AI funkcím je samostatný, nepovinný souhlas: aplikace funguje i bez něj a v Nastavení na kartě Účet ho kdykoli vypneš a zase zapneš. Souhlas se zpracováním údajů o zdraví odvoláš smazáním účtu; odpojením služby zastavíš nová data z ní. Odvoláním nepřestává být zákonné zpracování před ním. Technické záznamy vedeme na základě oprávněného zájmu na bezpečné službě (čl. 6 odst. 1 písm. f) GDPR).</p>
 <p>Máš právo na přístup ke svým datům, jejich opravu a výmaz, na omezení zpracování, vznesení námitky a na přenositelnost dat. Většinu z toho uděláš přímo v aplikaci: v Nastavení → Účet si všechna svoje data stáhneš jako soubor JSON, nebo smažeš účet. Můžeš si také stěžovat u Úřadu pro ochranu osobních údajů (<a href="https://uoou.gov.cz">uoou.gov.cz</a>).</p>
 <h2>Děti</h2>
 <p>Loadwise není určený dětem mladším 16 let a jejich data vědomě nesbíráme.</p>
 <h2>Změny</h2>
 <p>Zásady upravíme, když se změní Loadwise nebo způsob práce s daty, a aktuální verzi s datem zveřejníme na této stránce. Než data, která už máme, použijeme novým způsobem, požádáme tě o souhlas.</p>
 <h2>Kontakt</h2>
-<p>Loadwise je zatím dostupný jen na osobní pozvánku od provozovatele. S dotazy k těmto zásadám nebo ke svým datům se obrať přímo na provozovatele, stejnou cestou, jakou ti přišla pozvánka.</p>
+<p>S dotazy k těmto zásadám nebo ke svým datům a s uplatněním svých práv se obrať na <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
 <p class="muted">Závazné je anglické znění: <a href="/privacy?lang=en">Privacy Policy</a>.</p>`
   });
 }
@@ -522,7 +524,7 @@ export function termsPage(request) {
 
 export function supportPage(request) {
   return doc(request, '/support', {cs: 'Podpora', en: 'Support'}, {
-    en: `<p>Loadwise is currently available only by personal invitation. If something does not work, tell the operator who invited you what went wrong, roughly when, and the error message the app showed. Never send passwords, API keys or other secrets.</p>
+    en: `<p>Loadwise is currently available only by personal invitation. If something does not work, write to <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> what went wrong, roughly when, and the error message the app showed. Never send passwords, API keys or other secrets.</p>
 <h2>Signing in</h2>
 <p>Sign in with the Google account your invitation was sent to. If you also see Sign in with Apple, you can use an Apple ID with the same email address. If you hide your email from Apple, sign in with Google first and link Apple in Settings → Account. If the app says your account is not invited, ask the operator to invite the address you use.</p>
 <h2>Connecting and disconnecting services</h2>
@@ -545,7 +547,7 @@ export function supportPage(request) {
 <li>Choose <strong>Delete account</strong>, type SMAZAT to confirm and choose <strong>Delete account permanently</strong>.</li>
 </ol>
 <p>Loadwise immediately and permanently deletes your account and all its data: profile, food, workouts, sleep and health data, connections and assistant history. It also gives up its access to your Google Account and clears its copy on your device. Database backups are overwritten within 30 days. Data already in Intervals.icu or Google Health stays there. More in the <a href="/privacy">Privacy Policy</a>.</p>`,
-    cs: `<p>Loadwise je zatím dostupný jen na osobní pozvánku. Když něco nefunguje, napiš provozovateli, který tě pozval, co nefungovalo, přibližně kdy to bylo a jakou chybu aplikace ukázala. Nikdy neposílej hesla, klíče API ani jiná tajemství.</p>
+    cs: `<p>Loadwise je zatím dostupný jen na osobní pozvánku. Když něco nefunguje, napiš na <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, co nefungovalo, přibližně kdy to bylo a jakou chybu aplikace ukázala. Nikdy neposílej hesla, klíče API ani jiná tajemství.</p>
 <h2>Přihlášení</h2>
 <p>Přihlas se účtem Google, na který ti přišla pozvánka. Pokud vidíš i Přihlásit se přes Apple, můžeš použít Apple ID se stejnou e-mailovou adresou. Když před Apple e-mail skrýváš, přihlas se nejdřív přes Google a Apple si připoj v Nastavení → Účet. Když aplikace hlásí, že účet není pozvaný, požádej provozovatele, ať pozve adresu, kterou používáš.</p>
 <h2>Připojení a odpojení služeb</h2>
