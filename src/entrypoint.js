@@ -33,7 +33,6 @@ import {gymExerciseCatalog,gymAlternatives,gymLoadEstimate} from './gym-catalog.
 import {askCoach,coachContext,lightModel,assistantTask,engineSport} from './coach-assistant.js';
 import {assistantAppContext,selectedAssistantContext} from './assistant-app-context.js';
 import {validateCoachActions,actionSafetyContext,actionsNote,actionSummary} from './coach-actions.js';
-import {weekReviewContext,fallbackWeekReview,WEEK_REVIEW_REQUEST} from './weekly-plan-review.js';
 import { buildReviewInput, reviewDay, usageCost } from "./coach-review.js";
 import { createReflection, listReflections, activityFromRow, dedupeActivities } from "./coach-reflection.js";
 import {savePersonalFood,searchFoodCatalog as searchPersonalFoods} from './personal-foods.js';
@@ -544,24 +543,11 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     try{
       const body=await request.json(),start=validTrainingDay(body.start)?mondayOfDate(body.start):mondayOfDate(localToday());
       const today=localToday();
-      const [prefs,state,inputs,athleteFeedback,coachNotes]=await Promise.all([getWeekPlan(env.DB,start),getAthleteState(env.DB),loadCoachInputs(env,ctx,internalAuth,today),recentWorkoutFeedback(env.DB,shiftDate(today,-21)),listReflections(env.DB,{limit:5}).catch(()=>[])]);
+      const [prefs,state,inputs]=await Promise.all([getWeekPlan(env.DB,start),getAthleteState(env.DB),loadCoachInputs(env,ctx,internalAuth,today)]);
       if(!inputs.week.days.some(d=>d.date===start)){const extra=await handleDashboardApi(new Request('https://internal/app/api/week?start='+start),env,ctx,new URL('https://internal/app/api/week?start='+start));const data=await extra.json();inputs.week.days.push(...(data.days||[]));}
       const [weather,history]=await Promise.all([weekWeather(prefs.location,start),planningHistory(env,start<localToday()?start:localToday(),28)]),proposal=weekProposal({prefs,state,start,today:localToday(),week:inputs.week,fitness:inputs.fitness,focus:inputs.focus,weather,history});
-      const context=weekReviewContext({inputs,prefs,state,start,today,proposal,weather,history,athleteFeedback,coachNotes});
-      const weeks=[...new Set(inputs.week.days.filter(d=>d.date>=today&&d.date<=context.reviewScope.end).map(d=>mondayOfDate(d.date)))];
-      const effectiveWeeks=new Map(await Promise.all(weeks.map(async w=>[w,await getWeekPlan(env.DB,w)])));
-      context.availabilityByDate=Object.fromEntries(inputs.week.days.filter(d=>d.date>=today&&d.date<=context.reviewScope.end).map(d=>[d.date,effectiveWeeks.get(mondayOfDate(d.date)).availability[(new Date(d.date+'T12:00:00Z').getUTCDay()+6)%7]]));
-      if(start<today)context.weatherUpcoming=await weekWeather(prefs.location,today);
-      let review=fallbackWeekReview(context),aiError=null;
-      // "Vygenerovat tréninky" only needs the week's sessions; the AI review is the chat's.
-      if(body.review===false)return Response.json({status:'ok',start,proposal,actions:[]},{headers:{'Cache-Control':'no-store'}});
-      if(env.OPENAI_API_KEY){try{
-        review={...await askCoach(env,WEEK_REVIEW_REQUEST,context,{focus:inputs.focus,task:'planning',actions:true,concise:true}),source:'ai'};
-      }catch(error){aiError=error.message}}
-      context.userMessage=L('Zkontroluj budoucí plán a navrhni změny.', 'Review the upcoming plan and suggest changes.');
-      const actions=validateCoachActions(review.actions,context,today),drafts=[];await ensureCoachInboxTable(env.DB);
-      for(const action of actions){const ins=await env.DB.prepare('INSERT INTO coach_inbox(user_id,channel,message,draft_json) VALUES(?,?,?,?)').bind(env.USER_ID,'cycling',L('Revize budoucího plánu od ', 'Review of the upcoming plan from ')+today,JSON.stringify({kind:'coach_action',action})).run();drafts.push({...action,draftId:ins.meta?.last_row_id});}
-      return Response.json({status:'ok',start,proposal,review:{...review,actions:drafts},actions:drafts,reviewScope:context.reviewScope,reviewedCount:context.remainingPlanned.length,aiError},{headers:{'Cache-Control':'no-store'}});
+      // "Vygenerovat tréninky": the week's sessions to prepare. Reviewing the plan is the AI chat's job.
+      return Response.json({status:'ok',start,proposal},{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({message:error.message},{status:400})}
   }
   if (url.pathname === "/app/api/me" && request.method === "GET") {

@@ -142,7 +142,7 @@ async function jsonFetch(path,options={}){if(typeof aiIntroBefore==='function')a
 // once what will belong to the AI plan (remembered per account on the server).
 // Once the paid split is on, a locked AI feature (HTTP 402) shows it each time.
 // Paying is not live yet: the button only says so.
-const AI_PATHS=['/app/api/assistant','/app/api/coach/week','/app/api/coach/review','/app/api/gym/adjust','/app/api/food/ai-lookup','/app/api/food/photo'];
+const AI_PATHS=['/app/api/assistant','/app/api/coach/review','/app/api/gym/adjust','/app/api/food/ai-lookup','/app/api/food/photo'];
 let subscriptionPromise=null;
 function subscriptionInfo(){return subscriptionPromise||(subscriptionPromise=fetch('/app/api/subscription',{credentials:'same-origin'}).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status))).catch(error=>{subscriptionPromise=null;throw error;}));}
 async function aiIntroBefore(path,options={}){
@@ -4591,7 +4591,7 @@ async function showAdaptiveWeekProposal(){
   if(statusPausesTraining()){status.textContent='Tréninky jsou teď pozastavené, nic negeneruji.';return;}
   b.disabled=true;status.textContent='Připravuji tréninky na zbytek týdne…';
   try{
-    const r=await jsonFetch('/app/api/coach/week',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start,review:false})});
+    const r=await jsonFetch('/app/api/coach/week',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start})});
     if(revision!==statusCoachingRevision)return;
     const p=r.proposal||{},items=(p.items||[]).filter(x=>!state.proposals?.[proposalKey(x.date,x.sport,x.slot)]?.scheduled);
     if(!items.length){
