@@ -1,6 +1,6 @@
 // Recipes from the owner's printed cookbook. The book is copyrighted, so its
 // recipes are not part of this public repository: they live in the database
-// (table cookbook, migration 0011) as gzipped JSON, loaded there with
+// (table cookbook, migration 0012) as gzipped JSON, loaded there with
 // scripts/import-cookbook.mjs from the owner's private copy. Without them the
 // cookbook is simply empty.
 let database = null;

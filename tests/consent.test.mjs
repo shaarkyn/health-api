@@ -6,7 +6,7 @@ import { scopedDb, PERSONAL_TABLES } from "../src/tenancy.js";
 import { consentStatus, saveConsent, CONSENT_VERSION } from "../src/consent.js";
 import { assertAIAccess, subscriptionStatus } from "../src/subscription.js";
 
-const migration = readFileSync(new URL("../migrations/0011_cookbook_and_consents.sql", import.meta.url), "utf8");
+const migration = readFileSync(new URL("../migrations/0012_cookbook_and_consents.sql", import.meta.url), "utf8");
 function setup({ owner = false } = {}) {
   const raw = createD1();
   raw.sqlite.exec(migration);
