@@ -2177,7 +2177,8 @@ function askAiConsent(){
 }
 async function setAiConsent(on){const r=await jsonFetch('/app/api/consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ai:on})});subscriptionPromise=null;return r.consent;}
 function consentHtml(consent){if(!consent)return '';const on=consent.aiAllowed;
-  return '<h3 style="margin-top:16px">'+uiText('Souhlasy','Consents')+'</h3><p class="small">'+uiText('Údaje o zdraví: souhlas udělen','Health data: consent given')+(consent.health?.grantedAt?' '+esc(new Date(consent.health.grantedAt).toLocaleDateString(uiText('cs-CZ','en-GB'))):'')+uiText('. Odvoláš ho smazáním účtu.','. To withdraw it, delete your account.')+'</p><p class="small">'+uiText('AI funkce s OpenAI: ','AI features with OpenAI: ')+'<strong>'+(on?uiText('zapnuté','on'):uiText('vypnuté','off'))+'</strong></p><button class="btn" type="button" id="aiConsentToggle">'+(on?uiText('Vypnout AI funkce','Turn off AI features'):uiText('Zapnout AI funkce','Turn on AI features'))+'</button>';}
+  // One quiet line: the AI consent has to stay easy to withdraw (GDPR), not prominent.
+  return '<p class="small">'+uiText('AI funkce (OpenAI) jsou ','AI features (OpenAI) are ')+(on?uiText('zapnuté','on'):uiText('vypnuté','off'))+' · <button type="button" class="link-btn" id="aiConsentToggle">'+(on?uiText('Odvolat souhlas s AI','Withdraw AI consent'):uiText('Zapnout','Turn on'))+'</button></p>';}
 function bindConsentToggle(me){const b=$('aiConsentToggle');if(!b)return;b.onclick=async()=>{b.disabled=true;
   try{const on=!me.consent.aiAllowed;if(on){if(!(await askAiConsent()))return;}else await setAiConsent(false);toast(on?uiText('AI funkce jsou zapnuté.','AI features are on.'):uiText('AI funkce jsou vypnuté. Data už do OpenAI nepůjdou.','AI features are off. No more data goes to OpenAI.'));await loadAccount();}
   catch(error){toast(error.message);}finally{b.disabled=false;}};}
