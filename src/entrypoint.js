@@ -23,7 +23,7 @@ import { cached, bumpCacheVersion } from './api-cache.js';
 import { foodIntake } from './food-portions.js';
 import {productFromLabel} from './food-sources.js';
 import {activityDetail,rideIntervals} from './activity-detail.js';
-import {getCookbookRecipeByPage,useCookbookDatabase} from './cookbook.js';
+import {getCookbookRecipeByPage,useCookbookDatabase,saveCookbook} from './cookbook.js';
 import {googleDashboard} from './google-dashboard.js';
 import {applyEnergyBudget} from './energy-budget.js';
 import {normalizeProfile} from './energy-profile.js';
@@ -1587,6 +1587,12 @@ async function handleAdminApi(request, env, url, session) {
   try {
     if (url.pathname === "/app/api/admin/users" && request.method === "GET") return Response.json({status:"ok",...await listUsersAndInvites(db)},{headers:{"Cache-Control":"no-store"}});
     const body = await request.json().catch(() => ({}));
+    // The owner's private copy of his printed cookbook (cookbook.js); it never goes into the repository.
+    if (url.pathname === "/app/api/admin/cookbook" && request.method === "POST") {
+      if (!user.isOwner) return Response.json({status:"error",message:L("Kuchařku nahrává jen majitel aplikace.", "Only the app owner uploads the cookbook.")},{status:403});
+      const {recipes} = await saveCookbook(db, body);
+      return Response.json({status:"ok",recipes,message:L(`Kuchařka je nahraná: ${recipes} receptů.`, `The cookbook is uploaded: ${recipes} recipes.`)});
+    }
     if (url.pathname === "/app/api/admin/invites" && request.method === "POST") return Response.json({status:"ok",email:await inviteUser(db, body.email, user.id),message:L("Pozvánka je uložená. Uživatel se může přihlásit přes Google.", "The invitation is saved. The user can sign in with Google.")});
     if (url.pathname === "/app/api/admin/invites" && request.method === "DELETE") { await removeInvite(db, body.email); return Response.json({status:"ok",message:L("Pozvánka je zrušená.", "The invitation is cancelled.")}); }
     if (url.pathname === "/app/api/admin/users" && request.method === "POST") { await setUserDisabled(db, env, body.id, body.disabled === true); return Response.json({status:"ok",message:body.disabled===true?L("Přístup je zablokovaný.", "Access is blocked."):L("Přístup je obnovený.", "Access is restored.")}); }

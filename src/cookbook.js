@@ -1,8 +1,8 @@
 // Recipes from the owner's printed cookbook. The book is copyrighted, so its
 // recipes are not part of this public repository: they live in the database
-// (table cookbook, migration 0012) as gzipped JSON, loaded there with
-// scripts/import-cookbook.mjs from the owner's private copy. Without them the
-// cookbook is simply empty.
+// (table cookbook, migration 0012) as gzipped JSON. The owner uploads his private
+// copy in Settings → Users (saveCookbook); scripts/import-cookbook.mjs writes the
+// same row as SQL. Without it the cookbook is simply empty.
 let database = null;
 let cache = null;
 let emptyUntil = 0;
@@ -21,6 +21,24 @@ async function unpack(base64) {
   const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
   return JSON.parse(await new Response(stream).text());
+}
+
+const base64 = bytes => { let text = ""; for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(text); };
+
+// {recipes:[{page, title, …}], page_aliases:{page: recipePage}} → base64 of gzipped JSON.
+export async function packCookbook(data) {
+  const recipes = Array.isArray(data?.recipes) ? data.recipes : [];
+  if (!recipes.length || recipes.some(r => !Number.isInteger(r?.page) || typeof r?.title !== "string")) throw new Error("Expected {recipes:[{page, title, …}], page_aliases:{}}");
+  const json = JSON.stringify({ ...data, recipes, page_aliases: data.page_aliases || {} });
+  const stream = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
+  return base64(new Uint8Array(await new Response(stream).arrayBuffer()));
+}
+
+export async function saveCookbook(db, data) {
+  const packed = await packCookbook(data);
+  await db.prepare("INSERT INTO cookbook (id, data, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at").bind(packed).run();
+  database = db; cache = await unpack(packed); emptyUntil = 0;
+  return { recipes: cache.recipes.length };
 }
 
 export async function getCookbook() {
