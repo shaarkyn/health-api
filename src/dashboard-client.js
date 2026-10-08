@@ -151,7 +151,7 @@ function subscriptionInfo(){return subscriptionPromise||(subscriptionPromise=fet
 async function aiIntroBefore(path,options={}){
   if(String(options.method||'GET').toUpperCase()!=='POST'||!AI_PATHS.includes(String(path).split('?')[0]))return;
   let s;try{s=await subscriptionInfo();}catch{return;}
-  if(s.aiConsent===false){if(!(await askAiConsent()))throw new Error(uiText('AI funkce jsou vypnuté. Zapneš je v Nastavení → Účet.','AI features are off. Turn them on in Settings → Account.'));s.aiConsent=true;}
+  if(s.aiConsent===false){if(!(await askAiConsent()))throw new Error(uiText('Bez souhlasu s posíláním dat do OpenAI AI funkce nepoběží.','Without consent to send data to OpenAI, AI features won\'t run.'));s.aiConsent=true;}
   if(s.mode!=='pilot'||s.introSeen)return;
   s.introSeen=true;
   fetch('/app/api/subscription/intro',{method:'POST',credentials:'same-origin'}).catch(()=>{});
