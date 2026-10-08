@@ -18,8 +18,9 @@ async function consentRows(db, userId) {
 }
 
 // health/ai: {version, grantedAt} while given, otherwise null. `needed`: the app
-// asks before showing anything. The owner set the AI up himself, so for him AI
-// counts as allowed until he turns it off.
+// asks before showing anything (in the setup guide, or once for an account set
+// up earlier). The owner runs the app and decides how data is used, so he is not
+// asked; he set the AI up himself, so for him AI counts as allowed until he turns it off.
 export async function consentStatus(env) {
   const userId = env.USER_ID ?? env.DB?.userId;
   const rows = userId ? await consentRows(env.DB, userId) : [];
@@ -33,7 +34,7 @@ export async function consentStatus(env) {
     version: CONSENT_VERSION,
     health,
     ai,
-    needed: health?.version !== CONSENT_VERSION,
+    needed: env.USER_IS_OWNER !== true && health?.version !== CONSENT_VERSION,
     aiAllowed: Boolean(ai) || (env.USER_IS_OWNER === true && !aiWithdrawn)
   };
 }

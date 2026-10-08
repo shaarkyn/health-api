@@ -68,6 +68,13 @@ test("AI for a user runs only with their AI consent; the owner's until he turns 
   await assert.rejects(assertAIAccess(owner), e => e.consent === true);
 });
 
+test("the owner is not asked; he runs the app", async () => {
+  const { env } = setup({ owner: true });
+  const status = await consentStatus(env);
+  assert.equal(status.needed, false);
+  assert.equal(status.aiAllowed, true);
+});
+
 test("consents are personal data: exported and deleted with the account", () => {
   assert.ok("user_consents" in PERSONAL_TABLES);
 });
@@ -75,7 +82,10 @@ test("consents are personal data: exported and deleted with the account", () => 
 test("the app asks before it loads anything, and the AI features ask on first use", () => {
   const client = readFileSync(new URL("../src/dashboard-client.js", import.meta.url), "utf8");
   const entry = readFileSync(new URL("../src/entrypoint.js", import.meta.url), "utf8");
-  assert.match(client, /loadAccount\(\)\.then\(async me=>\{if\(me\.consent\?\.needed\)\{forgetDashboard\(\);await showConsentGate\(me\);me=await loadAccount\(\);\}/);
+  // A new account answers in the setup guide; one set up earlier gets the consent screen once.
+  assert.match(client, /loadAccount\(\)\.then\(async me=>\{if\(me\.consent\?\.needed&&me\.onboarding\?\.completed\)\{forgetDashboard\(\);await showConsentGate\(me\);/);
+  assert.match(client, /askConsent=Boolean\(accountConsent\?\.needed\)&&!edit/);
+  assert.match(client, /if\(!edit&&!askConsent&&setup\.baseline\.ready\)return finish\(\)/);
   assert.match(client, /if\(s\.aiConsent===false\)\{if\(!\(await askAiConsent\(\)\)\)throw/);
   assert.match(entry, /url\.pathname==='\/app\/api\/consent'&&request\.method==='POST'[\s\S]{0,300}request\.headers\.get\('Origin'\)!==url\.origin/);
 });
