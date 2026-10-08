@@ -1357,20 +1357,21 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   }
   if (url.pathname === "/app/api/gym/generate" && request.method === "POST") {
     const body = await request.json().catch(() => ({}));
-    // The week plan's gym chip for that day sets the length and upper/full body,
-    // unless the request chose them.
+    // Training time is set only in the week plan: the day's gym chip sets the
+    // length (and upper/full body unless the request chose the focus), and the
+    // day's available time caps it.
     const day = /^\d{4}-\d{2}-\d{2}$/.test(String(body?.date||"")) ? body.date : localToday();
     try {
       assertTrainingAllowed(await getAthleteState(env.DB));
-      const prefs=await getWeekPlan(env.DB,day),budget=trainingBudget(prefs,day,body.durationMinutes==null?null:Number(body.durationMinutes),{userInitiated:body.userInitiated===true});
+      const prefs=await getWeekPlan(env.DB,day);
+      if (body?.durationMinutes == null) {
+        const chip = targetFor(await computeWeekTargets(env, ctx, mondayOfDate(day), prefs).catch(() => null), day, "gym");
+        if (chip) { body.durationMinutes = chip.minutes; if (chip.role === "gym_upper" && !body?.focus && !body?.focusMuscles && !body?.forceProtectLegs) { body.focus = "upper"; body.focusSource = "week"; } }
+      }
+      const budget=trainingBudget(prefs,day,body.durationMinutes==null?null:Number(body.durationMinutes),{userInitiated:body.userInitiated===true});
       if(budget!=null&&budget<30)throw new Error(L('Na gym potřebuješ alespoň 30 minut dostupného času.', 'The gym needs at least 30 minutes of available time.'));
       if(budget!=null)body.durationMinutes=budget;
     }catch(error){return Response.json({message:error.message},{status:400})}
-    if (body?.durationMinutes == null && !body?.focus && !body?.focusMuscles && !body?.forceProtectLegs) {
-      const prefs = await getWeekPlan(env.DB,day).catch(() => null);
-      const chip = prefs ? targetFor(await computeWeekTargets(env, ctx, mondayOfDate(day), prefs).catch(() => null), day, "gym") : null;
-      if (chip) { body.durationMinutes = chip.minutes; if (chip.role === "gym_upper") { body.focus = "upper"; body.focusSource = "week"; } }
-    }
     const internal = new URL("/strength/generate-plan", request.url);
     const response = await app.fetch(new Request(internal,{
       method:"POST",
