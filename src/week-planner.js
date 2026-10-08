@@ -1,4 +1,6 @@
+import { L, bilingual } from './lang.js';
 import { readGymPlan } from "./gym-plan-store.js";
+import { personalBaseline } from "./recovery-model.js";
 import { normalizeAvailability, ensureWeekOverrides, weekStartOf, validDay } from './training-availability.js';
 import { getAthleteState } from './athlete-state.js';
 import {trainingHistory,starterPlan} from './training-history.js';
@@ -11,14 +13,21 @@ export const DEFAULT_LOCATION = { name: "Kutná Hora", latitude: 49.9484, longit
 
 // Relative load of a role; the client multiplies the shares by the weekly target.
 const SHARE = { long: 1.5, quality: 1.2, endurance: 1, recovery: .5, gym_upper: .4, gym_full: .5 };
-export const ROLE_LABELS = {
+export const ROLE_LABELS = bilingual({
   long: "Dlouhý trénink",
   quality: "Kvalita (intervaly)",
   endurance: "Vytrvalost",
   recovery: "Lehce / regenerace",
   gym_upper: "Posilovna · s rezervou",
   gym_full: "Posilovna · celé tělo"
-};
+}, {
+  long: "Long workout",
+  quality: "Quality (intervals)",
+  endurance: "Endurance",
+  recovery: "Easy / recovery",
+  gym_upper: "Gym · with reserve",
+  gym_full: "Gym · full body"
+});
 // What the coach should do with the role (the coach keeps its readiness guardrails).
 export const ROLE_FOCUS = { long: "long_endurance", endurance: "endurance", recovery: "recovery", quality: null };
 
@@ -40,7 +49,7 @@ export function sanitizeWeekPlan(input = {}) {
     ? { name: String(loc.name || "").trim().slice(0, 80) || DEFAULT_LOCATION.name, latitude: Math.round(lat * 1e4) / 1e4, longitude: Math.round(lon * 1e4) / 1e4 }
     : DEFAULT_LOCATION;
   const count = input.weeklyActivities == null || input.weeklyActivities === '' ? null : Number(input.weeklyActivities);
-  if (count != null && (!Number.isInteger(count) || count < 0 || count > 14)) throw new Error('Počet aktivit musí být 0 až 14.');
+  if (count != null && (!Number.isInteger(count) || count < 0 || count > 14)) throw new Error(L('Počet aktivit musí být 0 až 14.', 'The number of activities must be 0 to 14.'));
   return { days, location, availability: normalizeAvailability(input.availability), weeklyActivities: count, sessions: sanitizeSessions(input.sessions, days),...(['auto','manual'].includes(input.availabilityMode)?{availabilityMode:input.availabilityMode}:{}) };
 }
 
@@ -85,14 +94,14 @@ export async function getWeekPlan(db, date = null) {
 // week plan has no gym that day (an empty week plan does not decide), or a
 // plan made or edited by the athlete is already stored.
 export async function nightlyGymSkip(db, date) {
-  if ((await getAthleteState(db)).status !== 'active') return 'Aktuální stav pozastavuje tréninky.';
+  if ((await getAthleteState(db)).status !== 'active') return L('Aktuální stav pozastavuje tréninky.', 'Your current status pauses training.');
   const prefs = await getWeekPlan(db, date);
   const weekday = (new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7;
-  if (prefs.availability[weekday].minutes === 0) return 'Tento den nemáš čas na aktivitu.';
-  if (prefs.days.some(d => d.length) && !prefs.days[weekday].includes("gym")) return "Podle týdenního plánu není tento den gym.";
+  if (prefs.availability[weekday].minutes === 0) return L('Tento den nemáš čas na aktivitu.', 'You don\'t have time for an activity on this day.');
+  if (prefs.days.some(d => d.length) && !prefs.days[weekday].includes("gym")) return L("Podle týdenního plánu není tento den gym.", "The week plan has no gym on this day.");
   const gym = await readGymPlan(db, date);
-  if (gym.cancelled) return "Gym na tento den jsi zrušil.";
-  if (gym.stored) return "Na tento den už gym plán je.";
+  if (gym.cancelled) return L("Gym na tento den jsi zrušil.", "You cancelled the gym for this day.");
+  if (gym.stored) return L("Na tento den už gym plán je.", "There's already a gym plan for this day.");
   return null;
 }
 
@@ -109,7 +118,7 @@ export async function saveWeekPlan(db, input, date = null) {
 }
 
 export async function addWeekSport(db,date,sport) {
-  if(!validDay(date)||!PLANNER_SPORTS.includes(sport))throw new Error('Neplatný den nebo sport.');
+  if(!validDay(date)||!PLANNER_SPORTS.includes(sport))throw new Error(L('Neplatný den nebo sport.', 'Invalid day or sport.'));
   const prefs=await getWeekPlan(db,date),weekday=(new Date(date+'T12:00:00Z').getUTCDay()+6)%7;
   if(!prefs.days[weekday].includes(sport)&&prefs.days[weekday].length<MAX_PER_DAY)prefs.days[weekday].push(sport);
   return saveWeekPlan(db,prefs,date);
@@ -179,12 +188,29 @@ export function roleFor(prefs, date, sport, options = {}) {
 // in the week little is planned yet, and a lower target would only lower the
 // plan further. Loads are Intervals.icu's daily training load (all sports),
 // last week first.
-export function recoveryWeek({ base, weekLoads = [] }) {
+// The body can call one sooner: when the 7-day HRV average before the week
+// is below the athlete's normal range by more than the smallest worthwhile
+// change (hrvDown, see hrvWeekTrendDown), as in HRV-guided training (Plews
+// 2012; Javaloyes 2019). Deloads are otherwise coaches' consensus, usually
+// every 4–6 weeks (Bell 2022, 2023).
+export function recoveryWeek({ base, weekLoads = [], hrvDown = false }) {
   const loads = (weekLoads || []).map(Number).filter(Number.isFinite);
+  if (hrvDown) return { recovery: true, reason: "hrv_trend" };
   if (!(Number(base) > 0) || !loads.length) return { recovery: false, reason: null };
   if (loads[0] >= base * 1.25) return { recovery: true, reason: "heavy_last_week" };
   if (loads.length >= 3 && loads.slice(0, 3).every(w => w >= base)) return { recovery: true, reason: "three_weeks" };
   return { recovery: false, reason: null };
+}
+// Is the 7-day lnRMSSD average before `weekStart` below the 60-day baseline
+// before it by more than the smallest worthwhile change (0.5 SD)? Needs 5 of
+// the 7 mornings and 14 baseline values. Rows: Intervals.icu wellness or the
+// merged Google Health rows (id, hrv).
+export function hrvWeekTrendDown(wellness, weekStart) {
+  const day = n => new Date(Date.parse(weekStart + "T12:00:00Z") + n * 86400000).toISOString().slice(0, 10), from = day(-7);
+  const week = (wellness || []).filter(r => r?.id >= from && r.id < weekStart && Number(r.hrv) > 0).map(r => Math.log(Number(r.hrv)));
+  const base = personalBaseline(wellness || [], from, "hrv", { log: true });
+  if (week.length < 5 || base.mean == null) return false;
+  return week.reduce((a, v) => a + v, 0) / week.length < base.mean - 0.5 * Math.max(base.sd, 0.05);
 }
 // Training load of the three weeks before `weekStart` from Intervals.icu
 // wellness rows (last week first); a week with too few rows ends the series.
@@ -217,12 +243,15 @@ const GYM_TSS = { gym_full: 35, gym_upper: 25 };
 const SPORT_MINUTES = { ride: [30, 300], run: [20, 150] };
 const round5 = v => Math.round(v / 5) * 5;
 
-export function weekTargets({ roles = [], ctl = null, lastWeekLoad = 0, weekLoads = null, days = [], today, weekStart } = {}) {
+export function weekTargets({ roles = [], ctl = null, lastWeekLoad = 0, weekLoads = null, days = [], today, weekStart, hrvDown = false, rampRate = null } = {}) {
   const fitness = Number(ctl) > 0 ? Number(ctl) : null;
   if (!fitness) return { status: "no_fitness", items: [] };
   const base = Math.round(fitness * 7);
-  const rule = recoveryWeek({ base, weekLoads: weekLoads?.length ? weekLoads : [Number(lastWeekLoad) || 0] }), recovery = rule.recovery;
-  const target = Math.round(base * (recovery ? .7 : 1.05));
+  const rule = recoveryWeek({ base, weekLoads: weekLoads?.length ? weekLoads : [Number(lastWeekLoad) || 0], hrvDown }), recovery = rule.recovery;
+  // +5 % raises CTL by about CTL/120 a week, well under the 5–8 a week Friel
+  // (TrainingPeaks) calls sustainable; a ramp already above 8 only holds.
+  const hold = Number(rampRate) > 8;
+  const target = Math.round(base * (recovery ? .7 : hold ? 1 : 1.05));
   const dateOf = i => new Date(Date.parse(weekStart + "T12:00:00Z") + i * 86400000).toISOString().slice(0, 10);
   const info = date => days.find(d => d.date === date) || { done: 0, planned: 0, sports: [] };
   let committed = 0;
@@ -246,7 +275,7 @@ export function weekTargets({ roles = [], ctl = null, lastWeekLoad = 0, weekLoad
     return { date: x.date, sport: x.sport, slot: x.slot || 0, role: x.role, label: x.label, tss: Math.round(minutes / 60 * intensity * intensity * 100), minutes, intensity };
   });
   const assigned = items.reduce((s, x) => s + x.tss, 0), shortfall = Math.max(0, target - committed - assigned);
-  return { status: "ok", ctl: Math.round(fitness), base, target, recovery, recoveryReason: rule.reason, weekLoads: weekLoads || null, lastWeekLoad: Math.round(lastWeekLoad), committed: Math.round(committed), items, shortfall: !recovery && shortfall > target * .15 ? Math.round(shortfall) : 0 };
+  return { status: "ok", ctl: Math.round(fitness), base, target, recovery, rampHold: hold, recoveryReason: rule.reason, weekLoads: weekLoads || null, lastWeekLoad: Math.round(lastWeekLoad), committed: Math.round(committed), items, shortfall: !recovery && shortfall > target * .15 ? Math.round(shortfall) : 0 };
 }
 // Running grows slowly: tendons and bones adapt later than heart and lungs.
 // A week's running (done, planned and proposed together) stays within 10 %

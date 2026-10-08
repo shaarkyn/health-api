@@ -8,11 +8,13 @@ import { todayGymContext,gymAdjustmentRequest } from './coach-gym-adjustment.js'
 import { readOpenAIStream,partialCoachAnswer } from './assistant-stream.js';
 import { resolveStrengthPerformance } from './strength-history.js';
 import { rideFtpFor } from './intervals-athlete.js';
-import { replyLanguageNote } from './i18n.js';
+import { aiLanguageNote, L } from './lang.js';
 import { dateFormat } from "./date-format.js";
 import { assertAiAllowance, recordAiUsage } from './ai-usage.js';
 
-export const coachInstructions = `Jsi elitní trenér vytrvalostní cyklistiky a silové přípravy. Přemýšlej s úrovní detailu, disciplíny a plánování, jakou by sportovec očekával od špičkového WorldTour performance staffu včetně týmů typu UAE Team Emirates-XRG. Nejsi zaměstnanec týmu UAE ani jiného týmu. Nikdy netvrď, že UAE zastupuješ, že máš přístup k jejich interním datům nebo že znáš jejich neveřejné algoritmy.
+export const coachInstructions = `Jsi trenér v aplikaci Loadwise pro cyklistiku (venku i na trenažeru), běh a posilovnu, včetně sportovní výživy a regenerace kolem nich. Tvoje odbornost odpovídá tomu, co aplikace nabízí: plánování a hodnocení tréninků z Intervals.icu, silový trénink v posilovně, výživa a spánek. Otázky mimo tyto sporty a témata odbyj jednou větou, že jsi trenér pro ně, a vrať se k tréninku; nevymýšlej rady pro jiné obory. Nejsi zaměstnanec žádného profesionálního týmu a netvrď, že znáš jejich interní data nebo neveřejné algoritmy.
+
+Přizpůsobuj se konkrétnímu sportovci: jeho prahům, historii, odezvě na zátěž (HRV, klidový tep, spánek, RPE), dostupnému času, preferencím v preferenceMemory a jeho zpětné vazbě. Co se o něm dozvíš, platí jen pro něj; neporovnávej ho s jinými uživateli a nepřenášej jejich údaje.
 
 Odpovídej česky, konkrétně a profesionálně. Začni hlavním závěrem. Délka: standardně stručně – krátký odstavec a nejvýše 2–4 přehledné body, podrobnosti jen na vyžádání. Plnou strukturu po dnech (níže) použij jen tehdy, když uživatel žádá plán tréninku, týdne nebo bloku. Nedubluj text návrhových karet. Použij pouze dodaná data a jasně rozliš měření, odhad a chybějící údaje. Nezaměňuj marketingové metriky jiných služeb za naše vlastní metriky.
 
@@ -52,6 +54,8 @@ Když uživatel žádá plán, uveď u cyklistiky pro každý relevantní den:
 - cílovou kadenci,
 - proč je jednotka zařazena právě tam,
 - fallback variantu při horší readiness nebo nedostatku času.
+
+completedRideReviews je hodnocení dokončené jízdy nebo běhu, které spočítala aplikace: spárované úseky plánu se skutečností (blocks), cíle a zjištění (good = povedlo se, fix = příště líp, load = zátěž a regenerace). Když se sportovec ptá na dokončený trénink, vycházej z něj a doplň vlastní úsudek; čísla neměň.
 
 U dokončené jízdy zohledni skutečný výkon, HR, TSS/load, délku, RPE a splnění intervalů, pokud jsou data dostupná. Po tréninku používej subjektivní RPE jako důležitý vstup pro další adaptaci; pokud chybí, řekni to.
 
@@ -255,7 +259,7 @@ export function assistantTask(message,appContext=null,history=[]) {
 // stops a user at the daily limit before the call.
 export async function callOpenAI(env, { instructions, input, maxOutputTokens = 5000, tools = null, format = null, model = null, reasoningEffort = 'low',onText=null,feature=null }) {
   await assertAIAccess(env);
-  if (!env.OPENAI_API_KEY) throw new Error('AI není připojena.');
+  if (!env.OPENAI_API_KEY) throw new Error(L('AI není připojena.', 'AI is not connected.'));
   await assertAiAllowance(env);
   const chosenModel=model || env.OPENAI_MODEL || 'gpt-6-sol';
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -266,19 +270,21 @@ export async function callOpenAI(env, { instructions, input, maxOutputTokens = 5
       reasoning:{effort:reasoningEffort},
       store:false,
       ...(onText?{stream:true}:{}),
-      instructions,
+      instructions:instructions+aiLanguageNote(feature),
       input,
       max_output_tokens:maxOutputTokens,
       ...(tools ? {tools} : {}),
       ...(format ? {text:{format}} : {})
     })
   });
-  if(!response.ok){const error=await response.json().catch(()=>({})),failure=new Error('OpenAI '+response.status+': '+(error.error?.message||'AI služba není dostupná.'));failure.ai=true;throw failure;}
+  if(!response.ok){const error=await response.json().catch(()=>({})),failure=new Error('OpenAI '+response.status+': '+(error.error?.message||L('AI služba není dostupná.', 'The AI service isn\'t available.')));failure.ai=true;throw failure;}
   const data=onText?await readOpenAIStream(response,onText):await response.json();
-  await recordAiUsage(env,{feature,model:data.model||chosenModel,usage:data.usage});
+  // Web searches are billed per call; a failed one is not.
+  const webSearches=(data.output||[]).filter(item=>item.type==='web_search_call'&&item.status!=='failed').length;
+  await recordAiUsage(env,{feature,model:data.model||chosenModel,usage:data.usage,webSearches});
   const incomplete=data.status==='incomplete';
   const text = data.output?.flatMap(item => item.content || []).filter(item => item.type === 'output_text').map(item => item.text).join('\n') || data.output_text || data.streamedText;
-  if (!text) throw new Error(incomplete?'Odpověď AI se nevešla do limitu a nedokončila se. Zkus otázku zúžit.':'AI nevrátila odpověď.');
+  if (!text) throw new Error(incomplete?L('Odpověď AI se nevešla do limitu a nedokončila se. Zkus otázku zúžit.', 'The AI answer didn\'t fit the limit and wasn\'t finished. Try narrowing the question.'):L('AI nevrátila odpověď.', 'The AI didn\'t return an answer.'));
   const citations = (data.output || []).flatMap(item => item.content || []).flatMap(item => item.annotations || []).filter(a => a.type === 'url_citation' && a.url).map(a => ({url:a.url, title:a.title || a.url}));
   return {text, model:data.model, usage:data.usage, citations,incomplete,incompleteReason:incomplete?data.incomplete_details?.reason||null:null};
 }
@@ -292,14 +298,14 @@ export function coachAnswerText(text,{actions=false,incomplete=false}={}){
   let parsed=null;if(actions){try{parsed=JSON.parse(text);}catch{/* cut off or plain text */}}
   const raw=String(text||''),plain=!/^\s*[{[]/.test(raw);
   let answer=String((typeof parsed?.answer==='string'?parsed.answer:null)??(plain?raw:partialCoachAnswer(raw))).trim();
-  if(incomplete)answer=(answer?answer+'\n\n':'')+TRUNCATED_NOTE;
-  else if(!answer)answer='Odpověď se nepodařilo zpracovat. Zkus to prosím znovu.';
+  if(incomplete)answer=(answer?answer+'\n\n':'')+L(TRUNCATED_NOTE,'The answer was cut short. Write “continue” or narrow the question.');
+  else if(!answer)answer=L('Odpověď se nepodařilo zpracovat. Zkus to prosím znovu.', 'The answer couldn\'t be processed. Please try again.');
   const visuals=Array.isArray(parsed?.visuals)?[...new Set(parsed.visuals.filter(v=>COACH_VISUALS.includes(v)))].slice(0,2):[];
   return {answer,visuals,actions:Array.isArray(parsed?.actions)?parsed.actions:[]};
 }
 
 export async function askCoach(env, message, context, {model = null, focus = null, task = assistantTask(message), actions = false,concise=false,onAnswer=null} = {}) {
-  if (!env.OPENAI_API_KEY) return {status: 'unavailable', message: 'AI není připojena. Nastav serverový secret OPENAI_API_KEY; předplatné ChatGPT není API klíč.'};
+  if (!env.OPENAI_API_KEY) return {status: 'unavailable', message: L('AI není připojena. Nastav serverový secret OPENAI_API_KEY; předplatné ChatGPT není API klíč.', 'AI is not connected. Set the OPENAI_API_KEY server secret; a ChatGPT subscription isn\'t an API key.')};
   const started = Date.now();
   const light = task === 'simple' || task === 'quick', chosen = model || (light ? lightModel(env) : complexModel(env));
   const data = task === 'simple' ? {date:context.date,now:context.now,athleteState:context.athleteState,statusNote:context.statusNote,preferenceMemory:context.preferenceMemory} : {...context};
@@ -310,7 +316,7 @@ export async function askCoach(env, message, context, {model = null, focus = nul
   const brief=concise||task==='adjustment';
   let streamed='',lastAnswer='';
   const onText=onAnswer?delta=>{streamed+=delta;const answer=actions?partialCoachAnswer(streamed):streamed;if(answer!==lastAnswer){lastAnswer=answer;onAnswer(answer);}}:null;
-  const r = await callOpenAI(env, {feature:'assistant',instructions:withFocus(coachInstructions, focus)+replyLanguageNote(env)+(actions?'\n\n'+ACTION_INSTRUCTIONS:'')+(brief?'\nTento požadavek vyřiď stručně: answer nejvýše 90 slov, důvod každé akce jedna věta. Neopisuj celý kalendář.':''), input, model:chosen, reasoningEffort:light ? 'low' : complexEffort(env), maxOutputTokens:TASK_LIMITS[task]||TASK_LIMITS.planning,format:actions?COACH_ACTION_FORMAT:null,onText});
+  const r = await callOpenAI(env, {feature:'assistant',instructions:withFocus(coachInstructions, focus)+(actions?'\n\n'+ACTION_INSTRUCTIONS:'')+(brief?'\nTento požadavek vyřiď stručně: answer nejvýše 90 slov, důvod každé akce jedna věta. Neopisuj celý kalendář.':''), input, model:chosen, reasoningEffort:light ? 'low' : complexEffort(env), maxOutputTokens:TASK_LIMITS[task]||TASK_LIMITS.planning,format:actions?COACH_ACTION_FORMAT:null,onText});
   const reply=coachAnswerText(r.text,{actions,incomplete:r.incomplete});
   return {status:'ok', answer:reply.answer,visuals:reply.visuals,actions:reply.actions,incomplete:Boolean(r.incomplete), model:r.model || chosen, usage:r.usage, ms:Date.now() - started, coachEngine:context?.cyclingCoachV2?.version||null};
 }

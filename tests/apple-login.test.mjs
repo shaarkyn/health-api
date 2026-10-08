@@ -142,6 +142,7 @@ test("a signed-in user links their Apple ID in Settings, even with a hidden e-ma
   // Deleting the account takes the Apple link with it.
   const again = await start(env, { path: "/auth/apple?link=1", user: { id: friend.id } });
   await callback(env, again, {}, appleFetch({}, { nonce: again.nonce }));
+  env.DB.sqlite.exec(readFileSync(new URL("../migrations/0011_account_deletions.sql", import.meta.url), "utf8"));
   await deleteAccount({ DB: scopedDb(env.DB, friend.id), USER_ID: friend.id }, { id: friend.id, email: "friend@example.com" });
   assert.equal(await env.DB.prepare("SELECT COUNT(*) AS n FROM user_identities WHERE user_id=?").bind(friend.id).first().then(r => r.n), 0);
 });

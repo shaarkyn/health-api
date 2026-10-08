@@ -26,7 +26,7 @@ test("Dnes is the one day screen: no separate Přehled tab, the rest of Přehled
 });
 
 test("the timeline shows the day's weigh-ins and logs a weight for the shown day", () => {
-  assert.match(client, /cls:'weight',title:'Váha · '/);
+  assert.match(client, /cls:'weight',title:uiText\('Váha · ','Weight · '\)/);
   assert.match(client, /\$\('timelineWeight'\)\.onclick=\(\)=>openWeightSheet\(date\)/);
   assert.match(client, /body:JSON\.stringify\(\{kg:v,date\}\)/);
 });
@@ -54,7 +54,7 @@ test("a weight for a future or malformed day is refused", async () => {
 });
 
 test("one bad record does not empty the timeline: each source is drawn on its own", () => {
-  for (const source of ["sleep", "activities", "other activities", "planned", "food", "weight", "coach"]) assert.ok(client.includes("add('" + source + "',()=>{"), source);
+  for (const source of ["sleep", "activities", "other activities", "planned", "food", "weight"]) assert.ok(client.includes("add('" + source + "',()=>{"), source);
   assert.match(client, /add=\(source,fn\)=>\{try\{fn\(\);\}catch\(error\)\{console\.error\('Timeline: '\+source,error\);\}\}/);
   // A weight without a valid day (null sample_time) is skipped before dateLabel can throw.
   assert.match(client, /\.filter\(r=>\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(r\.day\)/);

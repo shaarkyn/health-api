@@ -1,13 +1,16 @@
+import { L } from './lang.js';
 import {localExportIndex} from './local-workouts.js';
 import {hasRecentActivityData} from './onboarding.js';
 import { getCookbook, getCookbookRecipeByPage } from "./cookbook.js";
 import { reconcileCancelledGymPlans } from './planned-events.js';
 import { nextUnloggedMeals } from "./nutrition-next.js";
 import {walkingEnergyCheck,activityTelemetryEnergy} from './activity-energy-check.js';
+import { sleepSessionFromRow } from "./sleep-sessions.js";
 import { energyBaseline, MISSING_LABELS, proteinReferenceKg, trendAdjustment, TREND_REASONS } from "./energy-profile.js";
 import { d1WeightTrend } from "./strength-context.js";
 import { loadEffectiveProfile } from "./profile-suggestions.js";
-import { writeIntervalsWeight } from "./weight-sync.js";
+import { writeIntervalsWeight, importIntervalsWeights } from "./weight-sync.js";
+import { latestStoredWeight } from './athlete-weight.js';
 import { healthScopes, hasGoogleScope, HEALTH_PERMISSIONS, googleTypeAllowed, skippedForPermission } from "./google-scopes.js";
 import { dateFormat } from "./date-format.js";
 import { activityKindOf, pragueLocal } from "./coach-reflection.js";
@@ -186,9 +189,9 @@ export default {
 async function appWeight(env, request) {
   const body = await request.json();
   const value = Number(body?.kg);
-  if (!Number.isFinite(value) || value < 30 || value > 300) return Response.json({status:"error",message:"Neplatná hmotnost."},{status:400});
+  if (!Number.isFinite(value) || value < 30 || value > 300) return Response.json({status:"error",message:L("Neplatná hmotnost.", "Invalid weight.")},{status:400});
   const today = pragueDate(), date = body?.date || today;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return Response.json({status:"error",message:"Neplatné datum vážení."},{status:400});
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return Response.json({status:"error",message:L("Neplatné datum vážení.", "Invalid weigh-in date.")},{status:400});
   // Today's weigh-in keeps its real time (for the day timeline); an earlier day gets noon.
   const now = date === today ? pragueNow() : null, at = now ? now.at : date+"T12:00:00+02:00";
   // With Google Health connected the weight goes there too; without it, only
@@ -395,8 +398,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 // writing when the user granted it).
 export async function googleToken(env, scopes = healthScopes(env)) {
   // Without a connection Google would only answer "missing refresh_token".
-  if (!env.GOOGLE_REFRESH_TOKEN) throw new Error("Google Health není připojené.");
-  if (!scopes.length) throw new Error("Google Health nemá povolené žádné oprávnění. V Nastavení obnov oprávnění Google.");
+  if (!env.GOOGLE_REFRESH_TOKEN) throw new Error(L("Google Health není připojené.", "Google Health isn't connected."));
+  if (!scopes.length) throw new Error(L("Google Health nemá povolené žádné oprávnění. V Nastavení obnov oprávnění Google.", "Google Health has no permissions granted. Renew the Google permissions in Settings."));
   const response = await fetchWithTimeout(
     "https://oauth2.googleapis.com/token",
 
@@ -468,6 +471,7 @@ async function intervalsGet(
     "https://intervals.icu/api/v1" +
     path,
     {
+      signal: AbortSignal.timeout(15000),
       headers: {
         "Authorization":
           intervalsAuth(env),
@@ -493,8 +497,7 @@ async function intervalsGet(
     throw new Error(
       "Intervals.icu HTTP " +
       response.status +
-      ": " +
-      JSON.stringify(data)
+      " (import)"
     );
   }
 
@@ -557,12 +560,18 @@ async function savePoint(
   endTime = null,
   externalId = null
 ) {
+  const id = externalId || payload.name || `${type}:${sampleTime || startTime || crypto.randomUUID()}`;
+  await pointStatement(env, source, type, payload, value, unit, sampleTime, startTime, endTime, id).run();
+  return id;
+}
+
+function pointStatement(env, source, type, payload, value = null, unit = null, sampleTime = null, startTime = null, endTime = null, externalId = null) {
   const id =
     externalId ||
     payload.name ||
     `${type}:${sampleTime || startTime || crypto.randomUUID()}`;
 
-  await env.DB
+  return env.DB
     .prepare(
       `INSERT INTO health_datapoints (
         user_id,
@@ -603,10 +612,7 @@ async function savePoint(
       value,
       unit,
       JSON.stringify(payload)
-    )
-    .run();
-
-  return id;
+    );
 }
 
 
@@ -905,7 +911,8 @@ function googleInfo(type, p) {
     "dailyOxygenSaturation",
     "dailyRespiratoryRate",
     "dailyVo2Max",
-    "dailyHeartRateZones"
+    "dailyHeartRateZones",
+    "dailySleepTemperatureDerivations"
   ];
 
   for (const name of daily) {
@@ -971,6 +978,9 @@ function googleInfo(type, p) {
   if (p.dailyOxygenSaturation?.percentage !== undefined) {
     value = Number(p.dailyOxygenSaturation.percentage); unit = "%";
   }
+  if (p.dailySleepTemperatureDerivations?.nightlyTemperatureCelsius !== undefined) {
+    value = Number(p.dailySleepTemperatureDerivations.nightlyTemperatureCelsius); unit = "°C";
+  }
   if (p.dailyRespiratoryRate?.breathsPerMinute !== undefined) {
     value = Number(p.dailyRespiratoryRate.breathsPerMinute); unit = "breaths/min";
   }
@@ -1001,6 +1011,7 @@ const GOOGLE_SYNC_CONFIGS = [
   ["daily-respiratory-rate", "daily_respiratory_rate", "daily", "google-wearables", 30],
   ["daily-vo2-max", "daily_vo2_max", "daily", "google-wearables", 30],
   ["daily-heart-rate-zones", "daily_heart_rate_zones", "daily", "google-wearables", 30],
+  ["daily-sleep-temperature-derivations", "daily_sleep_temperature_derivations", "daily", "google-wearables", 30],
   ["respiratory-rate-sleep-summary", "respiratory_rate_sleep_summary", "sample", "google-wearables", 7],
   ["sedentary-period", "sedentary_period", "interval", "google-wearables", 7],
   ["time-in-heart-rate-zone", "time_in_heart_rate_zone", "interval", "google-wearables", 7],
@@ -1341,13 +1352,19 @@ async function syncIntervalsActivities(env,{activityDays=CONFIG.activityDays}={}
       `/athlete/0/activities?oldest=${oldest}&newest=${newest}`
     );
 
+  if (!Array.isArray(activities)) throw new Error('Invalid Intervals activity response');
+  const statements = [];
+  const previous = activities.some(a => a?._note && !a.name && !a.type)
+    ? (await env.DB.prepare("SELECT external_id,payload_json FROM health_datapoints WHERE user_id=? AND source_family='intervals' AND data_type='activity' AND start_time>=?").bind(env.USER_ID,oldest).all()).results || [] : [];
+  const existingById = new Map(previous.map(row => [row.external_id, row]));
+
   let saved = 0;
 
   for (const sourceActivity of activities) {
     const id = String(sourceActivity.id);
     let a = sourceActivity;
     if (sourceActivity?._note && !sourceActivity.name && !sourceActivity.type) {
-      const existing = await env.DB.prepare("SELECT payload_json FROM health_datapoints WHERE user_id=? AND source_family='intervals' AND data_type='activity' AND external_id=? LIMIT 1").bind(env.USER_ID,"activity:"+id).first();
+      const existing = existingById.get("activity:"+id);
       if (existing?.payload_json) {
         try {
           const previous=JSON.parse(existing.payload_json);
@@ -1356,7 +1373,7 @@ async function syncIntervalsActivities(env,{activityDays=CONFIG.activityDays}={}
       }
     }
 
-    await savePoint(
+    statements.push(pointStatement(
       env,
       "intervals",
       "activity",
@@ -1374,10 +1391,14 @@ async function syncIntervalsActivities(env,{activityDays=CONFIG.activityDays}={}
       activityStart(a),
       activityEnd(a),
       `activity:${id}`
-    );
+    ));
 
     saved++;
   }
+
+  // A year of activities must not turn into hundreds of sequential D1 calls
+  // inside a background request with a limited lifetime.
+  for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
 
   // Counts only: the activities themselves are health data, and this result
   // ends up in the public GitHub Actions log of the periodic sync.
@@ -1412,11 +1433,12 @@ async function syncIntervalsEvents(env) {
   if (!Array.isArray(events)) throw new Error('Invalid Intervals event response');
   const previous=(await env.DB.prepare("SELECT external_id,start_time,payload_json FROM health_datapoints WHERE user_id=? AND source_family='intervals' AND data_type='planned-workout' AND start_time>=? AND start_time<?").bind(env.USER_ID,oldest,rangeEnd).all()).results||[];
 
-  await env.DB.prepare(
+  const replace = env.DB.prepare(
     `DELETE FROM health_datapoints
      WHERE user_id = ? AND source_family = 'intervals' AND data_type = 'planned-workout'
        AND start_time >= ? AND start_time < ?`
-  ).bind(env.USER_ID, oldest, rangeEnd).run();
+  ).bind(env.USER_ID, oldest, rangeEnd);
+  const statements = [];
 
   let saved = 0;
 
@@ -1441,7 +1463,7 @@ async function syncIntervalsEvents(env) {
       e.end_date ||
       null;
 
-    await savePoint(
+    statements.push(pointStatement(
       env,
       "intervals",
       "planned-workout",
@@ -1452,10 +1474,13 @@ async function syncIntervalsEvents(env) {
       start,
       end,
       `planned:${id}`
-    );
+    ));
 
     saved++;
   }
+
+  // Replace atomically so a storage failure preserves the previous calendar.
+  await env.DB.batch([replace, ...statements]);
 
   await reconcileCancelledGymPlans(env.DB, previous, events, dateDaysAgo(0));
   return {
@@ -1475,14 +1500,15 @@ async function syncIntervalsEvents(env) {
 // INTERVALS SYNC
 // ======================================================
 async function syncIntervals(env,options={}) {
-  const [activities,planned]=await Promise.all([syncIntervalsActivities(env,options),syncIntervalsEvents(env)]);
-
-  return Response.json({
-    status: "ok",
-    source: "intervals.icu",
-    activities,
-    planned
-  });
+  const names = ['activities', 'planned', 'weight'];
+  const settled = await Promise.allSettled([
+    syncIntervalsActivities(env,options), syncIntervalsEvents(env),
+    importIntervalsWeights(env,{days:options.activityDays ? CONFIG.weightDays : CONFIG.activityDays})
+  ]);
+  const parts = Object.fromEntries(settled.map((result,i) => [names[i], result.status === 'fulfilled'
+    ? result.value : {status:'error',message:result.reason?.message || 'Import failed'}]));
+  const failures = settled.filter(r => r.status === 'rejected').length;
+  return Response.json({status:failures === names.length ? 'error' : failures ? 'partial' : 'ok',source:'intervals.icu',...parts});
 }
 
 
@@ -2130,11 +2156,7 @@ async function energyForDate(env, date) {
     ORDER BY start_time
   `).bind(env.USER_ID, date, nextDate).all();
 
-  const weight = await env.DB.prepare(`
-    SELECT value_numeric, sample_time FROM health_datapoints
-    WHERE user_id = ? AND data_type = 'weight' AND value_numeric IS NOT NULL
-    ORDER BY sample_time DESC, id DESC LIMIT 1
-  `).bind(env.USER_ID).first();
+  const weight = await latestStoredWeight(env.DB, env.USER_ID);
   const profile = await loadEffectiveProfile(env.DB, env.USER_ID);
   // Sport is estimated from the profile only when no source tracks activities.
   const activityTracked = await hasRecentActivityData(env.DB,env.USER_ID);
@@ -2264,8 +2286,9 @@ async function energyForDate(env, date) {
   // Rest-day intake is the personal resting expenditure minus the weekly goal;
   // tracked training adds 70 % of its cost, untracked sport its daily average.
   const deficit = baseline.ready ? baseline.deficit : 0;
-  // Today and ahead, the weight trend corrects the estimate by ±100 kcal when
-  // the weight moves clearly off the chosen goal (trendAdjustment).
+  // Today and ahead, the weight trend corrects the estimate by energy balance
+  // (up to ±250 kcal) when the weight moves clearly off the chosen goal
+  // (trendAdjustment).
   const trend = baseline.ready && !isCompleteDay ? trendAdjustment(profile?.goal, await d1WeightTrend(env, date)) : { adjustment: 0, reason: null };
   const restIntakeTarget = baseline.ready ? baseline.baselineRestTDEE - deficit + trend.adjustment : null;
   const plannedTrainingCalories = baseline.ready && estimatedTDEE != null ? Math.max(0, estimatedTDEE - baseline.baselineRestTDEE - baseline.sportDaily) : 0;
@@ -2330,8 +2353,8 @@ async function energyForDate(env, date) {
 function goalPhrase(energy) {
   const deficit = Number(energy.calorieBreakdown?.weightLossDeficit) || 0;
   const target = energy.energyProfile?.targetWeightKg;
-  if (deficit > 0) return target ? `cílové tempo úbytku hmotnosti směrem k ${target} kg` : "cílové tempo úbytku hmotnosti";
-  return "udržení hmotnosti";
+  if (deficit > 0) return target ? L(`cílové tempo úbytku hmotnosti směrem k ${target} kg`, `your target rate of weight loss towards ${target} kg`) : L("cílové tempo úbytku hmotnosti", "your target rate of weight loss");
+  return L("udržení hmotnosti", "maintaining your weight");
 }
 
 async function analysisDaily(
@@ -2437,16 +2460,16 @@ async function analysisDaily(
       missing: energy.energyProfile.missing,
       energySource: energy.energyProfile.source,
       reason: !energy.energyProfile.ready
-        ? "Kalorický cíl zatím nepočítám, chybí: " + energy.energyProfile.missing.map(k => MISSING_LABELS[k] || k).join(", ") + "."
+        ? L("Kalorický cíl zatím nepočítám, chybí: ", "I can't calculate a calorie goal yet; missing: ") + energy.energyProfile.missing.map(k => MISSING_LABELS[k] || k).join(", ") + "."
         : (energy.nutritionContext?.endurance
-        ? "Dnešní cíl zohledňuje vytrvalostní zátěž a " + goalPhrase(energy) + "."
+        ? L("Dnešní cíl zohledňuje vytrvalostní zátěž a ", "Today's goal accounts for your endurance load and ") + goalPhrase(energy) + "."
         : energy.nutritionContext?.preRide
-          ? "Zítřejší kolo je zohledněné už dnes: mírně více sacharidů pro doplnění glykogenu, méně tuku, protein zůstává stabilní."
+          ? L("Zítřejší kolo je zohledněné už dnes: mírně více sacharidů pro doplnění glykogenu, méně tuku, protein zůstává stabilní.", "Tomorrow's ride is already accounted for today: slightly more carbs to top up glycogen, less fat, protein stays the same.")
         : energy.nutritionContext?.training
-          ? "Dnešní cíl zohledňuje plánovaný/dokončený trénink a " + goalPhrase(energy) + "."
-          : "Dnešní cíl vychází z klidového energetického základu a " + goalPhrase(energy) + ".")
-        + (energy.calorieBreakdown?.trendAdjustment ? " Podle vývoje váhy: " + TREND_REASONS[energy.calorieBreakdown.trendReason] + "." : "")
-        + (energy.calorieBreakdown?.floorApplied ? ` Cíl drží bezpečné minimum ${energy.calorieBreakdown.minTarget} kcal, takže hubnutí půjde pomaleji než zvolené tempo.` : ""),
+          ? L("Dnešní cíl zohledňuje plánovaný/dokončený trénink a ", "Today's goal accounts for your planned/completed training and ") + goalPhrase(energy) + "."
+          : L("Dnešní cíl vychází z klidového energetického základu a ", "Today's goal is based on your resting energy baseline and ") + goalPhrase(energy) + ".")
+        + (energy.calorieBreakdown?.trendAdjustment ? L(" Podle vývoje váhy: ", " Based on your weight trend: ") + TREND_REASONS[energy.calorieBreakdown.trendReason] + L(", o ", ", ") + Math.abs(energy.calorieBreakdown.trendAdjustment) + " kcal " + (energy.calorieBreakdown.trendAdjustment < 0 ? L("méně", "less") : L("víc", "more")) + "." : "")
+        + (energy.calorieBreakdown?.floorApplied ? L(` Cíl drží bezpečné minimum ${energy.calorieBreakdown.minTarget} kcal, takže hubnutí půjde pomaleji než zvolené tempo.`, ` The goal stays at the safe minimum of ${energy.calorieBreakdown.minTarget} kcal, so weight loss will be slower than the chosen rate.`) : ""),
       foodLog:
         await foodLogForDate(env, date)
     },
@@ -2875,10 +2898,10 @@ function recipeFitScore(recipe, remaining, targets, options) {
 function recommendationReason(recipe, remaining, options) {
   const reasons=[];
   if (options.postRide && Number(recipe.carbs_g)>=40) reasons.push('sacharidy po kole');
-  if (remaining.protein_g>0 && Number(recipe.protein_g)>=Math.min(40,remaining.protein_g*0.35)) reasons.push('dobrý příjem bílkovin');
-  if (options.maxMinutes && recipeMinutes(recipe)<=options.maxMinutes) reasons.push('rychlá příprava');
+  if (remaining.protein_g>0 && Number(recipe.protein_g)>=Math.min(40,remaining.protein_g*0.35)) reasons.push(L('dobrý příjem bílkovin', 'good protein intake'));
+  if (options.maxMinutes && recipeMinutes(recipe)<=options.maxMinutes) reasons.push(L('rychlá příprava', 'quick to prepare'));
   if (recipe.meal_prep) reasons.push('Meal Prep');
-  if (remaining.kcal<=0 && Number(recipe.kcal)<=150) reasons.push('malá svačina bez velkého navýšení kcal');
+  if (remaining.kcal<=0 && Number(recipe.kcal)<=150) reasons.push(L('malá svačina bez velkého navýšení kcal', 'a small snack without many extra kcal'));
   return reasons.slice(0,3).join(', ');
 }
 
@@ -2886,7 +2909,7 @@ async function foodRecommend(env, url) {
   const date=url.searchParams.get('date')||pragueDate();
   const log=await foodLogForDate(env,date);
   const energy=await energyForDate(env,date);
-  if(!energy.energyProfile.ready)return Response.json({status:"ok",date,calorieTarget:null,missing:energy.energyProfile.missing,foodTotals:log.totals,macroTargets:null,remaining:null,coaching:"Doporučení jídel potřebuje kalorický cíl. Doplň v profilu: "+energy.energyProfile.missing.map(k=>MISSING_LABELS[k]||k).join(", ")+".",mealRecommendations:[],recommendations:[],storeAlternatives:[]});
+  if(!energy.energyProfile.ready)return Response.json({status:"ok",date,calorieTarget:null,missing:energy.energyProfile.missing,foodTotals:log.totals,macroTargets:null,remaining:null,coaching:L("Doporučení jídel potřebuje kalorický cíl. Doplň v profilu: ", "Meal recommendations need a calorie goal. Add to your profile: ")+energy.energyProfile.missing.map(k=>MISSING_LABELS[k]||k).join(", ")+".",mealRecommendations:[],recommendations:[],storeAlternatives:[]});
   const targetKcal=Number(energy.calorieTarget||0);
   const targets=energy.macroTargets||dailyMacroTargets(energy.currentWeight,targetKcal,energy.nutritionContext||{});
   const eaten=log.entries.filter(r=>r.status==="eaten");
@@ -2936,26 +2959,26 @@ async function foodRecommend(env, url) {
       const mealMatch=keys.some(k=>hay.includes(k));
       return {recipe,mealMatch,score:recipeFitScore(recipe,share,targets,{postRide:postRide&&mealType!=="SNACK",maxMinutes})+(mealMatch?40:0)};
     }).sort((a,b)=>b.score-a.score).slice(0,limit).map(x=>({
-      ...x.recipe,servings:1,portion:1,portion_label:"1 porce",meal_type:mealType,
+      ...x.recipe,servings:1,portion:1,portion_label:L("1 porce", "1 serving"),meal_type:mealType,
       recommendation_score:Math.round(Math.max(0,Math.min(100,x.score))*10)/10,
-      recommendation_reason:[recommendationReason(x.recipe,share,{postRide:postRide&&mealType!=="SNACK",maxMinutes}),x.mealMatch?"odpovídá typu jídla":"vhodné podle zbývajícího příjmu"].filter(Boolean).join(", ")
+      recommendation_reason:[recommendationReason(x.recipe,share,{postRide:postRide&&mealType!=="SNACK",maxMinutes}),x.mealMatch?L("odpovídá typu jídla", "matches the meal type"):L("vhodné podle zbývajícího příjmu", "fits your remaining intake")].filter(Boolean).join(", ")
     }));
     return {meal_type:mealType,label,recommendations:candidates,target:share};
   });
 
   const storeAlternatives=[];
   const addStore=(name,kcal,protein,carbs,fat,reason)=>storeAlternatives.push({name,kcal,protein_g:protein,carbs_g:carbs,fat_g:fat,reason});
-  if(remaining.protein_g>=20)addStore("Skyr / vysokoproteinový jogurt",150,20,10,1,"rychle doplní protein");
-  if(remaining.protein_g>=25)addStore("Kuřecí prsa + zelenina",300,45,10,8,"vysoký protein, nízký přebytek tuku");
-  if(remaining.carbs_g>=35)addStore("Banán + pečivo",250,7,50,3,"rychlé doplnění sacharidů");
-  if(remaining.kcal>=300&&remaining.protein_g>=20)addStore("Cottage + pečivo",350,28,35,10,"jednoduchá vyvážená varianta");
-  if(!storeAlternatives.length)addStore("Proteinový pudink / skyr",150,20,10,2,"malá porce podle zbývajícího příjmu");
+  if(remaining.protein_g>=20)addStore(L("Skyr / vysokoproteinový jogurt", "Skyr / high-protein yogurt"),150,20,10,1,L("rychle doplní protein", "a quick protein top-up"));
+  if(remaining.protein_g>=25)addStore(L("Kuřecí prsa + zelenina", "Chicken breast + vegetables"),300,45,10,8,L("vysoký protein, nízký přebytek tuku", "high protein, little extra fat"));
+  if(remaining.carbs_g>=35)addStore(L("Banán + pečivo", "Banana + bread"),250,7,50,3,L("rychlé doplnění sacharidů", "a quick carb top-up"));
+  if(remaining.kcal>=300&&remaining.protein_g>=20)addStore(L("Cottage + pečivo", "Cottage cheese + bread"),350,28,35,10,L("jednoduchá vyvážená varianta", "a simple balanced option"));
+  if(!storeAlternatives.length)addStore(L("Proteinový pudink / skyr", "Protein pudding / skyr"),150,20,10,2,L("malá porce podle zbývajícího příjmu", "a small portion for your remaining intake"));
 
   let coaching;
-  if(!eaten.length)coaching="Dnes zatím nemám zapsané žádné jídlo, takže skóre zůstává bez hodnocení. Doporučení začínají od celého denního cíle.";
-  else if(hasLunch&&!hasDinner)coaching="Snídaně a oběd jsou zapsané. Proto teď doporučuji jen zbývající svačinu a večeři; každá varianta je 1 porce a přepočítává se podle toho, co už jsi snědl.";
-  else if(postRide)coaching="Po kole máš vyšší prioritu pro sacharidy a dostatek bílkovin. Doporučení se přepočítává podle dnešního příjmu.";
-  else coaching="Doporučení se průběžně přepočítává podle toho, co už jsi dnes snědl, a podle zbývajících maker.";
+  if(!eaten.length)coaching=L("Dnes zatím nemám zapsané žádné jídlo, takže skóre zůstává bez hodnocení. Doporučení začínají od celého denního cíle.", "No food is logged today yet, so there's no score. Recommendations start from the whole daily goal.");
+  else if(hasLunch&&!hasDinner)coaching=L("Snídaně a oběd jsou zapsané. Proto teď doporučuji jen zbývající svačinu a večeři; každá varianta je 1 porce a přepočítává se podle toho, co už jsi snědl.", "Breakfast and lunch are logged, so I'm only recommending the remaining snack and dinner; each option is 1 serving and adjusts to what you've already eaten.");
+  else if(postRide)coaching=L("Po kole máš vyšší prioritu pro sacharidy a dostatek bílkovin. Doporučení se přepočítává podle dnešního příjmu.", "After a ride, carbs and enough protein take priority. The recommendation adjusts to today's intake.");
+  else coaching=L("Doporučení se průběžně přepočítává podle toho, co už jsi dnes snědl, a podle zbývajících maker.", "The recommendation keeps adjusting to what you've eaten today and your remaining macros.");
 
   return Response.json({
     status:"ok",date,mealToPlan:slots[0]?.[0]||null,
@@ -3143,38 +3166,7 @@ async function healthSleep(env, url) {
     LIMIT 5000
   `).bind(env.USER_ID).all();
 
-  const sessions = (rows.results || []).map(row => {
-    let p = {};
-    try { p = JSON.parse(row.payload_json || "{}"); } catch {}
-    const sleep = p.sleep || p;
-    const interval = sleep.interval || {};
-    const stages = sleep.stages || sleep.sleepStages || [];
-    const stageMinutes = {};
-    for (const stage of stages) {
-      const a = new Date(stage.startTime || stage.start_time || 0).getTime();
-      const b = new Date(stage.endTime || stage.end_time || 0).getTime();
-      if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
-        const type = String(stage.type || "UNKNOWN").toUpperCase();
-        stageMinutes[type] = (stageMinutes[type] || 0) + (b-a)/60000;
-      }
-    }
-    const startTime = row.start_time || interval.startTime || interval.civilStartTime || null;
-    const endTime = row.end_time || interval.endTime || interval.civilEndTime || null;
-    const durationMin = hoursBetween(startTime,endTime) * 60;
-    const day = dateOnly(endTime || startTime);
-    return {
-      id: row.external_id,
-      date: day,
-      startTime,
-      endTime,
-      timeInBedMin: Number.isFinite(durationMin) ? Math.round(durationMin) : null,
-      durationMin: Object.keys(stageMinutes).some(k=>['DEEP','REM','LIGHT'].includes(k)) ? Math.round(['DEEP','REM','LIGHT'].reduce((s,k)=>s+(stageMinutes[k]||0),0)) : Number.isFinite(durationMin) ? Math.round(durationMin) : null,
-      type: sleep.type || sleep.sleepType || null,
-      stages: Object.fromEntries(Object.entries(stageMinutes).map(([k,v])=>[k,Math.round(v)])),
-      minutesToFallAsleep: sleep.minutesToFallAsleep ?? null,
-      minutesAfterWakeup: sleep.minutesAfterWakeup ?? null
-    };
-  });
+  const sessions = (rows.results || []).map(sleepSessionFromRow);
 
   const filteredSessions = sessions.filter(s => {
     const sStart = String(s.startTime || "").slice(0,10);

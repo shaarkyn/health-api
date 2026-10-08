@@ -1,3 +1,4 @@
+import { L } from './lang.js';
 import { verifyGitHubActionsToken } from "./github-oidc.js";
 
 const SESSION_COOKIE = "pfd_session";
@@ -57,7 +58,7 @@ export async function isAuthorizedRequest(request, env, verifyOidc = verifyGitHu
 
 export function unauthorizedResponse() {
   return Response.json(
-    { status: "error", message: "Přihlas se do dashboardu." },
+    { status: "error", message: L("Přihlas se do dashboardu.", "Sign in to the app.") },
     { status: 401, headers: { "WWW-Authenticate": 'Bearer realm="health-api"', "Cache-Control": "no-store" } }
   );
 }
