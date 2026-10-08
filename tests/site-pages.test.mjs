@@ -87,14 +87,13 @@ test('the privacy policy and support page cover what Google verification asks fo
   assert.match(cs,/<strong>Smazání účtu<\/strong> v Nastavení/);
 });
 
-test('the privacy policy names the controller, the contact, retention and both consents',async()=>{
+test('the privacy policy names the controller and the contact',async()=>{
   const page=async(fn,path,lang)=>(await fn(new Request('https://petrfitnessdata.eu'+path+'?lang='+lang))).text();
   const en=await page(privacyPage,'/privacy','en'),cs=await page(privacyPage,'/privacy','cs');
   assert.match(en,/The controller of your personal data is Petr Bouma/);
   assert.match(cs,/Správcem tvých osobních údajů je Petr Bouma/);
   for(const html of [en,cs,await page(supportPage,'/support','en'),await page(supportPage,'/support','cs')])assert.match(html,/<a href="mailto:petrbouma1994@icloud\.com">petrbouma1994@icloud\.com<\/a>/);
-  assert.match(en,/An account nobody has signed in to for two years is deleted automatically/);
-  assert.match(en,/<strong>OpenAI<\/strong> \(USA\), only if you allow AI features/);
-  assert.match(en,/Sending data to OpenAI for AI features is a separate, optional consent/);
+  // The consent step and the two-year deletion come with their own change; until then the policy does not describe them.
+  assert.doesNotMatch(en,/two years|separate, optional consent/);
   assert.doesNotMatch(en+cs,/ChatGPT|the same way you received your invitation|stejnou cestou, jakou ti přišla pozvánka/);
 });
