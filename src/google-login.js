@@ -1,4 +1,4 @@
-import { dashboardHmac, sessionCookie, sessionSecret, SESSION_SECONDS, timingSafeEqualString } from "./dashboard-auth.js";
+import { signText, sessionCookie, sessionSecret, SESSION_SECONDS, timingSafeEqualString } from "./dashboard-auth.js";
 import { ensureTenancy, signInGoogleUser } from "./tenancy.js";
 
 // "Sign in with Google" for the dashboard. Only identity scopes are requested;
@@ -40,9 +40,9 @@ function googleClientEnv(env) {
 }
 
 function configured(env) {
-  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.STRENGTH_API_KEY && env.OWNER_EMAIL && env.DB);
+  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.SESSION_SECRET && env.OWNER_EMAIL && env.DB);
 }
-const NOT_CONFIGURED = ["Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET nebo OWNER_EMAIL.", 503];
+const NOT_CONFIGURED = ["Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET nebo OWNER_EMAIL.", 503];
 
 async function startLogin(env, request) {
   if (!configured(env)) return page(...NOT_CONFIGURED);
@@ -97,11 +97,11 @@ async function finishLogin(request, env, fetchImpl = fetch) {
   headers.append("Set-Cookie", STATE_COOKIE + "=; Max-Age=0; Path=/auth/google; Secure; HttpOnly; SameSite=Lax");
   return new Response(null, { status: 302, headers });
 }
-export { finishLogin as _finishLoginForTest };
+export { finishLogin as _finishLoginForTest, page as loginPage };
 
 async function appHandoffToken(uid, challenge, secret) {
   const payload = base64url(new TextEncoder().encode(JSON.stringify({ uid, ch: challenge, exp: Math.floor(Date.now() / 1000) + APP_HANDOFF_SECONDS })));
-  return payload + "." + await dashboardHmac("app-handoff." + payload, secret);
+  return payload + "." + await signText("app-handoff." + payload, secret);
 }
 
 // Safari asks before opening another app, so the page keeps a button for it.
@@ -122,7 +122,7 @@ async function finishAppLogin(request, env) {
   const { token, verifier } = await request.json().catch(() => ({}));
   const [payload, signature] = String(token || "").split(".");
   if (!payload || !signature || typeof verifier !== "string" || verifier.length < 43 || verifier.length > 128) return fail();
-  if (!timingSafeEqualString(signature, await dashboardHmac("app-handoff." + payload, sessionSecret(env)))) return fail();
+  if (!timingSafeEqualString(signature, await signText("app-handoff." + payload, sessionSecret(env)))) return fail();
   let data;
   try { data = JSON.parse(new TextDecoder().decode(fromBase64url(payload))); } catch { return fail(); }
   const uid = Number(data?.uid), now = Math.floor(Date.now() / 1000);

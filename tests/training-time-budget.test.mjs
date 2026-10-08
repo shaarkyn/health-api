@@ -15,6 +15,7 @@ import { generateStrengthPlan } from '../src/strength-generator.js';
 import { readGymPlan, writeStrengthPlanToDb } from '../src/gym-plan-store.js';
 import { writeStrengthPlanToIntervals } from '../src/intervals-strength.js';
 import { exerciseMuscles } from '../src/fitness-insights.js';
+import { internalHeaders } from '../src/internal-auth.js';
 
 const today = '2026-10-07';
 const source = readFileSync(new URL('../src/entrypoint.js', import.meta.url), 'utf8');
@@ -30,9 +31,9 @@ async function api(minutes) {
   raw.sqlite.exec('CREATE TABLE health_datapoints (id INTEGER PRIMARY KEY,user_id INTEGER,source_family TEXT,data_type TEXT,start_time TEXT,sample_time TEXT,end_time TEXT,external_id TEXT,payload_json TEXT,updated_at TEXT,UNIQUE(user_id,source_family,data_type,external_id))');
   await setBudget(db, minutes);
   const context = vm.createContext({
-    Request, Response, URL, console, crypto, lang: () => 'cs', L: cs => cs,
+    Request, Response, URL, console, crypto, lang: () => 'cs', L: cs => cs, internalHeaders,
     getWeekPlan, availabilityOn, trainingBudget, parseTimeWindow, roleFor, targetFor,
-    validTrainingDay: validDay, mondayOfDate: weekStartOf, pragueToday: () => today,
+    validTrainingDay: validDay, mondayOfDate: weekStartOf, localToday: () => today,
     getAthleteState, assertTrainingAllowed, environmentFor, indoorMinutes,
     buildCyclingCoachV2, generateWorkout, getCapabilities, scheduleWorkoutInIntervals,
     storeLocalEvent, syncLocalWorkout, completeLocalWorkout, generateStrengthPlan,
@@ -138,7 +139,7 @@ test('the duration controls send user initiated requests while an automatic leng
   };
   const ui = vm.createContext({
     state: { generated: { date: today } }, statusCoachingRevision: 0, selectedGymMuscles: new Set(['chest']),
-    $: id => elements[id], pragueToday: () => today, workoutSport: () => 'ride', gymDay: () => today,
+    $: id => elements[id], localToday: () => today, workoutSport: () => 'ride', gymDay: () => today,
     esc: String, toast() {}, renderGeneratedWorkout() {}, loadGym: async () => {}, reloadWeek() {}, openTrainingDetail() {},
     jsonFetch: async (path, options) => {
       const body = JSON.parse(options.body); calls.push(body);

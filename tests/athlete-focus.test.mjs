@@ -30,7 +30,7 @@ test("the coach's role and direction follow the main sport and goal", () => {
   for (const base of [coachInstructions, reviewInstructions, reflectionInstructions]) {
     const out = withFocus(base, focus);
     assert.match(out, /^Jsi profesionální trenér běhu a silové přípravy\./);
-    assert.doesNotMatch(out, /^Jsi elitní trenér vytrvalostní cyklistiky/);
+    assert.doesNotMatch(out, /^Jsi trenér v aplikaci Loadwise/);
     assert.match(out, /Hlavní sport: běh/);
     assert.match(out, /„maraton pod 3:30“/);
     assert.match(out, /za 43 dní, 6 týdnů/);
@@ -47,7 +47,7 @@ test('the daily general fitness suggestion balances strength and endurance witho
   const client=readFileSync(new URL('../src/dashboard-client.js',import.meta.url),'utf8');
   const source=client.slice(client.indexOf('function dailySport(){'),client.indexOf('function renderDailySports('));
   const state={gym:{history:[]}},saved={};
-  const choose=new Function('state','savedProfile','pragueToday','activitySport','HUB_SPORTS','uiText',source+'return dailySport;')(state,()=>saved,()=> '2026-10-07',()=>null,{ride:'kolo',run:'běh',gym:'síla'},cs=>cs);
+  const choose=new Function('state','savedProfile','localToday','activitySport','HUB_SPORTS','uiText',source+'return dailySport;')(state,()=>saved,()=> '2026-10-07',()=>null,{ride:'kolo',run:'běh',gym:'síla'},cs=>cs);
   assert.equal(choose().sport,'gym');
   state.gym.history=[{workout_date:'2026-10-06'}];assert.equal(choose().sport,'run');
   saved.mainSport='cycling';assert.equal(choose().sport,'ride');

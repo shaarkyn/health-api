@@ -22,6 +22,12 @@ const PUBLIC_PATHS = new Set([
   "/auth/google",
   "/auth/google/callback",
   "/auth/app/session",
+  "/auth/apple",
+  "/auth/apple/callback",
+  "/auth/passkey/options",
+  "/auth/passkey/verify",
+  "/auth/email/start",
+  "/auth/email/verify",
   "/mcp",
   "/mcp/health",
   "/automation/strength",
@@ -35,20 +41,30 @@ export function isPublicPath(pathname) {
 }
 
 // Identifies who is calling: a signed-in user (session cookie), the owner's
-// API key (MCP, API clients, internal hops) or a GitHub Actions workflow.
-// Returns null for anonymous or invalid credentials.
+// API key (API clients) or a GitHub Actions workflow. Returns null for
+// anonymous or invalid credentials.
 export async function resolvePrincipal(request, env, verifyOidc = verifyGitHubActionsToken) {
-  const secret = String(env.STRENGTH_API_KEY || "");
-  if (!secret) return null;
   const session = await verifyDashboardSession(request, sessionSecret(env));
   if (session) return { kind: "user", userId: session.uid };
   const authorization = request.headers.get("Authorization") || "";
   if (!authorization.startsWith("Bearer ")) return null;
   const token = authorization.slice(7).trim();
   if (!token) return null;
-  if (timingSafeEqualString(token, secret)) return { kind: "owner" };
+  const ownerKey = String(env.STRENGTH_API_KEY || "");
+  if (ownerKey && timingSafeEqualString(token, ownerKey)) return { kind: "owner" };
   if (token.split(".").length !== 3) return null;
   try { await verifyOidc(request); return { kind: "system" }; } catch { return null; }
+}
+
+// The browser sends the session cookie also with requests that pages of other
+// sites under petrfitnessdata.eu make here (the test copy at
+// staging.petrfitnessdata.eu is one): it treats them as the same site, so
+// SameSite=Lax does not stop them. A change made with the session therefore
+// has to come from a page of this very address.
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+export function foreignOriginChange(request, principal) {
+  if (principal?.kind !== "user" || READ_METHODS.has(request.method)) return false;
+  return request.headers.get("Origin") !== new URL(request.url).origin;
 }
 
 export async function isAuthorizedRequest(request, env, verifyOidc = verifyGitHubActionsToken) {
@@ -62,8 +78,10 @@ export function unauthorizedResponse() {
   );
 }
 
+export const CLEARED_SESSION_COOKIE = SESSION_COOKIE+"=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax";
+
 export function handleDashboardLogout() {
-  return new Response(JSON.stringify({status:"ok"}),{status:200,headers:{"content-type":"application/json; charset=utf-8","Set-Cookie":SESSION_COOKIE+"=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax","Cache-Control":"no-store"}});
+  return new Response(JSON.stringify({status:"ok"}),{status:200,headers:{"content-type":"application/json; charset=utf-8","Set-Cookie":CLEARED_SESSION_COOKIE,"Cache-Control":"no-store"}});
 }
 
 // Returns the session payload ({uid, exp}) or null.
@@ -86,11 +104,11 @@ export async function verifyDashboardSession(request, secret) {
   } catch { return null; }
 }
 
-// Signs dashboard sessions. SESSION_SECRET keeps sessions independent of the
-// owner API key (which OAuth hands to API clients); without it the API key is
-// used, as before. Setting or rotating SESSION_SECRET signs everyone out once.
+// Signs dashboard sessions: SESSION_SECRET only, never the owner API key, so
+// whoever holds that key cannot make up a session of another user. Without it
+// nobody can sign in. Rotating it signs everyone out once.
 export function sessionSecret(env) {
-  return String(env.SESSION_SECRET || env.STRENGTH_API_KEY || "");
+  return String(env.SESSION_SECRET || "");
 }
 
 export async function sessionCookie(uid, exp, secret) {
@@ -99,7 +117,18 @@ export async function sessionCookie(uid, exp, secret) {
   return SESSION_COOKIE+"="+payload+"."+signature+"; Path=/; Max-Age="+SESSION_SECONDS+"; HttpOnly; Secure; SameSite=Lax";
 }
 
-export async function dashboardHmac(value, secret) {
+// A JSON answer that also signs the user in (passkey and e-mail code sign-in).
+export async function signedInResponse(userId, env, body = { status: "ok" }) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
+  return Response.json(body, { headers: { "Cache-Control": "no-store", "Set-Cookie": await sessionCookie(userId, exp, sessionSecret(env)) } });
+}
+
+// Signs short-lived values with the session secret (the Apple sign-in state, e-mail codes).
+export function signText(value, secret) {
+  return dashboardHmac(value, secret);
+}
+
+async function dashboardHmac(value, secret) {
   const key = await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
   const sig = await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(value));
   return base64url(new Uint8Array(sig));
