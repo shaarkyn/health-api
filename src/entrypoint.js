@@ -2,6 +2,7 @@ import {initialImport,recentDashboardImport} from './account-sync.js';
 import {reportFood} from './shared-foods.js';
 import {onboardingStatus,completeOnboarding,trainingSetup,updateTrainingSetup} from './onboarding.js';
 import {subscriptionStatus,markAiIntroSeen,assertAIAccess} from './subscription.js';
+import {consentStatus,saveConsent} from './consent.js';
 import {listRecipes,saveRecipe,deleteRecipe,searchRecipes} from './personal-recipes.js';
 import {deletePersonalFood} from './personal-foods.js';
 import {retryWorkoutExports,syncLocalWorkout,completeLocalWorkout,storeLocalEvent} from './local-workouts.js';
@@ -22,7 +23,7 @@ import { cached, bumpCacheVersion } from './api-cache.js';
 import { foodIntake } from './food-portions.js';
 import {productFromLabel} from './food-sources.js';
 import {activityDetail,rideIntervals} from './activity-detail.js';
-import {getCookbookRecipeByPage} from './cookbook.js';
+import {getCookbookRecipeByPage,useCookbookDatabase} from './cookbook.js';
 import {googleDashboard} from './google-dashboard.js';
 import {applyEnergyBudget} from './energy-budget.js';
 import {normalizeProfile} from './energy-profile.js';
@@ -132,6 +133,7 @@ async function forEachUser(env, providers, fn) {
 const worker = {
   async scheduled(controller, env, ctx) {
     await ensureTenancy(env.DB, env);
+    useCookbookDatabase(env.DB);
     await forEachUser(env, ["google", "intervals"], scoped => app.scheduled(controller, scoped, ctx));
     if(controller.cron==='* * * * *'&&new Date().getUTCMinutes()%5===0)await forEachUser(env,['google'],async scoped=>{await backfillFoodGoogle(scoped.DB);return processFoodGoogle(scoped,{token:googleToken});});
     if(controller.cron==='* * * * *'&&new Date().getUTCMinutes()%5===0)await forEachUser(env,['intervals'],async scoped=>{await retryWorkoutExports(scoped);});
@@ -153,6 +155,7 @@ const worker = {
       if (error instanceof TenancyUpgradeInProgress) return Response.json({status:"error",message:error.message},{status:503,headers:{"Retry-After":"30","Cache-Control":"no-store"}});
       throw error;
     }
+    useCookbookDatabase(env.DB);
     const rawEnv = env;
     // Deny by default: only allowlisted routes are reachable without a session or API key.
     const principal = await resolvePrincipal(request, env);
@@ -181,8 +184,8 @@ const worker = {
 async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, isPublic }) {
     {
     const signedIn = principal?.kind === "user" && Boolean(user);
-    if(env.AI_PAYWALL_ENABLED==='true'&&/^\/app\/api\/(assistant(?:\/stream)?$|gym\/adjust$|food\/(ai-lookup|photo|chat)$|review(?:\/|$))/.test(url.pathname)){
-      try{await assertAIAccess(env);}catch(error){return Response.json({status:'subscription_required',message:error.message},{status:402});}
+    if(signedIn&&request.method==='POST'&&/^\/app\/api\/(assistant(?:\/stream)?$|gym\/adjust$|food\/(ai-lookup|photo|chat)$|review(?:\/|$))/.test(url.pathname)){
+      try{await assertAIAccess(env);}catch(error){return error.consent?Response.json({status:'ai_consent_required',message:error.message},{status:403}):Response.json({status:'subscription_required',message:error.message},{status:402});}
     }
 
 
@@ -557,8 +560,15 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     }catch(error){return Response.json({message:error.message},{status:400})}
   }
   if (url.pathname === "/app/api/me" && request.method === "GET") {
-    const [onboarding,ai]=await Promise.all([onboardingStatus(env),session.signedIn&&env.OPENAI_API_KEY?aiAllowance(env).catch(error=>{console.error('AI usage read failed',error.message);return null;}):null]);
-    return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env),onboarding,ai},{headers:{"Cache-Control":"no-store"}});
+    const [onboarding,ai,consent]=await Promise.all([onboardingStatus(env),session.signedIn&&env.OPENAI_API_KEY?aiAllowance(env).catch(error=>{console.error('AI usage read failed',error.message);return null;}):null,session.signedIn?consentStatus(env):null]);
+    return Response.json({status:"ok",user:session.user||null,missingProviders:missingProviders(env),onboarding,ai,consent},{headers:{"Cache-Control":"no-store"}});
+  }
+  // Consent to health data (required) and to AI with OpenAI (optional); consent.js.
+  if(url.pathname==='/app/api/consent'&&request.method==='POST'){
+    if(!session.signedIn)return Response.json({message:L('Přihlas se do dashboardu.', 'Sign in to the app.')},{status:401});
+    if(request.headers.get('Origin')!==url.origin)return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
+    try{const result=await saveConsent(env,await request.json().catch(()=>({})));return Response.json(result,{headers:{'Cache-Control':'no-store'}});}
+    catch(error){return Response.json({message:error.message},{status:400});}
   }
   // The user's own data: download everything, or delete the account with it.
   if(url.pathname==='/app/api/account/export'&&request.method==='GET'){
