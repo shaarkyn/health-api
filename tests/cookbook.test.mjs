@@ -5,7 +5,7 @@ import { createD1 } from "./helpers/d1.mjs";
 import { getCookbook, getCookbookRecipeByPage, useCookbookDatabase, saveCookbook, _resetCookbookForTest } from "../src/cookbook.js";
 import { cookbookSql } from "../scripts/import-cookbook.mjs";
 
-const migration = readFileSync(new URL("../migrations/0012_cookbook_and_consents.sql", import.meta.url), "utf8");
+const migration = readFileSync(new URL("../migrations/0013_cookbook_and_consents.sql", import.meta.url), "utf8");
 const sample = {
   recipes: [
     { page: 7, title: "Lívance", category: "Snídaně", kcal: 500, ingredients: "1 vejce, 'banán'" },

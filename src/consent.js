@@ -1,7 +1,7 @@
 // Consents under GDPR: health data (Art. 9) needs the user's explicit consent,
 // and sending data to OpenAI for the AI features is a separate, optional one.
 // Each is stored with the version of the text the user agreed to and when
-// (user_consents, migration 0012), so the consent can be shown later. A new
+// (user_consents, migration 0013), so the consent can be shown later. A new
 // version of the health text asks everyone again.
 import { L } from './lang.js';
 
