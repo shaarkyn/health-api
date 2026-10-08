@@ -13,8 +13,6 @@ import { applyEnergyBudget } from "./energy-budget.js";
 import { googleDashboard } from "./google-dashboard.js";
 import { loadEffectiveProfile } from "./profile-suggestions.js";
 import { buildAdaptiveDecision } from "./adaptive-engine.js";
-import { buildWeeklyReview } from "./weekly-review.js";
-import { buildDailyPlan } from "./daily-plan.js";
 import { getCyclingContext } from "./cycling-context.js";
 import { writeStrengthPlanToIntervals } from "./intervals-strength.js";
 import { getAthleteState, assertTrainingAllowed } from './athlete-state.js';
@@ -42,15 +40,11 @@ export default {
     if (url.pathname === "/strength/analyze" && request.method === "POST") return analyzeStrengthRoute(env, request);
     if (url.pathname === "/strength/alternatives" && request.method === "POST") return alternativesRoute(env, request);
     if (url.pathname === "/strength/substitute" && request.method === "POST") return substituteRoute(env, request);
-    if (url.pathname === "/nutrition/plan" && request.method === "POST") return nutritionPlanRoute(env, request, ctx);
     if (url.pathname === "/cookbook/search" && request.method === "GET") return cookbookSearchRoute(env, url);
     if (url.pathname === "/cookbook/recipe" && request.method === "GET") return cookbookRecipeRoute(env, url);
     if (url.pathname === "/nutrition/log-meal" && request.method === "POST") return logMealRoute(env, request);
     if (url.pathname === "/nutrition/day" && request.method === "GET") return nutritionDayRoute(env, url, ctx);
     if (url.pathname === "/nutrition/recommend" && request.method === "POST") return nutritionRecommendRoute(env, request, ctx);
-    if (url.pathname === "/decision/daily" && request.method === "POST") return dailyDecisionRoute(env, request, ctx);
-    if (url.pathname === "/daily/plan" && request.method === "GET") return dailyPlanRoute(env, url, ctx);
-    if (url.pathname === "/training/weekly-review" && request.method === "GET") return weeklyReviewRoute(env, url);
     if (url.pathname === "/food/resolve" && request.method === "POST") return foodResolveRoute(env, request);
     if (url.pathname === "/food/product" && request.method === "GET") return foodProductRoute(env, url);
     if (url.pathname === "/food/favorites" && request.method === "GET") return foodFavoritesRoute(env, url);
@@ -277,40 +271,6 @@ async function alternativesRoute(env, request) {
 }
 
 
-async function nutritionPlanRoute(env, request, ctx) {
-  try {
-    const body = await request.json().catch(() => ({}));
-    const date = String(body?.date || "").trim() || null;
-    const context = await buildStrengthContext(env, date);
-    if (context.status !== "ok") throw new Error("Shared daily context is not ready");
-
-    let strengthPlan = body?.strengthPlan || null;
-    if (!strengthPlan) {
-      try {
-        const plan = await fetchTodayValues(env, date);
-        const parsed = parseStrengthPlan(plan.values);
-        if (!date || parsed.date === date) {
-          const rows = (parsed.rows || []).map(r => [
-            r.type, r.exercise, r.setNo == null ? "" : String(r.setNo),
-            r.plannedKg == null ? "" : String(r.plannedKg),
-            r.plannedReps || "", "", "", "", "FALSE", r.note || "", r.video || ""
-          ]);
-          if (rows.some(r => r[0] === "WORK")) {
-            strengthPlan = { date: parsed.date, rows };
-          }
-        }
-      } catch (_) {
-        // Nutrition remains available even if the optional plan read fails.
-      }
-    }
-
-    const plan = await nutritionFor(env, ctx, context, { ...body, strengthPlan, weightTrend: context.weightTrend });
-    return Response.json({ status: "ok", plan });
-  } catch (error) {
-    return Response.json({ status: "error", step: "nutrition_plan", message: error.message }, { status: 500 });
-  }
-}
-
 async function cookbookSearchRoute(env, url) {
   try {
     return Response.json(await searchCookbookRecipes({ page:url.searchParams.get("page"), name:url.searchParams.get("name"), limit:url.searchParams.get("limit") || 10 }));
@@ -345,34 +305,6 @@ async function nutritionRecommendRoute(env, request, ctx) {
     const food=await getFoodDay(env.DB,date);
     return Response.json({...recommendFood({day:date,nutritionPlan:plan,entries:food}),adaptive:buildAdaptiveDecision(context,{...food,nutritionTarget:plan})});
   } catch (error) { return Response.json({ status:"error", step:"nutrition_recommend", message:error.message }, { status:500 }); }
-}
-
-async function dailyDecisionRoute(env, request, ctx) {
-  try {
-    const body=await request.json().catch(()=>({}));
-    const date=String(body.date||"").trim()||null;
-    const context=await buildStrengthContext(env,date);
-    const plan=await nutritionFor(env,ctx,context,{...body,weightTrend:context.weightTrend});
-    const food=await getFoodDay(env.DB,context.date);
-    return Response.json({...buildAdaptiveDecision(context,{...food,nutritionTarget:plan}),nutrition:plan,food});
-  } catch(error) { return Response.json({status:"error",step:"daily_decision",message:error.message},{status:500}); }
-}
-async function dailyPlanRoute(env,url,ctx) {
-  try {
-    const date=String(url.searchParams.get("date")||"").trim()||null;
-    const context=await buildStrengthContext(env,date);
-    const nutrition=await nutritionFor(env,ctx,context,{weightTrend:context.weightTrend});
-    const food=await getFoodDay(env.DB,context.date);
-    const recommendations=recommendFood({day:context.date,nutritionPlan:nutrition,entries:food});
-    return Response.json(buildDailyPlan({context,nutrition,food,recommendations}));
-  } catch(error) { return Response.json({status:"error",step:"daily_plan",message:error.message},{status:500}); }
-}
-async function weeklyReviewRoute(env,url) {
-  try {
-    const date=String(url.searchParams.get("date")||"").trim()||null;
-    const context=await buildStrengthContext(env,date);
-    return Response.json(await buildWeeklyReview(env,context,context.date));
-  } catch(error) { return Response.json({status:"error",step:"weekly_review",message:error.message},{status:500}); }
 }
 
 async function foodResolveRoute(env, request) {

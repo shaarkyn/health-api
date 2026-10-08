@@ -168,14 +168,14 @@ jobs:
           resolved="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" -X POST -H "Content-Type: application/json" --data "$body" "https://petrfitnessdata.eu/food/resolve")"
           python -c 'import json,sys; d=json.load(sys.stdin); p=d.get("product") or {}; assert d.get("status")=="ok","status="+str(d.get("status")); assert d.get("match")=="package_label","match="+str(d.get("match")); assert [p.get(k) for k in ("calories_100g","protein_100g","fiber_100g","salt_100g")]==[81,10,0.7,0.28],"label values differ"' <<< "$resolved"
 
-      - name: Smoke test daily plan
+      - name: Smoke test nutrition day
         env:
           OIDC_TOKEN: ${{ steps.oidc_strength.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
-          plan="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" "https://petrfitnessdata.eu/daily/plan")"
-          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status")=="ok","status="+str(d.get("status")); assert "training" in d and "nutrition" in d and "food" in d and "meals" in d, "daily plan is missing a part"' <<< "$plan"
+          day="$(curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" "https://petrfitnessdata.eu/nutrition/day")"
+          python -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status")=="ok","status="+str(d.get("status")); assert "plan" in d and "food" in d and "adaptive" in d, "nutrition day is missing a part"' <<< "$day"
 
       - name: Smoke test Google Health nutrition
         env:

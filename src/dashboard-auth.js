@@ -15,7 +15,6 @@ const PUBLIC_PATHS = new Set([
   "/support",
   "/logo.svg",
   "/manifest.webmanifest",
-  "/openapi.json",
   "/app",
   "/app/dashboard-client.js",
   "/app/logout",
@@ -29,9 +28,7 @@ const PUBLIC_PATHS = new Set([
   "/auth/email/verify",
   "/mcp",
   "/mcp/health",
-  "/automation/strength",
-  "/automation/nutrition",
-  "/automation/nutrition-notes"
+  "/automation/strength"
 ]);
 const PUBLIC_PREFIXES = ["/.well-known/", "/oauth/"];
 

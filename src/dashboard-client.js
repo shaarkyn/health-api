@@ -1153,7 +1153,8 @@ async function loadDashboardData(){
   const failures=jobs.map(([key],i)=>results[i].status==='rejected'?{key,message:results[i].reason?.message||''}:null).filter(Boolean),failed=failures.length;
   if(date===localToday())saveDashboardSnapshot();
   loadInbox().catch(()=>{});
-  $('topStatus').textContent=failed===0?'Live · '+new Date().toLocaleTimeString('cs-CZ'):failed<jobs.length?'Částečně načteno':'Data nejsou dostupná';
+  // Nothing to say when everything loaded: the data on the page is current.
+  $('topStatus').textContent=failed===0?'':failed<jobs.length?'Částečně načteno':'Data nejsou dostupná';
   $('topStatus').className=failed===0?'status-label small':failed<jobs.length?'status-label small status-partial':'status-label small status-error';
   // Which part did not load and why, so the message says what to fix.
   if(failed){for(const f of failures)console.warn('Dashboard part failed',f.key,f.message);const en=document.documentElement.lang==='en';toast((en?'Could not load: ':'Nepodařilo se načíst: ')+failures.map(f=>(LOAD_PART_LABELS[f.key]||[f.key,f.key])[en?1:0]).join(', ')+(failures[0].message?' ('+failures[0].message.slice(0,140)+')':''));}

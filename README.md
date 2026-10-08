@@ -17,13 +17,13 @@ Na produkci se nasazuje jen přes GitHub Actions (`.github/workflows/deploy-work
 
 ## Jak teče požadavek
 
-`src/entrypoint.js` je vstupní bod Workeru. Řeší přihlášení (`dashboard-auth.js`), uživatele (`tenancy.js`), dashboard API (`/app/api/*`), MCP (`/mcp`) a automatizace (`/automation/*`). Co nezpracuje sám, posílá dál:
+`src/entrypoint.js` je vstupní bod Workeru. Řeší přihlášení (`dashboard-auth.js`), uživatele (`tenancy.js`), dashboard API (`/app/api/*`), MCP (`/mcp`) a noční plán posilovny z GitHub Actions (`/automation/strength`). Co nezpracuje sám, posílá dál:
 
 ```
 entrypoint.js → strength-gateway.js → index.js
 ```
 
-- `strength-gateway.js`: síla, výživa, denní plán, rozhodnutí dne (`/strength/*`, `/nutrition/*`, `/daily/plan`, …) a `/food/recommend` (návrhy jídel k osobnímu cíli z `food-recommend.js`).
+- `strength-gateway.js`: síla a výživa pro MCP (`/strength/*`, `/nutrition/*`, …) a `/food/recommend` (návrhy jídel k osobnímu cíli z `food-recommend.js`).
 - `index.js`: původní API: synchronizace Google Health a Intervals.icu, `/analysis/daily`, `/analysis/energy`, deník jídla, cron.
 
 Vzhled dashboardu: barvy rozhraní jsou tokeny v `src/design-system.js` (načítá se jako poslední vrstva CSS), ikony jsou jedna SVG sada v `src/icons.js`. Ostatní odstíny se z tokenů míchají, např. `color-mix(in srgb,var(--text) 12%,var(--bg))`; barvu natvrdo pro plochy, čáry a šedé texty test `tests/design-tokens.test.mjs` nepustí. Světlý vzhled jen předefinuje tokeny (`:root[data-theme="light"]` a stejná sada pro systémové nastavení). Bez volby se vzhled řídí nastavením zařízení. Přepínač Světlý / Tmavý v horní liště nebo Nastavení ho přepíše přes cookie `lw-theme`, kterou stránka čte ještě před vykreslením; volba stejného vzhledu, jaký má zařízení, cookie smaže. Barvy dat v grafech (makra, fáze spánku, zóny) zůstávají u grafů.
@@ -109,10 +109,10 @@ Na https://staging.petrfitnessdata.eu/app běží kopie aplikace s vlastní data
 
 - Cloudflare spouští `src/main.js`: aplikaci z `entrypoint.js` za přesměrováním na HTTPS a bezpečnostními hlavičkami (`web-security.js`: HSTS, zákaz vložení do cizí stránky, `nosniff`, `Referrer-Policy`). Hlavičku, kterou si odpověď nastaví sama, nepřepisuje.
 - Repozitář je veřejný, a s ním i logy GitHub Actions. Workflow proto z odpovědí API vypisují jen souhrn ze `scripts/ci-summary.mjs` (stav, zpráva, počty), nikdy celé tělo, a nic necommitují zpět. Hlídá to `tests/ci-summary.test.mjs`.
-- Zápis dat patří do POST (nebo PUT, DELETE), ne do GET: odkaz z cizího webu je GET a cookie přihlášení s sebou nese. Proto se i synchronizace (`/sync/google`, `/sync/intervals`, `/sync/all`) spouští jen přes POST.
+- Zápis dat patří do POST (nebo PUT, DELETE), ne do GET: odkaz z cizího webu je GET a cookie přihlášení s sebou nese. Proto se i synchronizace (`/sync/google`, `/sync/intervals`) spouští jen přes POST.
 - Každý zápis s cookie přihlášení (cokoli kromě GET, HEAD a OPTIONS) musí přijít ze stránky téže adresy (hlavička `Origin`), jinak vrací 403 (`foreignOriginChange` v `dashboard-auth.js`, volá se před všemi cestami). SameSite=Lax nestačí: stránky ze staging.petrfitnessdata.eu prohlížeč bere jako stejný web a cookie živé aplikace jim přidá.
 - Každý klíč má jednu roli: `SESSION_SECRET` podepisuje přihlášení, `CONNECTION_KEY` šifruje připojení uživatelů (navíc svázaná s uživatelem a službou), `MCP_API_KEY` otevírá `/mcp` a `STRENGTH_API_KEY` je klíč správce pro API. Vrstvy aplikace se uvnitř Workeru volají s náhodným tokenem, který z Workeru nikdy neodchází (`internal-auth.js`). Nasazení živé i testovací verze se zastaví dřív, než cokoli změní, když Worker nemá `SESSION_SECRET` (`scripts/require-secrets.mjs`).
-- Připojení ChatGPT k datům aplikace (OAuth na `/authorize` a `/token`, kde se do formuláře zadával klíč správce) je odstraněné. `/mcp` přijímá jen `MCP_API_KEY` v hlavičce `Authorization` a demo klíč, který vrací jen statická ukázková data.
+- Připojení ChatGPT k datům aplikace (OAuth na `/authorize` a `/token`, kde se do formuláře zadával klíč správce) je odstraněné. `/mcp` přijímá jen `MCP_API_KEY` v hlavičce `Authorization` a demo klíč, který vrací jen statická ukázková data. Požadavek z webové stránky (s hlavičkou `Origin`) odmítne, MCP klienti volají ze svých serverů.
 
 ## Další dokumentace
 

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { createD1 } from "./helpers/d1.mjs";
 import { scopedDb } from "../src/tenancy.js";
 import { logFood, getFoodDay, cancelFoodEntry, updateFoodEntry, consumePlannedFood, getFoodFavorites } from "../src/food-log.js";
-import { buildWeeklyReview } from "../src/weekly-review.js";
 
 // The app's diary table as in production after migration 0007.
 function setup() {
@@ -50,7 +49,7 @@ test("a planned meal stays out of the app's totals until it is eaten", async () 
   assert.equal(appEaten(raw), 400);
 });
 
-test("ChatGPT's day and the weekly review see the meals logged in the app", async () => {
+test("the MCP food day sees the meals logged in the app", async () => {
   const { raw, db } = setup();
   raw.sqlite.prepare("INSERT INTO food_logs (user_id,consumed_date,consumed_at,recipe_title,servings,kcal,protein_g,carbs_g,fat_g,source,note) VALUES (1,'2026-10-05','2026-10-05T05:20:00.000Z','Ovesná kaše',1,430,18,70,9,'manual','{\"mealType\":\"breakfast\"}')").run();
   // Another user's meal never counts.
@@ -62,7 +61,4 @@ test("ChatGPT's day and the weekly review see the meals logged in the app", asyn
   assert.equal(app.meal_time, "07:20");
   assert.equal(app.meal_type, "breakfast");
   assert.equal((await getFoodFavorites(db)).foods.length, 2);
-  const review = await buildWeeklyReview({ DB: db, USER_ID: 1 }, { cycling: { recentActivities: [] }, strength: { recentCompletedSets: [] } }, "2026-10-05");
-  assert.equal(review.nutrition.loggedDays, 1);
-  assert.equal(review.nutrition.avgCalories, 530);
 });

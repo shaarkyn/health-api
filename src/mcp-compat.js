@@ -17,7 +17,7 @@ export async function handleMcpCompat(request, env) {
           supportedVersions: [MODERN, "2025-11-25", "2025-06-18"],
           capabilities: { tools: {} },
           _meta: { "io.modelcontextprotocol/serverInfo": SERVER_INFO },
-          instructions: "Use the shared daily context for training and nutrition. generateStrengthPlan writes the adaptive workout unless preview=true; getNutritionPlan returns the daily nutrition plan.",
+          instructions: "Use the shared daily context for training and nutrition. generateStrengthPlan writes the adaptive workout unless preview=true; getFoodDay returns the food log with the nutrition plan.",
           ttlMs: 300000,
           cacheScope: "private"
         }
