@@ -12,7 +12,7 @@ const ec = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" 
 const pem = "-----BEGIN PRIVATE KEY-----\n" + Buffer.from(await crypto.subtle.exportKey("pkcs8", ec.privateKey)).toString("base64").replace(/(.{64})/g, "$1\n") + "\n-----END PRIVATE KEY-----";
 const rsa = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
 const jwk = { ...(await crypto.subtle.exportKey("jwk", rsa.publicKey)), kid: "apple-1" };
-const apple = { APPLE_CLIENT_ID: "eu.petrfitnessdata.web", APPLE_TEAM_ID: "TEAM123456", APPLE_KEY_ID: "KEY1234567", APPLE_PRIVATE_KEY: pem, STRENGTH_API_KEY: "test-secret-key", OWNER_EMAIL: "owner@example.com" };
+const apple = { APPLE_CLIENT_ID: "eu.petrfitnessdata.web", APPLE_TEAM_ID: "TEAM123456", APPLE_KEY_ID: "KEY1234567", APPLE_PRIVATE_KEY: pem, SESSION_SECRET: "test-secret-key", OWNER_EMAIL: "owner@example.com" };
 function freshEnv(extra = {}) { _resetTenancyForTest(); _resetAppleJwksCacheForTest(); return { ...apple, DB: createD1(), ...extra }; }
 // With the users and invitations tables (the owner included).
 async function withUsers(extra) { const env = freshEnv(extra); await ensureTenancy(env.DB, env); return env; }
@@ -47,7 +47,7 @@ test("Apple sign-in stays off until its keys are set", async () => {
   assert.equal(appleConfigured(apple), true);
   assert.equal(isPublicPath("/auth/apple"), true);
   assert.equal(isPublicPath("/auth/apple/callback"), true);
-  const response = await handleAppleLogin(new Request("https://petrfitnessdata.eu/auth/apple"), { STRENGTH_API_KEY: "k", OWNER_EMAIL: "o@example.com", DB: createD1() }, "/auth/apple");
+  const response = await handleAppleLogin(new Request("https://petrfitnessdata.eu/auth/apple"), { SESSION_SECRET: "k", OWNER_EMAIL: "o@example.com", DB: createD1() }, "/auth/apple");
   assert.equal(response.status, 503);
 });
 

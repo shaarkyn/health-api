@@ -43,7 +43,7 @@ export const PERSONAL_TABLES = {
   ai_usage: {},
   user_setup: {}, subscriptions: {}, local_workouts: {}, workout_exports: {},
   personal_recipes: {}, recipe_contributions: {}, food_contributions: {}, food_reports: {},
-  user_language: {}, recovery_sessions: {},
+  user_language: {}, user_time_zone: {}, recovery_sessions: {},
   // Accounts linked for signing in (apple-login.js), created with user_id.
   user_identities: {}
 };
