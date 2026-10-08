@@ -287,7 +287,6 @@ function uiTable(cs,en){const t={};for(const k of Object.keys(cs))Object.defineP
 let connectedServices=null;
 function serviceConnected(id){return !connectedServices||connectedServices.has(id);}
 function setConnectedServices(ids){connectedServices=new Set(ids);}
-function optionsHtml(options,value,empty='Vyber'){return '<option value="">'+esc(empty)+'</option>'+options.map(([v,t])=>'<option value="'+esc(v)+'"'+(String(value??'')===v?' selected':'')+'>'+esc(t)+'</option>').join('');}
 // One service: what it brings, its state and the button that connects it.
 // back is where the provider's page returns: the wizard or Settings.
 function serviceCardHtml(p,back,{cls='service-card',more=''}={}){
@@ -382,28 +381,6 @@ function primarySleepSessions(sessions){
     .slice()
     // Nights from Intervals.icu have only a date (no bed or wake time).
     .sort((a,b)=>new Date(b?.endTime||b?.startTime||(b?.date?b.date+'T07:00:00':0))-new Date(a?.endTime||a?.startTime||(a?.date?a.date+'T07:00:00':0)));
-}
-function trainingDayMarkup(x){
-  const training=x?.daily?.training||{};
-  const planned=(training.planned||[]).filter(z=>!isNutritionItem(z));
-  const completed=(training.completed||[]).filter(z=>!isNutritionItem(z));
-  const matched=training.matched||[];
-  const paired=new Map(matched.map(m=>[String(m.actualId),m.planned]));
-  // Defensive UI pairing while older cached API responses are still in flight.
-  // A distinctive matching title on the same daily response is one session.
-  const norm=v=>String(v||"").toLowerCase().replace(/[^a-z0-9áéěíóúůýčďňřšťž]+/g," ").trim();
-  planned.forEach(plan=>{const key=norm(plan.name);if(!key)return;const candidate=completed.find(actual=>!paired.has(String(actual.id))&&(norm(actual.name).includes(key)||key.includes(norm(actual.name))));if(candidate)paired.set(String(candidate.id),plan);});
-  const entries=[];
-  completed.forEach(actual=>entries.push({actual,planned:paired.get(String(actual.id))||null}));
-  planned.filter(plan=>!Array.from(paired.values()).includes(plan)).forEach(plan=>entries.push({planned:plan,actual:null}));
-  const items=entries.map(({planned,actual})=>{
-    const item=actual||planned, done=Boolean(actual), linked=Boolean(actual&&planned);
-    const label=linked?"✓ Podle plánu":done?"✓ Mimo plán":"Plánováno";
-    const tone=linked?"done":done?"unplanned":"";
-    const planName=linked&&planned.name&&planned.name!==actual.name?uiText('<div class="small">Plán: ', '<div class="small">Plan: ')+esc(planned.name)+'</div>':"";
-    return '<div class="plan-item '+tone+'"><div class="name">'+esc(actual?.name||planned?.name||actual?.type||planned?.type||"Aktivita")+activityEnvironmentBadge(item,activitySport(item))+'</div><div class="meta">'+label+(item.durationHours?" · "+fmt(item.durationHours,1)+" h":"")+(actual?.tss?" · TSS "+fmt(actual.tss):planned?.tss?" · TSS "+fmt(planned.tss):"")+(actual?.calories?" · "+fmt(actual.calories)+" kcal":"")+'</div>'+planName+'</div>';
-  }).join("");
-  return '<div class="plan-day '+(x.date===localToday()?"today":"")+'" data-training-date="'+esc(x.date)+uiText('" tabindex="0" role="button" aria-label="Detail tréninku ', '" tabindex="0" role="button" aria-label="Workout details ')+esc(longDate(x.date))+'"><div class="dow">'+esc(dayTitle(x.date))+'</div>'+(items||'<div class="muted">Volno</div>')+'</div>';
 }
 
 // "How to start today" belongs to the morning, on the device's own clock (the user's time zone).
@@ -2639,16 +2616,6 @@ function planVerdict(plan,a){
 function trainingFacts(item,sport){
   const minutes=num(item.durationHours)*60,f=sport==='gym'?null:intensityOf(item.tss,minutes);
   return '<div class="training-facts">'+[minutes>0?['Délka',hm(minutes)]:null,measured(item.tss)?['TSS',fmt(item.tss)]:null,f&&f<1.6?['IF',dec(f,2)]:null].filter(Boolean).map(([l,v])=>'<div><span>'+l+'</span><strong>'+esc(v)+'</strong></div>').join('')+'</div>';
-}
-// Plan of the day against the saved sets (history, or the plan's done rows).
-function gymCompareHtml(values,done,history=[]){
-  const rows=(values||[]).slice(7).filter(r=>r?.[1]&&String(r[0]).toUpperCase()==='WORK'),kg=v=>String(v??'').trim().replace('.',',');
-  const logged=history.filter(r=>String(r.type||'WORK').toUpperCase()==='WORK').map(r=>({exercise:r.exercise,kg:r.actual_kg??r.actualKg,reps:r.actual_reps??r.actualReps}));
-  const actual=name=>{const own=logged.filter(r=>r.exercise===name);return own.length?own:rows.filter(r=>r[1]===name&&/^(true|1|ano)$/i.test(String(r[8]))).map(r=>({kg:r[5],reps:r[6]}));};
-  const names=[...new Set([...rows.map(r=>r[1]),...(done?logged.map(r=>r.exercise):[])])];
-  if(!names.length)return '<p class="small">Pro tento den není uložený gym plán.</p>';
-  return '<table class="plan-compare gym"><thead><tr><th>Cvik</th><th>Plán</th>'+(done?'<th>Odcvičeno</th>':'')+'</tr></thead><tbody>'+names.map(name=>{const sets=rows.filter(r=>r[1]===name),did=done?actual(name):[],plan=sets.length?sets.length+' × '+(sets[0][4]||'—')+(kg(sets[0][3])?' · '+kg(sets[0][3])+' kg':''):'mimo plán';
-    return '<tr><th>'+esc(name)+'</th><td>'+esc(plan)+'</td>'+(done?'<td class="'+(!sets.length||did.length>=sets.length?'ok':did.length?'under':'')+'">'+(did.length?esc(did.map(r=>kg(r.kg)+'×'+r.reps).join(', ')):'nezapsáno')+'</td>':'')+'</tr>';}).join('')+'</tbody></table>';
 }
 // Body figure of a gym session: every muscle the sets load, brighter for more sets.
 function gymMuscleLoad(muscles,sets){const load={};for(const {exercise,count} of sets)for(const [m,w] of Object.entries(muscles?.[exercise]||{}))load[m]=(load[m]||0)+num(w)*count;return load;}
@@ -4946,18 +4913,6 @@ async function showAccountSetup({edit=false}={}){
     jsonFetch('/app/api/sync',{method:'POST'}).catch(()=>{});
     (async()=>{for(let i=0;i<60&&$('onboardingGate');i++){await new Promise(resolve=>setTimeout(resolve,5000));if(!$('onboardingGate'))return;await refresh();const sync=await jsonFetch('/app/api/sync').catch(()=>({status:'error'}));if(sync.status!=='running')return;}})();
   }
-}
-// The last screen: the day's calorie target and what to do next.
-async function renderSetupDone(body){
-  const [daily,connections]=await Promise.all([jsonFetch('/app/api/daily?date='+localToday()).catch(()=>({})),jsonFetch('/app/api/connections').catch(()=>({providers:[]}))]);
-  const n=daily.nutrition||{},target=num(n.calorieTarget);
-  const services=(connections.providers||[]).map(p=>'<li>'+(p.connected?'<span class="pill good">Připojeno</span> ':'<span class="pill">Nepřipojeno</span> ')+esc(p.name)+'</li>').join('');
-  body.innerHTML='<div class="eyebrow">Hotovo</div><h2 id="onboardingTitle">Můžeš začít</h2>'+
-    (target?'<div class="setup-target"><span class="small">Denní kalorický cíl</span><strong>'+fmt(target)+' kcal</strong><p class="small">Klidový výdej podle profilu × pohyb přes den, upravený o cíl. Během dne ho navyšujeme o naměřený pohyb.</p>'+calorieTargetNotes(n)+'</div>':'')+
-    '<ul class="setup-services">'+services+'</ul><p class="small">Služby připojíš nebo odpojíš kdykoli v Nastavení → Propojení.</p>'+
-    '<ul class="setup-next small"><li><strong>Dnes</strong> ukáže plán dne, jídlo a regeneraci.</li><li><strong>Tréninky</strong> navrhnou posilovnu, kolo i běh podle tvého času.</li><li><strong>Asistent</strong> poradí a upraví plán vlastními slovy.</li></ul>'+
-    '<div class="setup-actions"><button class="btn primary" type="button" id="setupFinish">Začít používat Loadwise</button></div>';
-  $('setupFinish').onclick=async()=>{$('onboardingGate')?.remove();if(location.hash==='#setup')history.replaceState(null,'',location.pathname+location.search);try{localStorage.setItem('lw-dashboard-ready','1');}catch{}toast('Vítej v Loadwise.');loadConnections();await load();pollAccountImport();};
 }
 function accountImportMessage(s){
   let message=s.status==='running'?'Načítáme historii. Výpočty se zpřesní podle dostupných dat.':s.status==='partial'||s.status==='error'?'Část importu se nepodařila. Dostupná data zůstávají uložená. Zkus Obnovit u příslušné služby v Propojení.':s.status==='done'?'Historie je načtená. Doporučení používají dostupná data.':'Bez propojení používáme tvůj profil a ruční záznamy.';
