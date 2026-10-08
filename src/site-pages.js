@@ -228,7 +228,7 @@ ${index ? '' : '<meta name="robots" content="noindex">'}
 <body>
 <header class="site-head"><nav class="pill-nav" aria-label="${t('Hlavní', 'Main')}">
 <a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span>Loadwise</span></a>
-<div class="links"><a href="/#funkce">${t('Funkce', 'Features')}</a><a href="/#asistent">${t('Asistent', 'Assistant')}</a><a href="/#jak">${t('Jak to funguje', 'How it works')}</a><a href="/#soukromi">${t('Soukromí', 'Privacy')}</a></div>
+<div class="links"><a href="/#funkce">${t('Funkce', 'Features')}</a><a href="/#asistent">${t('AI', 'AI')}</a><a href="/#jak">${t('Jak to funguje', 'How it works')}</a><a href="/#soukromi">${t('Soukromí', 'Privacy')}</a></div>
 ${langSwitch(lang)}${themeSwitch(lang)}<a class="btn solid" href="/app">${t('Přihlásit se', 'Sign in')}</a>
 </nav></header>
 ${body}
@@ -293,10 +293,10 @@ ${ph('today', t('Loadwise v telefonu: obrazovka Dnes', 'Loadwise on a phone: the
 </div></section>
 
 <section id="asistent" class="ai"><div class="wrap">
-<div class="head reveal"><h2>${t('<span>Ptej se.</span> Asistent zná tvoje data.', '<span>Just ask.</span> The assistant knows your data.')}</h2><p>${t('Osobní trenér, který vidí tvůj spánek, tréninky i jídlo a radí podle nich, ne obecně.', 'A personal coach that sees your sleep, workouts and food and gives advice based on them, not generic tips.')}</p></div>
+<div class="head reveal"><h2>${t('<span>Ptej se.</span> AI zná tvoje data.', '<span>Just ask.</span> AI knows your data.')}</h2><p>${t('Osobní trenér, který vidí tvůj spánek, tréninky i jídlo a radí podle nich, ne obecně.', 'A personal coach that sees your sleep, workouts and food and gives advice based on them, not generic tips.')}</p></div>
 <div class="ai-grid">
 <div class="ai-col reveal"><div class="ai-card">${icon('chat')}<h3>${t('Odpovědi z tvých dat', 'Answers from your data')}</h3><p>${t('„Jak mám jet trénink, když jsem spal 6 hodin?“ Odpověď vychází z tvých čísel.', '“How should I ride today after 6 hours of sleep?” The answer comes from your numbers.')}</p></div><div class="ai-card">${icon('check')}<h3>${t('Návrhy na jedno klepnutí', 'One-tap suggestions')}</h3><p>${t('Každou úpravu tréninku nebo jídla potvrdíš, odmítneš nebo probereš.', 'Confirm, reject or discuss every change to a workout or meal.')}</p></div></div>
-<div class="reveal">${ph('coach', t('Osobní asistent v aplikaci: Co dnes upravíme?', 'The personal assistant in the app: What shall we adjust today?'))}</div>
+<div class="reveal">${ph('coach', t('AI v aplikaci: Co dnes upravíme?', 'AI in the app: What shall we adjust today?'))}</div>
 <div class="ai-col reveal"><div class="ai-card">${icon('calendar')}<h3>${t('Celý týden v kontextu', 'The whole week in context')}</h3><p>${t('Probere s tebou den i týden a přeplánuje, co je potřeba.', 'It goes through the day and the week with you and replans what needs it.')}</p></div><div class="ai-card">${icon('spark')}<h3>${t('Revize dne', 'Day review')}</h3><p>${t('Projde s tebou celý den a navrhne, co upravit.', 'It walks through your whole day and suggests what to change.')}</p></div></div>
 </div>
 </div></section>

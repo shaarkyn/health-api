@@ -98,7 +98,7 @@ test('the Today screen shows "how to start today" only in the morning, and draws
   let list = ctx.withRatings([advisor, ride], [{ rpe: 8, notes: 'Křeč do lýtka', text: 'Zítra volno.', source: 'ai' }]);
   assert.equal(list.length, 2);
   assert.equal(list[1].rated.name, 'Threshold 4×5');
-  assert.match(ctx.card(list[1]), /Tvoje hodnocení a kouč<\/div><div class="rpe-gauge"/);
+  assert.match(ctx.card(list[1]), /Tvoje hodnocení a AI<\/div><div class="rpe-gauge"/);
   list = ctx.withRatings([ride, gym, advisor], [{ rpe: 6, notes: 'Horní tělo: těžké', text: 'Dobře.' }]);
   assert.deepEqual([list[1].rated.name, list[1].rated.note], ['Horní tělo', 'těžké']);
   // No review for the session: the rating is its own "Po tréninku" card.

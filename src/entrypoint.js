@@ -342,7 +342,7 @@ async function handleCoachInbox(request, env, ctx, internalAuth) {
     if(!row) return Response.json({status:"error",message:L("Návrh už neexistuje.", "The proposal no longer exists.")},{status:404});
     if(row.status==="confirmed") return Response.json({status:"ok",message:L("Tento návrh už je potvrzený.", "This proposal is already confirmed.")});
     const draft=JSON.parse(row.draft_json||"{}"); let result={status:"ok"};
-    if(draft.kind)return Response.json({status:'error',message:L('Tento návrh potvrď v osobním asistentovi nebo v náhledu gymu.', 'Confirm this proposal in the personal assistant or in the gym preview.')},{status:400});
+    if(draft.kind)return Response.json({status:'error',message:L('Tento návrh potvrď v AI nebo v náhledu gymu.', 'Confirm this proposal in AI or in the gym preview.')},{status:400});
     if(draft.action?.type==="gym_generate") {
       const r=await app.fetch(new Request("https://internal/strength/generate-plan",{method:"POST",headers:{...internalAuth,"Content-Type":"application/json"},body:JSON.stringify({date:draft.date})}),env,ctx);
       result=await r.json().catch(()=>({status:"error",message:L("Neplatná odpověď Gymu", "Invalid response from the gym planner")})); if(!r.ok||result.status!=="ok") throw new Error(result.message||L("Gym plán se nepodařilo uložit.", "The gym plan couldn't be saved."));
