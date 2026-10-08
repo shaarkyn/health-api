@@ -22,8 +22,7 @@ on:
       - ".github/workflows/ios-native.yml"
 
 permissions:
-  # write: the screens are also pushed to the ios-native-screens branch.
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -92,23 +91,6 @@ jobs:
           name: Loadwise-native-ios
           path: Loadwise-native-unsigned.ipa
           retention-days: 30
-
-      # The same images on a branch, readable with plain git (artifact
-      # downloads need a browser session or the Actions API).
-      - name: Publish the screens to the ios-native-screens branch
-        if: always() && github.event.pull_request.head.repo.fork != true
-        working-directory: .
-        run: |
-          [ -n "$(ls screens/*.png 2>/dev/null)" ] || exit 0
-          out=$(mktemp -d)
-          cp screens/*.png "$out"/
-          cd "$out"
-          git init -q -b ios-native-screens
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- *.png
-          git commit -qm "iOS screens for ${GITHUB_SHA}"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/ios-native-screens
 
       - name: Upload the screens
         if: always()
