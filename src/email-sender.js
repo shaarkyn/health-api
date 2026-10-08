@@ -46,6 +46,43 @@ export function signInCodeEmail(lang, code) {
   return { subject: t.subject(code), text: `${t.intro}\n\n${code}\n\n${t.outro}\n`, html: htmlEmail(lang === "en" ? "en" : "cs", [t.intro, t.outro], code) };
 }
 
+const CHANGE_CODE_TEXT = {
+  cs: {
+    subject: code => `${code} je tvůj kód pro změnu e-mailu v Loadwise`,
+    intro: "Tvůj kód, kterým potvrdíš tuhle adresu jako nový e-mail svého účtu Loadwise:",
+    outro: "Platí 10 minut. Pokud o změnu nežádáš ty, e-mail ignoruj."
+  },
+  en: {
+    subject: code => `${code} is your Loadwise email change code`,
+    intro: "Your code to confirm this address as the new email of your Loadwise account:",
+    outro: "It is valid for 10 minutes. If you did not ask for the change, ignore this email."
+  }
+};
+
+export function emailChangeCodeEmail(lang, code) {
+  const t = CHANGE_CODE_TEXT[lang === "en" ? "en" : "cs"];
+  return { subject: t.subject(code), text: `${t.intro}\n\n${code}\n\n${t.outro}\n`, html: htmlEmail(lang === "en" ? "en" : "cs", [t.intro, t.outro], code) };
+}
+
+const CHANGED_TEXT = {
+  cs: {
+    subject: "E-mail tvého účtu Loadwise se změnil",
+    body: (address, when) => [`E-mail pro přihlášení do Loadwise se ${when} změnil na ${address}. Na tuhle adresu už kódy pro přihlášení chodit nebudou.`, "Pokud o tom nevíš, dej hned vědět správci aplikace."]
+  },
+  en: {
+    subject: "The email of your Loadwise account changed",
+    body: (address, when) => [`The email you sign in to Loadwise with changed to ${address} on ${when}. Sign-in codes no longer go to this address.`, "If this was not you, tell the app's administrator right away."]
+  }
+};
+
+// Goes to the old address, so a change nobody asked for does not go unnoticed.
+export function emailChangedEmail(lang, address, date = new Date()) {
+  const en = lang === "en";
+  const when = new Intl.DateTimeFormat(en ? "en-GB" : "cs-CZ", { timeZone: "Europe/Prague", dateStyle: "long", timeStyle: "short" }).format(date);
+  const t = CHANGED_TEXT[en ? "en" : "cs"], paragraphs = t.body(address, when);
+  return { subject: t.subject, text: paragraphs.join("\n\n") + "\n", html: htmlEmail(en ? "en" : "cs", paragraphs) };
+}
+
 const PASSKEY_TEXT = {
   cs: {
     subject: "K tvému účtu Loadwise přibyl přístupový klíč",

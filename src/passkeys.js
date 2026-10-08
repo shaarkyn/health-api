@@ -125,7 +125,8 @@ export async function handlePasskeyLogin(request, env, pathname) {
     db.prepare("UPDATE user_passkeys SET sign_count = MAX(sign_count, ?), backed_up = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(result.signCount, result.backedUp ? 1 : 0, stored.id, stored.user_id),
     db.prepare("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?").bind(user.id)
   ]);
-  return signedInResponse(user.id, env);
+  // The address lets this device remember which e-mail the passkey belongs to.
+  return signedInResponse(user.id, env, { status: "ok", email: user.email });
 }
 
 // Settings → Account. Needs the browser session (an API key cannot add passkeys).

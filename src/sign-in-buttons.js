@@ -9,19 +9,25 @@ const APPLE_MARK = '<svg class="sign-in-mark" viewBox="0 0 24 24" aria-hidden="t
 
 const KEY_MARK = '<svg class="sign-in-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>';
 
-// The e-mail code form: the address first, then the six-digit code.
-const EMAIL_CODE = '<div class="sign-in-or"><span>nebo kódem z e-mailu</span></div>'
-  + '<form id="emailStartForm" class="email-code-row" novalidate><input id="loginEmail" type="email" autocomplete="email" inputmode="email" required placeholder="tvůj e-mail" aria-label="E-mail"><button class="btn" type="submit">Poslat kód</button></form>'
+// Words that differ between the two tabs of the sign-in screen; the card's data-mode shows one.
+const byMode = (signIn, register) => '<span data-for="signin">' + signIn + '</span><span data-for="register">' + register + '</span>';
+
+// The e-mail step: the address first, then (unless this device has a passkey for it) the six-digit code.
+// autocomplete "webauthn" lets the browser offer the device's passkeys right in the field.
+const EMAIL_CODE = '<div class="sign-in-or"><span>nebo e-mailem</span></div>'
+  + '<form id="emailStartForm" class="email-code-row" novalidate><input id="loginEmail" type="email" autocomplete="username webauthn" inputmode="email" required placeholder="tvůj e-mail" aria-label="E-mail"><button class="btn" type="submit">' + byMode('Pokračovat', 'Poslat kód') + '</button></form>'
+  + '<p class="small email-hint" id="emailHint">' + byMode('Má-li tohle zařízení k e-mailu přístupový klíč, přihlásíš se jím. Jinak ti pošleme kód.', 'Pošleme ti šestimístný kód. Potom si můžeš přidat přístupový klíč.') + '</p>'
   + '<form id="emailCodeForm" class="email-code" novalidate hidden><p class="small">Pokud má tahle adresa do Loadwise přístup, přijde na ni šestimístný kód. Platí 10 minut.</p><p class="email-code-address" id="codeAddress" data-no-i18n></p>'
-  + '<div class="email-code-row"><input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="123456" aria-label="Kód z e-mailu"><button class="btn primary" type="submit">Přihlásit se</button></div>'
+  + '<div class="email-code-row"><input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="123456" aria-label="Kód z e-mailu"><button class="btn primary" type="submit">' + byMode('Přihlásit se', 'Založit účet') + '</button></div>'
   + '<p class="small email-code-actions"><button class="link-btn" type="button" id="resendCode">Poslat kód znovu</button><span aria-hidden="true">·</span><button class="link-btn" type="button" id="changeEmail">Jiný e-mail</button></p></form>';
 
-// Czech wording; the app's English dictionary turns it into "Sign in with Google / Apple".
-// The passkey button stays hidden until the page knows the browser supports passkeys.
+// Czech wording; the app's English dictionary turns it into "Sign in / Sign up with Google / Apple".
+// The passkey button is only for browsers that cannot offer passkeys in the e-mail field;
+// the page shows it when it knows that.
 export function signInButtons({ apple = false, email = false } = {}) {
-  return '<a class="sign-in-btn sign-in-google" href="/auth/google"><span class="sign-in-logo">' + GOOGLE_G + '</span><span>Přihlásit se přes Google</span></a>'
-    + (apple ? '<a class="sign-in-btn sign-in-apple" href="/auth/apple">' + APPLE_MARK + '<span>Přihlásit se přes Apple</span></a>' : '')
-    + '<button class="sign-in-btn sign-in-passkey" type="button" id="passkeySignIn" hidden>' + KEY_MARK + '<span>Přihlásit se přístupovým klíčem</span></button>'
+  return '<a class="sign-in-btn sign-in-google" href="/auth/google"><span class="sign-in-logo">' + GOOGLE_G + '</span><span>' + byMode('Přihlásit se přes Google', 'Zaregistrovat se přes Google') + '</span></a>'
+    + (apple ? '<a class="sign-in-btn sign-in-apple" href="/auth/apple">' + APPLE_MARK + '<span>' + byMode('Přihlásit se přes Apple', 'Zaregistrovat se přes Apple') + '</span></a>' : '')
+    + '<button class="sign-in-btn sign-in-passkey" type="button" id="passkeySignIn" data-for="signin" hidden>' + KEY_MARK + '<span>Přihlásit se přístupovým klíčem</span></button>'
     + (email ? EMAIL_CODE : '')
     + '<p id="loginStatus" class="small login-status" role="status" aria-live="polite"></p>';
 }
@@ -49,6 +55,12 @@ export const signInButtonsCss = `
 .sign-in-apple{font:500 15px/20px -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;background:#fff;color:#000;border-color:#fff}
 .sign-in-apple .sign-in-mark{width:17px;height:17px;margin-top:-3px}
 .login-card [hidden]{display:none!important}
+.login-card:not([data-mode="register"]) [data-for="register"],.login-card[data-mode="register"] [data-for="signin"]{display:none!important}
+.login-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:999px;background:color-mix(in srgb,var(--muted) 14%,var(--bg))}
+.login-tabs button{min-height:40px;padding:0 12px;border:0;border-radius:999px;background:none;color:var(--muted);font:inherit;font-weight:600;cursor:pointer}
+.login-tabs button[aria-selected="true"]{background:var(--bg);color:var(--text);box-shadow:0 0 0 1px color-mix(in srgb,var(--muted) 45%,var(--bg)),0 1px 3px rgb(0 0 0/.18)}
+.login-tabs button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.email-hint{color:var(--muted)}
 .sign-in-passkey{font:500 14px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:transparent;color:var(--text);border-color:color-mix(in srgb,var(--muted) 55%,var(--bg));cursor:pointer}
 .sign-in-passkey:disabled{opacity:.6;cursor:default}
 .sign-in-or{display:flex;align-items:center;gap:10px;margin:4px 0 0;color:var(--muted);font-size:12px}

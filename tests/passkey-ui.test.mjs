@@ -12,11 +12,14 @@ const template = html => html.match(/<template id="signInButtons">([\s\S]*?)<\/t
 
 test("the sign-in screen offers a passkey always and the e-mail code only once e-mail is set up", async () => {
   const plain = template(await dashboardPage().text());
-  assert.match(plain, /<button class="sign-in-btn sign-in-passkey" type="button" id="passkeySignIn" hidden>/);
+  assert.match(plain, /<button class="sign-in-btn sign-in-passkey" type="button" id="passkeySignIn" data-for="signin" hidden>/);
   assert.doesNotMatch(plain, /emailStartForm/);
   assert.match(plain, /id="loginStatus"[^>]*role="status"/);
   const withEmail = template(await dashboardPage({ signIn: { email: true } }).text());
-  assert.match(withEmail, /<form id="emailStartForm"[\s\S]*<input id="loginEmail" type="email" autocomplete="email"/);
+  assert.match(withEmail, /<form id="emailStartForm"[\s\S]*<input id="loginEmail" type="email" autocomplete="username webauthn"/);
+  // Both tabs share the buttons; each shows its own words.
+  assert.match(withEmail, /<span data-for="signin">Přihlásit se přes Google<\/span><span data-for="register">Zaregistrovat se přes Google<\/span>/);
+  assert.match(signInButtonsCss, /\.login-card:not\(\[data-mode="register"\]\) \[data-for="register"\],\.login-card\[data-mode="register"\] \[data-for="signin"\]\{display:none!important\}/);
   assert.match(withEmail, /<form id="emailCodeForm" class="email-code" novalidate hidden>/);
   assert.match(withEmail, /id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code"/);
   // A hidden element must stay hidden even where the class sets display.
@@ -28,11 +31,13 @@ test("the client wires the passkey and code sign-in and keeps the app's own fetc
   const gate = client.match(/function showLoginGate\(\)\{.*\}/)[0];
   assert.match(gate, /forgetAccount\(\);/);
   assert.match(gate, /installLoginGate\(\);\}$/);
-  assert.match(client, /navigator\.credentials\.get\(\{publicKey:\{challenge:b64uBuf\(o\.challenge\),rpId:o\.rpId,timeout:o\.timeout,userVerification:o\.userVerification,allowCredentials:\[\]\}\}\)/);
+  assert.match(client, /navigator\.credentials\.get\(\{publicKey:\{challenge:b64uBuf\(o\.challenge\),rpId:o\.rpId,timeout:o\.timeout,userVerification:o\.userVerification,allowCredentials:ids\.map\(id=>\(\{type:'public-key',id:b64uBuf\(id\)\}\)\)\}\}\)/);
+  assert.match(client, /navigator\.credentials\.get\(\{mediation:'conditional',signal:ctl\.signal,/);
+  assert.match(gate, /role="tablist"/);
   assert.match(client, /navigator\.credentials\.create\(\{publicKey:\{\.\.\.o,challenge:b64uBuf\(o\.challenge\),user:\{\.\.\.o\.user,id:b64uBuf\(o\.user\.id\)\}/);
   const authFetch = client.match(/async function authFetch\(.*\}/)[0];
   assert.doesNotMatch(authFetch, /jsonFetch|showLoginGate/);
-  assert.match(client, /authFetch\('\/auth\/email\/verify',\{email:address,code:\$\('loginCode'\)\.value\}\);await offerPasskey\(\);/);
+  assert.match(client, /const d=await authFetch\('\/auth\/email\/verify',\{email:address,code:\$\('loginCode'\)\.value\}\);passkeyAutofill\?\.abort\(\);await offerPasskey\(\{created:Boolean\(d\.created\),email:address\}\);/);
   assert.match(client, /PublicKeyCredential\.isUserVerifyingPlatformAuthenticatorAvailable\(\)/);
   assert.match(client, /localStorage\.setItem\('lw-passkey-offer','no'\)/);
   assert.match(client, /\+passkeysHtml\(me\.passkeys\)\+appleSignInHtml\(me\.apple\)/);
@@ -115,7 +120,7 @@ const shown = value => !/[<>]/.test(value) ? [value] : [...[...value.matchAll(/(
 
 test("every new sign-in text has an English translation", () => {
   const between = (from, to) => { const at = client.indexOf(from); assert.ok(at >= 0, from); return client.slice(at, client.indexOf(to, at)); };
-  const scripts = [between("const b64uBuf=", "// Complete the saved profile"), between("const passkeyDate=", "// Your data: a download of everything"), between("function installAdmin(", "\n"),
+  const scripts = [between("const b64uBuf=", "// Complete the saved profile"), between("const passkeyDate=", "// Your data: a download of everything"), between("function installAdmin(", "\n"), between("function emailChangeHtml(", "// Settings → Účet: the account's passkeys."), between("async function loadAdmin(", "\n"),
     readFileSync(new URL("../src/passkeys.js", import.meta.url), "utf8"), readFileSync(new URL("../src/email-login.js", import.meta.url), "utf8")];
   const czech = /[áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]/;
   const texts = [...scripts.flatMap(literals), signInButtons({ apple: true, email: true })].flatMap(shown).map(text => text.trim()).filter(text => czech.test(text));

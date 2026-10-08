@@ -320,11 +320,12 @@ export async function mayGetEmailCode(db, env, email) {
 export async function signInEmailUser(db, env, email) {
   const address = normalizeEmail(email);
   if (!address) return null;
-  let row = await db.prepare("SELECT id, email, name, role, disabled FROM users WHERE email=?").bind(address).first();
+  let row = await db.prepare("SELECT id, email, name, role, disabled FROM users WHERE email=?").bind(address).first(), created = false;
   if (!row) {
     const invite = await db.prepare("SELECT email FROM user_invites WHERE email=?").bind(address).first();
     if (!invite && address !== ownerEmail(env)) return null;
-    await db.prepare("INSERT INTO users(email, role) VALUES(?, ?) ON CONFLICT(email) DO NOTHING").bind(address, address === ownerEmail(env) ? "admin" : "user").run();
+    const inserted = await db.prepare("INSERT INTO users(email, role) VALUES(?, ?) ON CONFLICT(email) DO NOTHING").bind(address, address === ownerEmail(env) ? "admin" : "user").run();
+    created = Number(inserted.meta?.changes) > 0;
     row = await db.prepare("SELECT id, email, name, role, disabled FROM users WHERE email=?").bind(address).first();
   }
   if (!row || row.disabled) return null;
@@ -332,7 +333,33 @@ export async function signInEmailUser(db, env, email) {
     db.prepare("UPDATE users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?").bind(row.id),
     db.prepare("DELETE FROM user_invites WHERE email=?").bind(address)
   ]);
-  return publicUser(row, env);
+  // created: the account was made just now (the sign-in screen then offers a passkey).
+  return { ...publicUser(row, env), created };
+}
+
+// Moves an account to another e-mail address. Its data stays with it (everything is stored
+// under the account id); the Google account is unlinked, so the next Google sign-in binds the
+// one with the new address. The owner's address comes from OWNER_EMAIL and is not changed here.
+// Returns { email, previous } or { error: "invalid" | "missing" | "same" | "owner" | "taken" }.
+export async function changeUserEmail(db, env, id, email) {
+  const address = normalizeEmail(email);
+  if (!address || address.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return { error: "invalid" };
+  const row = await db.prepare("SELECT id, email FROM users WHERE id=?").bind(Number(id)).first();
+  if (!row) return { error: "missing" };
+  if (normalizeEmail(row.email) === address) return { error: "same" };
+  if (normalizeEmail(row.email) === ownerEmail(env) || address === ownerEmail(env)) return { error: "owner" };
+  if (await db.prepare("SELECT id FROM users WHERE email=? AND id<>?").bind(address, row.id).first()) return { error: "taken" };
+  try {
+    await db.batch([
+      db.prepare("UPDATE users SET email=?, google_sub=NULL WHERE id=?").bind(address, row.id),
+      db.prepare("DELETE FROM user_invites WHERE email=?").bind(address)
+    ]);
+  } catch (error) {
+    // Someone took the address in the meantime (users.email is unique).
+    if (/UNIQUE/i.test(String(error?.message))) return { error: "taken" };
+    throw error;
+  }
+  return { email: address, previous: row.email };
 }
 
 export async function listUsersAndInvites(db) {
