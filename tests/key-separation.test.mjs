@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createD1 } from "./helpers/d1.mjs";
 import { saveConnectionSecret, connectionEnvironment, migrateConnectionSecrets } from "../src/connection-secrets.js";
 import { internalHeaders, isInternalCall } from "../src/internal-auth.js";
@@ -107,5 +108,21 @@ test("the app's layers call each other with a token of their own, not the owner 
     assert.doesNotMatch(source, /Authorization["']?\s*[:,]\s*[^,;\n]*STRENGTH_API_KEY/, file);
     // Nor stands in for the session, MCP or connection key.
     assert.doesNotMatch(source, /(SESSION_SECRET|MCP_API_KEY|CONNECTION_KEY)\s*\|\|\s*env\.STRENGTH_API_KEY|STRENGTH_API_KEY\s*\|\|\s*env\.(SESSION_SECRET|MCP_API_KEY|CONNECTION_KEY)/, file);
+  }
+});
+
+test("a deploy stops before going live when the Worker has no SESSION_SECRET", () => {
+  const check = (input, ...names) => spawnSync(process.execPath, [new URL("../scripts/require-secrets.mjs", import.meta.url).pathname, ...names], { input, encoding: "utf8" });
+  const listed = JSON.stringify([{ name: "GOOGLE_CLIENT_ID", type: "secret_text" }, { name: "SESSION_SECRET", type: "secret_text" }]);
+  assert.equal(check(listed, "SESSION_SECRET").status, 0);
+  const missing = check(JSON.stringify([{ name: "STRENGTH_API_KEY", type: "secret_text" }]), "SESSION_SECRET");
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /missing SESSION_SECRET/);
+  assert.equal(check("Authentication error", "SESSION_SECRET").status, 1);
+  // Both deploys run the check before they change anything.
+  for (const [file, env] of [["deploy-worker.yml", ""], ["deploy-staging.yml", " --env staging"]]) {
+    const workflow = readFileSync(new URL("../.github/workflows/" + file, import.meta.url), "utf8");
+    const at = workflow.indexOf(`wrangler@4 secret list${env} | node scripts/require-secrets.mjs SESSION_SECRET`);
+    assert.ok(at > 0 && at < workflow.indexOf("d1 "), file);
   }
 });
