@@ -513,22 +513,27 @@ function renderCoachCouncil(){
 }
 
 // The athlete's own rating of a session (RPE, note) and the coach's answer sit
-// right after that session's review card, for any day shown. A note saved from
+// inside that session's "Po tréninku" card, for any day shown. A note saved from
 // Today starts with the session name; otherwise a day with one review gets it.
 function withRatings(cards,reflections,date=null){
   const out=[...cards],reviews=cards.filter(x=>x.sections||x.chart||x.sets);
   for(const r of reflections.filter(r=>r.text||r.rpe!=null)){
     const notes=String(r.notes||''),own=reviews.find(x=>x.headline&&notes.startsWith(x.headline+': '))||(reviews.length===1?reviews[0]:null);
     const note=own&&notes.startsWith(own.headline+': ')?notes.slice(own.headline.length+2):notes;
-    out.splice(own?out.indexOf(own)+1:out.length,0,{rating:true,sport:own?(/Kolo|Bike/.test(own.title||'')?'ride':/Běh|Run/.test(own.title||'')?'run':/Posilovna|Gym/.test(own.title||'')?'gym':null):null,name:own?.headline||null,rpe:r.rpe,note,text:r.text,ai:r.source==='ai',date:r.date||date});
+    const rated={rating:true,sport:own?(/Kolo|Bike/.test(own.title||'')?'ride':/Běh|Run/.test(own.title||'')?'run':/Posilovna|Gym/.test(own.title||'')?'gym':null):null,name:own?.headline||null,rpe:r.rpe,note,text:r.text,ai:r.source==='ai',date:r.date||date};
+    const at=own?out.indexOf(own):-1;if(at>=0)out[at]={...own,rated};else out.push(rated);
   }
   return out;
 }
-function ratingCard(x){
+function ratingBody(x){
   const rpe=Number(x.rpe),has=x.rpe!=null&&rpe>=1&&rpe<=10;
   const gauge=has?'<div class="rpe-gauge" role="img" aria-label="RPE '+fmt(rpe,1)+' / 10"><div class="rpe-cells">'+Array.from({length:10},(_,k)=>'<i class="'+(k<Math.round(rpe)?'on':'')+'" style="--c:'+rpeColor(k+1)+'"></i>').join('')+'</div><span class="rpe-word"><b class="ink" style="--c:'+rpeColor(rpe)+'">RPE '+fmt(rpe,Number.isInteger(rpe)?0:1)+'</b> · '+rpeWord(rpe)+'</span></div>':'';
   const note=x.note?'<blockquote class="rating-note" data-no-i18n>'+esc(x.note)+'</blockquote>':'';
-  return '<article class="coach-card review rating"><div class="eyebrow">'+uiText('Tvoje hodnocení a kouč','Your rating and the coach')+'</div><h3 data-no-i18n>'+esc(x.name||uiText('Trénink','Session'))+'</h3>'+gauge+note+ratingSignals(x.date)+(x.text?coachAdvice(x.text,x.ai):'')+(x.date&&x.date>=dateShift(localToday(),-1)?'<div class="rating-actions"><button type="button" class="btn" data-add-recovery data-date="'+esc(x.date)+'" data-sport="'+esc(x.sport||'')+'" data-focus="'+esc(x.name||'')+'" data-note="'+esc(x.note||'')+'">🧘 '+uiText('Přidat protažení do plánu','Add stretching to the plan')+'</button></div>':'')+'</article>';
+  return gauge+note+ratingSignals(x.date)+(x.text?coachAdvice(x.text,x.ai):'')+(x.date&&x.date>=dateShift(localToday(),-1)?'<div class="rating-actions"><button type="button" class="btn" data-add-recovery data-date="'+esc(x.date)+'" data-sport="'+esc(x.sport||'')+'" data-focus="'+esc(x.name||'')+'" data-note="'+esc(x.note||'')+'">🧘 '+uiText('Přidat protažení do plánu','Add stretching to the plan')+'</button></div>':'')+'';
+}
+// A rating whose session has no review card stands on its own.
+function ratingCard(x){
+  return '<article class="coach-card review rating"><div class="eyebrow">'+uiText('Po tréninku','After the session')+'</div><h3 data-no-i18n>'+esc(x.name||uiText('Trénink','Session'))+'</h3>'+ratingBody(x)+'</article>';
 }
 function rpeColor(v){return v<=3?'#3fda9c':v<=5?'#9ad46a':v<=7?'#ffc274':v<=8?'#ff9a4d':'#ff6478';}
 function rpeWord(v){return v<=2?uiText('velmi lehké','very easy'):v<=4?uiText('lehké','easy'):v<=6?uiText('střední','moderate'):v<=8?uiText('těžké','hard'):v<9.5?uiText('velmi těžké','very hard'):uiText('maximální','maximal');}
@@ -580,7 +585,7 @@ function openRecoverySheet(id){
 function rideReviewCard(x){
   const table=x.table?.rows?.length?'<div class="review-table-wrap"><table class="review-table"><thead><tr>'+x.table.columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+x.table.rows.map(r=>'<tr>'+r.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':'';
   const sections=(x.sections||[]).map(s=>'<div class="review-sec '+esc(s.kind||'')+'"><strong>'+esc(s.label)+'</strong><ul>'+(s.items||[]).map(i=>'<li>'+esc(i)+'</li>').join('')+'</ul></div>').join('');
-  return '<article class="coach-card review '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><div data-no-i18n data-raw>'+(x.verdict?'<p class="review-verdict">'+esc(x.verdict)+'</p>':'')+((x.actions||[]).length?'<p class="small">'+x.actions.map(esc).join(' ')+'</p>':'')+'</div>'+rideReviewChart(x.chart)+gymSetsChart(x.sets)+'<div data-no-i18n data-raw>'+table+(x.target?'<p class="small review-target">'+esc(x.target)+'</p>':'')+sections+'</div></article>';
+  return '<article class="coach-card review '+esc(x.status||'')+'"><div class="eyebrow">'+esc(x.title)+'</div><h3>'+esc(x.headline)+'</h3><div data-no-i18n data-raw>'+(x.verdict?'<p class="review-verdict">'+esc(x.verdict)+'</p>':'')+((x.actions||[]).length?'<p class="small">'+x.actions.map(esc).join(' ')+'</p>':'')+'</div>'+rideReviewChart(x.chart)+gymSetsChart(x.sets)+'<div data-no-i18n data-raw>'+table+(x.target?'<p class="small review-target">'+esc(x.target)+'</p>':'')+sections+'</div>'+(x.rated?'<div class="review-rating"><div class="label">'+uiText('Tvoje hodnocení a kouč','Your rating and the coach')+'</div>'+ratingBody(x.rated)+'</div>':'')+'</article>';
 }
 // Every set of a finished gym session as a chip, coloured against the planned rep range.
 function gymSetsChart(list){
