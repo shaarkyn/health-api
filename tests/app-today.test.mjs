@@ -123,7 +123,7 @@ test("Google Health steps are counted per local hour", () => {
   assert.equal(s.stepsByHour[day(-20)], undefined, "only the last 15 days");
 });
 
-test("Before tonight's sleep has synced, Today shows the last morning's readiness and sleep", () => {
+test("Before tonight's sleep has synced, Today stays empty and the coming night is the current one", () => {
   // 00:54: the night that ends this morning is not over yet, Google has no HRV for today.
   const early = {
     ...input,
@@ -132,15 +132,13 @@ test("Before tonight's sleep has synced, Today shows the last morning's readines
     health: { wellness: wellness.map(r => (r.id === DATE ? { id: DATE, steps: 37 } : r)) }
   };
   const t = buildToday(early);
-  assert.equal(t.readiness.asOf, day(-1));
-  assert.ok(t.readiness.score > 0);
-  assert.equal(t.sleep.date, day(-1));
-  assert.equal(t.sleep.minutes, 412);
-  assert.equal(t.hrv.value, wellness.at(-2).hrv);
+  assert.equal(t.readiness.score, null);
+  assert.equal(t.sleep, null);
+  assert.equal(t.hrv, null);
   // The coming night is the one that ends this morning.
   assert.equal(t.tonight.wake, "07:02");
-  // A past day (no current hour) keeps its own, empty morning.
-  const past = buildToday({ ...early, hour: null });
-  assert.equal(past.readiness.asOf, DATE);
-  assert.equal(past.sleep, null);
+  // The day before is still there with ?date=.
+  const before = buildToday({ ...early, date: day(-1), hour: null });
+  assert.ok(before.readiness.score > 0);
+  assert.equal(before.sleep.minutes, 412);
 });
