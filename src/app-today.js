@@ -42,7 +42,7 @@ function dayStrain(rows, date) {
 // Planned training on the same 0–21 scale, from TSS (as the web dashboard).
 const plannedStrain = tss => (tss > 0 ? Math.round(21 * (1 - Math.exp(-tss / 90)) * 10) / 10 : null);
 
-export function buildToday({ date, daily = {}, health = {}, fitness = {}, sleep = {}, fluids = {}, weight = {}, coaches = {}, profile = {} }) {
+export function buildToday({ date, hour = null, daily = {}, health = {}, fitness = {}, sleep = {}, fluids = {}, weight = {}, coaches = {}, profile = {} }) {
   const google = Array.isArray(health.wellness) ? health.wellness : [];
   const rows = mergeWellnessRows(google, Array.isArray(fitness.wellness) ? fitness.wellness : []);
   const sessions = Array.isArray(sleep.sessions) ? sleep.sessions : [];
@@ -84,6 +84,12 @@ export function buildToday({ date, daily = {}, health = {}, fitness = {}, sleep 
     .map(r => ({ date: String(r.sample_time || r.start_time || "").slice(0, 10), value: num(r.value_numeric) }))
     .filter(p => p.date && p.date <= date && p.date > shift(date, -30) && p.value > 0);
   const todayRow = google.find(r => r.id === date) || {};
+  // Steps through the day, and the usual climb: the average running total per
+  // hour of the earlier days with steps (up to 14).
+  const byHour = health.stepsByHour || {};
+  const cumulative = hours => hours.reduce((out, v) => [...out, (out.at(-1) || 0) + (num(v) || 0)], []);
+  const earlier = Object.keys(byHour).filter(d => d < date && byHour[d].some(v => v > 0)).sort().slice(-14).map(d => cumulative(byHour[d]));
+  const usual = earlier.length ? Array.from({ length: 24 }, (_, h) => Math.round(earlier.reduce((s, c) => s + c[h], 0) / earlier.length)) : null;
   const summary = coaches.morningSummary || null;
 
   const planItems = [
@@ -124,7 +130,7 @@ export function buildToday({ date, daily = {}, health = {}, fitness = {}, sleep 
     },
     plan: planItems,
     tonight: plan ? { bedtime: clock(plan.bed), wake: clock(plan.wake), need: tonightNeed } : null,
-    steps: { today: num(todayRow.steps), goal: STEP_GOAL, week: last(7, "steps") },
+    steps: { today: num(todayRow.steps), goal: STEP_GOAL, week: last(7, "steps"), hourly: byHour[date] ? byHour[date].map(v => Math.round(v)) : null, usual, hour },
     weight: weights.length ? { latest: weights.at(-1).value, goal: num(profile.targetWeight), series: weights } : null
   };
 }

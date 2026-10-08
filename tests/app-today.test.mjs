@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildToday } from "../src/app-today.js";
+import { googleHealthSummary } from "../src/google-dashboard.js";
 
 const DATE = "2026-10-08";
 const day = offset => new Date(Date.parse(DATE + "T12:00:00Z") + offset * 86400000).toISOString().slice(0, 10);
@@ -95,5 +96,29 @@ test("Today stays usable without data", () => {
 test("The server answers GET /app/api/today with buildToday", () => {
   const src = readFileSync(new URL("../src/entrypoint.js", import.meta.url), "utf8");
   assert.match(src, /url\.pathname==='\/app\/api\/today'&&request\.method==='GET'/);
-  assert.match(src, /buildToday\(\{date,daily,health,fitness,sleep,fluids,weight,coaches,profile/);
+  assert.match(src, /buildToday\(\{date,hour:date===localToday\(\)\?localHour\(\):null,daily,health,fitness,sleep,fluids,weight,coaches,profile/);
+});
+
+test("Steps through the day: today's hours and the usual climb of the earlier days", () => {
+  const hours = (morning, evening) => Array.from({ length: 24 }, (_, h) => (h === 8 ? morning : h === 18 ? evening : 0));
+  const t = buildToday({ ...input, hour: 15, health: { wellness, stepsByHour: { [day(-2)]: hours(1000, 3000), [day(-1)]: hours(3000, 5000), [DATE]: hours(2500.4, 0) } } });
+  assert.equal(t.steps.hour, 15);
+  assert.equal(t.steps.hourly.length, 24);
+  assert.equal(t.steps.hourly[8], 2500);
+  assert.equal(t.steps.usual[7], 0);
+  assert.equal(t.steps.usual[8], 2000, "average running total at 8:00");
+  assert.equal(t.steps.usual[23], 6000, "average day total");
+  const none = buildToday({ ...input, health: { wellness } });
+  assert.equal(none.steps.hourly, null);
+  assert.equal(none.steps.usual, null);
+});
+
+test("Google Health steps are counted per local hour", () => {
+  const row = (start, count) => ({ data_type: "steps", start_time: start, end_time: start, value_numeric: count, payload_json: "{}" });
+  // 06:30 UTC is 08:30 in Prague (summer time), 16:10 UTC is 18:10.
+  const s = googleHealthSummary([row(DATE + "T06:30:00Z", 400), row(DATE + "T06:45:00Z", 100), row(DATE + "T16:10:00Z", 900), row(day(-20) + "T06:30:00Z", 50)], DATE);
+  assert.equal(s.stepsByHour[DATE][8], 500);
+  assert.equal(s.stepsByHour[DATE][18], 900);
+  assert.equal(s.wellness.find(r => r.id === DATE).steps, 1400);
+  assert.equal(s.stepsByHour[day(-20)], undefined, "only the last 15 days");
 });

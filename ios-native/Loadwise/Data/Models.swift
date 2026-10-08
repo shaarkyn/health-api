@@ -100,6 +100,12 @@ struct TodaySnapshot: Decodable, Equatable {
         let today: Double?
         let goal: Double
         let week: [Point]
+        /// Steps in each local hour of the day (24 values), when Google Health has them.
+        let hourly: [Double]?
+        /// The usual running total at the end of each hour (earlier days).
+        let usual: [Double]?
+        /// The current hour for today, nil for a past day.
+        let hour: Int?
     }
 
     struct Weight: Decodable, Equatable {

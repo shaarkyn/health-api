@@ -90,6 +90,8 @@ struct PlanWidget: View {
 
 struct StepsWidget: View {
     let steps: TodaySnapshot.Steps
+    /// The hours shown in the day chart.
+    private let hours = Array(6...22)
 
     var body: some View {
         Card {
@@ -100,19 +102,46 @@ struct StepsWidget: View {
                     Text("kroků z " + Fmt.int(steps.goal) + percent).font(Typo.caption).foregroundStyle(Palette.amber)
                 }
                 .frame(width: 120, alignment: .leading)
-                BarChart(values: steps.week.map(\.value),
-                         styles: steps.week.indices.map { i in
-                             i == steps.week.count - 1 ? BarStyle(fill: Palette.amberBar)
-                                 : BarStyle(fill: steps.week[i].value >= steps.goal ? Palette.amberBar.opacity(0.75) : Palette.sand)
-                         },
-                         hi: max(steps.goal * 1.15, steps.week.map(\.value).max() ?? 0),
-                         target: steps.goal,
-                         labels: steps.week.map { Fmt.weekdayInitial($0.date) },
-                         highlighted: steps.week.count - 1,
-                         height: 56)
+                if let hourly = steps.hourly, hourly.count == 24 {
+                    dayChart(hourly)
+                } else {
+                    weekChart
+                }
             }
-            Text("7 dní · čárkovaně = cíl").font(Typo.tiny).foregroundStyle(Palette.faint)
+            Text(steps.hourly == nil ? "7 dní · čárkovaně = cíl" : steps.usual == nil ? "kroky během dne · čárkovaně = cíl" : "kroky během dne · čárkovaně = tvůj obvyklý průběh")
+                .font(Typo.tiny).foregroundStyle(Palette.faint)
         }
+    }
+
+    /// Running total through the day: past hours filled, the current hour
+    /// highlighted, the rest of the day dashed at the usual level.
+    private func dayChart(_ hourly: [Double]) -> some View {
+        let now = steps.hour ?? 23
+        let total = hourly.indices.map { h in hourly[0...h].reduce(0, +) }
+        let values = hours.map { h in h <= now ? total[h] : max(total[now], steps.usual?[h] ?? total[now]) }
+        let styles = hours.map { h in
+            h < now ? BarStyle(fill: Palette.sand) : h == now ? BarStyle(fill: Palette.amberBar) : BarStyle(fill: Palette.amberBar, dashed: true)
+        }
+        return BarChart(values: values, styles: styles,
+                        hi: max(steps.goal * 1.05, values.max() ?? 0),
+                        target: steps.goal,
+                        labels: hours.map { [6, 10, 14, 18, 22].contains($0) ? String($0) : "" },
+                        highlighted: hours.firstIndex(of: now),
+                        spacing: 2.5,
+                        height: 56)
+    }
+
+    private var weekChart: some View {
+        BarChart(values: steps.week.map(\.value),
+                 styles: steps.week.indices.map { i in
+                     i == steps.week.count - 1 ? BarStyle(fill: Palette.amberBar)
+                         : BarStyle(fill: steps.week[i].value >= steps.goal ? Palette.amberBar.opacity(0.75) : Palette.sand)
+                 },
+                 hi: max(steps.goal * 1.15, steps.week.map(\.value).max() ?? 0),
+                 target: steps.goal,
+                 labels: steps.week.map { Fmt.weekdayInitial($0.date) },
+                 highlighted: steps.week.count - 1,
+                 height: 56)
     }
 
     private var percent: String {

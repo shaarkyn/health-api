@@ -24,6 +24,7 @@ final class SnapshotTests: XCTestCase {
         let today = DemoData.today
         XCTAssertEqual(today.readiness.score, 78)
         XCTAssertEqual(today.plan.count, 2)
+        XCTAssertEqual(today.steps.hourly?.reduce(0, +), today.steps.today)
         XCTAssertEqual(Fmt.dayHeading(today.date), "ČTVRTEK 8. ŘÍJNA")
         XCTAssertEqual(Fmt.hoursMinutes(432), "7:12")
         XCTAssertEqual(Fmt.decimal(8.4), "8,4")
@@ -36,7 +37,7 @@ final class SnapshotTests: XCTestCase {
          "strain":{"score":null,"planned":null},"hrv":null,"restingHR":null,"summary":null,
          "nutrition":{"kcal":null,"target":null,"trainingBonus":null,"protein":{"eaten":null,"target":null},"carbs":{"eaten":null,"target":null},
          "fat":{"eaten":null,"target":null},"water":{"ml":null,"target":null}},"plan":[],"tonight":null,
-         "steps":{"today":null,"goal":10000,"week":[]},"weight":null}
+         "steps":{"today":null,"goal":10000,"week":[],"hourly":null,"usual":null,"hour":12},"weight":null}
         """
         let today = try JSONDecoder().decode(TodaySnapshot.self, from: Data(json.utf8))
         XCTAssertNil(today.readiness.score)
