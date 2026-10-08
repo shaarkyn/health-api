@@ -1,7 +1,8 @@
+import { L } from './lang.js';
 import { getCookbook, getCookbookRecipeByPage } from "./cookbook.js";
 import { calculateAmount, normalizeBarcode, productFromLabel } from "./food-sources.js";
 import { searchPersonalFoods } from "./personal-foods.js";
-import { pragueToday } from "./prague-date.js";
+import { localToday, timeZone } from "./user-time.js";
 import { dateFormat } from "./date-format.js";
 
 // null and "" are missing values, not 0: ChatGPT sends "servings": null, and
@@ -59,12 +60,12 @@ function noteOf(row) { try { const note = JSON.parse(row?.note || "{}"); return 
 // When a meal is logged for another day than today, it gets its slot's usual time.
 export const MEAL_DEFAULT_TIMES = { breakfast: "07:00", snack_am: "10:00", lunch: "12:00", snack_pm: "16:00", dinner: "19:00" };
 export function mealConsumedAt(date, mealType) {
-  return date === pragueToday() ? null : date + "T" + (MEAL_DEFAULT_TIMES[mealType] || "12:00") + ":00";
+  return date === localToday() ? null : date + "T" + (MEAL_DEFAULT_TIMES[mealType] || "12:00") + ":00";
 }
 function consumedAt(date, time) {
   const t = String(time || "").match(/^(\d{1,2}):(\d{2})/);
   if (t) return date + "T" + t[1].padStart(2, "0") + ":" + t[2] + ":00";
-  return date === pragueToday() ? new Date().toISOString() : date + "T12:00:00";
+  return date === localToday() ? new Date().toISOString() : date + "T12:00:00";
 }
 // "HH:MM" in Prague from the app's consumed_at (local, or UTC with Z).
 function pragueTime(value) {
@@ -72,7 +73,7 @@ function pragueTime(value) {
   if (!/T\d{2}:\d{2}/.test(t)) return null;
   if (!/Z$|[+-]\d{2}:?\d{2}$/.test(t)) return t.slice(11, 16);
   const d = new Date(t);
-  return Number.isFinite(d.getTime()) ? dateFormat("en-GB", { timeZone: "Europe/Prague", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d) : null;
+  return Number.isFinite(d.getTime()) ? dateFormat("en-GB", { timeZone: timeZone(), hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d) : null;
 }
 // A diary row in the shape the ChatGPT tools have always returned.
 function toEntry(row) {
@@ -147,7 +148,7 @@ export async function logResolvedFood(db, input = {}) {
 
 export async function logFood(db, input = {}) {
   await ensureFoodLogTable(db);
-  const date=text(input.date) || pragueToday(), servings=Math.max(0.01,n(input.servings,1)), status=normalizeStatus(input.status);
+  const date=text(input.date) || localToday(), servings=Math.max(0.01,n(input.servings,1)), status=normalizeStatus(input.status);
   const sourceText = text(input.source).toLowerCase();
   // Own nutrition values make it a manual entry: a loose name match must not
   // turn "Tvaroh, 200 kcal" into "Zapečené palačinky s tvarohem".
@@ -190,7 +191,7 @@ export async function consumePlannedFood(db, input = {}) {
   const currentServings=Math.max(0,n(row.servings,1));
   const requested=input.servings == null ? currentServings : Math.max(0.01,n(input.servings));
   if (requested > currentServings + 1e-9) throw new Error("Consumed servings exceed planned servings");
-  const when = row.consumed_date === pragueToday() ? new Date().toISOString() : row.consumed_at;
+  const when = row.consumed_date === localToday() ? new Date().toISOString() : row.consumed_at;
   if (Math.abs(requested-currentServings) < 1e-9) {
     await db.prepare("UPDATE food_logs SET status=NULL, consumed_at=? WHERE user_id = ? AND id=?").bind(when, db.userId, id).run();
     return {status:"ok",mode:"promoted",id,consumedId:id,remainingPlannedServings:0};
@@ -227,7 +228,7 @@ export async function cancelFoodEntry(db, id) {
 }
 
 export async function getFoodDay(db,date) {
-  await ensureFoodLogTable(db); const day=text(date)||pragueToday();
+  await ensureFoodLogTable(db); const day=text(date)||localToday();
   const rows=await db.prepare("SELECT * FROM food_logs WHERE user_id = ? AND consumed_date=? ORDER BY consumed_at,id").bind(db.userId, day).all();
   const all=(rows.results||[]).map(toEntry),eaten=all.filter(r=>r.status==="eaten"),planned=all.filter(r=>r.status==="planned");
   const sum=list=>["calories","protein_g","carbs_g","fat_g","fiber_g","salt_g"].reduce((o,k)=>{o[k]=Math.round(list.reduce((s,r)=>s+n(r[k],0),0));return o;},{});
@@ -254,35 +255,35 @@ export function recommendFood({day,nutritionPlan,entries}) {
     const pick=plannedFoodOptions[0];
     suggestions.push({
       reason:"use_planned_food",
-      suggestion:`Máš naplánované jídlo „${pick.name}“ — ${pick.servings} porcí. Z hlediska dnešního zbývajícího příjmu dává smysl začít jím.`,
+      suggestion:L(`Máš naplánované jídlo „${pick.name}“ — ${pick.servings} porcí. Z hlediska dnešního zbývajícího příjmu dává smysl začít jím.`, `You have a planned meal “${pick.name}” — ${pick.servings} servings. Given today's remaining intake, it makes sense to start with it.`),
       food:pick
     });
   }
   if(completedRide && remaining.protein_g>=25) {
     suggestions.push({
       reason:"post_ride_recovery",
-      suggestion:"Po dokončeném kole máš stále prostor hlavně na bílkoviny; dej přednost normálnímu jídlu s kvalitním zdrojem bílkovin a podle délky/intenzity kola i sacharidům."
+      suggestion:L("Po dokončeném kole máš stále prostor hlavně na bílkoviny; dej přednost normálnímu jídlu s kvalitním zdrojem bílkovin a podle délky/intenzity kola i sacharidům.", "After the ride you still have room mainly for protein; prefer a normal meal with a good protein source, plus carbs depending on the ride's length and intensity.")
     });
   } else if(longRide && remaining.carbs_g>=60) {
     suggestions.push({
       reason:"ride_carbs",
-      suggestion:"Na delší plánované kolo je vhodné mít dostatek sacharidů; přednostně je pokryj jídlem, které už máš naplánované, případně rýží, pečivem, bramborami nebo ovocem."
+      suggestion:L("Na delší plánované kolo je vhodné mít dostatek sacharidů; přednostně je pokryj jídlem, které už máš naplánované, případně rýží, pečivem, bramborami nebo ovocem.", "For a longer planned ride, have enough carbs; cover them first with food you've already planned, or with rice, bread, potatoes or fruit.")
     });
   }
   if(remaining.protein_g>=30 && !plannedFoodOptions.length)
-    suggestions.push({reason:"protein_remaining",suggestion:"Chybí ti významná část bílkovin; vhodný je skyr/tvaroh, libové maso, vejce nebo proteinový nápoj podle dostupnosti."});
+    suggestions.push({reason:"protein_remaining",suggestion:L("Chybí ti významná část bílkovin; vhodný je skyr/tvaroh, libové maso, vejce nebo proteinový nápoj podle dostupnosti.", "You're missing a big part of your protein; skyr/quark, lean meat, eggs or a protein shake work well.")});
   if(remaining.calories<=150)
-    suggestions.push({reason:"target_nearby",suggestion:"Jsi blízko dnešního kalorického cíle; další jídlo drž spíše malé a podle zbývajících makroživin."});
+    suggestions.push({reason:"target_nearby",suggestion:L("Jsi blízko dnešního kalorického cíle; další jídlo drž spíše malé a podle zbývajících makroživin.", "You're close to today's calorie goal; keep your next meal small and in line with your remaining macros.")});
   if(!suggestions.length)
-    suggestions.push({reason:"balanced_remaining",suggestion:"Zbývá prostor pro jídlo podle zbývajících kalorií a makroživin."});
+    suggestions.push({reason:"balanced_remaining",suggestion:L("Zbývá prostor pro jídlo podle zbývajících kalorií a makroživin.", "There's room for a meal within your remaining calories and macros.")});
   const mealSchedule=[];
   const plannedByTime=[...planned].sort((a,b)=>String(a.meal_time||"").localeCompare(String(b.meal_time||"")));
   if(longRide && remaining.carbs_g>=60)
-    mealSchedule.push({phase:"pre_ride",timing:"1–3 h před kolem",goal:"sacharidy + lehce stravitelné jídlo",suggestion:"Pokryj část sacharidů z připraveného jídla; před delší jízdou nechoď s velkým kalorickým deficitem."});
+    mealSchedule.push({phase:"pre_ride",timing:L("1–3 h před kolem", "1–3 h before the ride"),goal:L("sacharidy + lehce stravitelné jídlo", "carbs + easily digestible food"),suggestion:L("Pokryj část sacharidů z připraveného jídla; před delší jízdou nechoď s velkým kalorickým deficitem.", "Cover part of the carbs with your prepared food; don't start a longer ride in a big calorie deficit.")});
   if(completedRide && remaining.protein_g>=25)
-    mealSchedule.push({phase:"post_ride",timing:"do 2 h po kole",goal:"regenerace",suggestion:"Normální jídlo s kvalitním proteinem a sacharidy podle délky/intenzity jízdy."});
+    mealSchedule.push({phase:"post_ride",timing:L("do 2 h po kole", "within 2 h after the ride"),goal:L("regenerace", "recovery"),suggestion:L("Normální jídlo s kvalitním proteinem a sacharidy podle délky/intenzity jízdy.", "A normal meal with good protein and carbs depending on the ride's length and intensity.")});
   for(const item of plannedByTime.slice(0,4))
-    mealSchedule.push({phase:item.meal_type||"planned",timing:item.meal_time||"podle hladu a tréninku",goal:"využít připravené jídlo",food:item.recipe_name||item.name||"plánované jídlo",servings:item.servings});
+    mealSchedule.push({phase:item.meal_type||"planned",timing:item.meal_time||L("podle hladu a tréninku", "by hunger and training"),goal:L("využít připravené jídlo", "use the prepared food"),food:item.recipe_name||item.name||L("plánované jídlo", "planned food"),servings:item.servings});
   return {status:"ok",day,remaining,plannedFoodOptions,suggestions,mealSchedule};
 }
 

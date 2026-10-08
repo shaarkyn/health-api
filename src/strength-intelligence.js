@@ -1,3 +1,4 @@
+import { L } from './lang.js';
 import { normalizeExerciseName } from "./strength-normalization.js";
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
@@ -12,6 +13,10 @@ export const LOAD_UNITS = {
 };
 
 export const EXERCISE_INTELLIGENCE = {
+  'Push-up': {muscle:'chest',pattern:'horizontal_push',equipment:'bodyweight',unilateral:false,loadUnit:LOAD_UNITS.BODYWEIGHT,fatigue:.6,variants:[]},
+  'Bodyweight squat': {muscle:'quads',pattern:'squat',equipment:'bodyweight',unilateral:false,loadUnit:LOAD_UNITS.BODYWEIGHT,fatigue:.6,variants:[]},
+  'Glute bridge': {muscle:'glutes',pattern:'hinge',equipment:'bodyweight',unilateral:false,loadUnit:LOAD_UNITS.BODYWEIGHT,fatigue:.5,variants:[]},
+  'Dead bug': {muscle:'core',pattern:'trunk',equipment:'bodyweight',unilateral:false,loadUnit:LOAD_UNITS.BODYWEIGHT,fatigue:.3,variants:[]},
   "DB bench press": { muscle: "chest", pattern: "horizontal_push", equipment: "dumbbell", unilateral: false, loadUnit: LOAD_UNITS.PER_HAND_KG, fatigue: 1.0, variants: ["Chest flat press Prime", "Barbell bench press", "DB incline press"] },
   "Barbell bench press": { muscle: "chest", pattern: "horizontal_push", equipment: "barbell", unilateral: false, loadUnit: LOAD_UNITS.BARBELL_KG, fatigue: 1.05, variants: ["DB bench press", "DB incline press"] },
   "DB incline press": { muscle: "chest", pattern: "incline_push", equipment: "dumbbell", unilateral: false, loadUnit: LOAD_UNITS.PER_HAND_KG, fatigue: 1.0, variants: ["DB bench press", "Barbell bench press"] },
@@ -312,7 +317,7 @@ export function estimateStartingLoad({ exercise, history = [], targetReps = "8�
 
 export function analyzeCompletedWorkout(parsed, history = []) {
   const work = (parsed?.completedRows || []).filter(r => r.type === "WORK").map(r => ({ ...r, exercise: normalizeExerciseName(r.exercise) }));
-  if (!work.length) return { status: "ok", completedSets: 0, summary: "Zatím nejsou dokončené pracovní série k analýze.", exercises: [], recommendations: [] };
+  if (!work.length) return { status: "ok", completedSets: 0, summary: L("Zatím nejsou dokončené pracovní série k analýze.", "There are no completed work sets to analyse yet."), exercises: [], recommendations: [] };
   const byExercise = new Map();
   for (const row of work) { const arr = byExercise.get(row.exercise) || []; arr.push(row); byExercise.set(row.exercise, arr); }
   const exercises = [], recommendations = [];
@@ -328,9 +333,9 @@ export function analyzeCompletedWorkout(parsed, history = []) {
     if (avgRpe != null && avgRpe <= 7.5 && topReps != null) action = "increase_small";
     else if (avgRpe != null && avgRpe >= 9) action = "hold_or_reduce";
     exercises.push({ exercise, sets: rows.length, plannedKg: planned, actualKg, avgRpe: avgRpe == null ? null : Math.round(avgRpe * 10) / 10, topReps, action, loadUnit: EXERCISE_INTELLIGENCE[exercise]?.loadUnit || null });
-    recommendations.push({ exercise, action, reason: action === "increase_small" ? "RPE byl kontrolovaný; příště lze zkusit malý nárůst, pokud se drží technika." : action === "hold_or_reduce" ? "RPE byl vysoký; příště držet nebo mírně snížit podle regenerace." : "Zátěž zatím ponechat a potvrdit další sérií výkonu." });
+    recommendations.push({ exercise, action, reason: action === "increase_small" ? L("RPE byl kontrolovaný; příště lze zkusit malý nárůst, pokud se drží technika.", "RPE was under control; next time you can try a small increase if your technique holds.") : action === "hold_or_reduce" ? L("RPE byl vysoký; příště držet nebo mírně snížit podle regenerace.", "RPE was high; next time hold or slightly reduce depending on recovery.") : L("Zátěž zatím ponechat a potvrdit další sérií výkonu.", "Keep the load for now and confirm it with another set.") });
   }
-  return { status: "ok", completedSets: work.length, workoutDate: parsed.date, summary: `Analyzováno ${work.length} dokončených pracovních sérií ve ${byExercise.size} cvicích.`, exercises, recommendations };
+  return { status: "ok", completedSets: work.length, workoutDate: parsed.date, summary: L(`Analyzováno ${work.length} dokončených pracovních sérií ve ${byExercise.size} cvicích.`, `Analysed ${work.length} completed work sets in ${byExercise.size} exercises.`), exercises, recommendations };
 }
 
 export function findExerciseAlternatives(exercise, history = [], requestedMuscle = null) {

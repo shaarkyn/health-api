@@ -49,7 +49,8 @@ test("an incomplete profile lists what is missing; the owner keeps the calibrati
 });
 
 test("without a connected source, weekly sport is part of the estimate", () => {
-  assert.deepEqual(energyBaseline(woman, 60, { activityTracked: false }).missing, ["sportHours"]);
+  assert.deepEqual(energyBaseline(woman, 60, { activityTracked: false }).missing, []);
+  assert.equal(energyBaseline(woman, 60, { activityTracked: false }).sportDaily, 0);
   const b = energyBaseline({ ...woman, sportHours: "3-6" }, 60, { activityTracked: false });
   assert.equal(b.sportDaily, Math.round(4.5 * 60 * 6 / 7));
   // With a connected source, tracked activities count instead.
@@ -59,7 +60,7 @@ test("without a connected source, weekly sport is part of the estimate", () => {
 test("the profile endpoint keeps only known values", () => {
   assert.deepEqual(normalizeProfile({ sex: "x", age: 12, height: 180, activity: "couch", sportHours: "3-6", goal: "lose_0.5", targetWeight: "72.5", extra: 1 }),
     { sex: "", birthDate: "", age: null, height: 180, hrmax: null, rhr: null, activity: "", sportHours: "3-6", goal: "lose_0.5", targetWeight: 72.5,
-      mainSport: "", sportGoal: "", eventName: "", eventDate: "", weeklyHours: null });
+      mainSport: "general", sportGoal: "", eventName: "", eventDate: "", weeklyHours: null });
 });
 
 async function dailyFor({ profile, weight, isOwner = false, providers = ["google", "intervals"] }) {
@@ -69,6 +70,7 @@ async function dailyFor({ profile, weight, isOwner = false, providers = ["google
     CREATE TABLE dashboard_profile (user_id INTEGER NOT NULL, id INTEGER NOT NULL, profile_json TEXT NOT NULL, PRIMARY KEY (user_id, id));`);
   if (weight) db.sqlite.prepare("INSERT INTO health_datapoints (user_id, source_family, data_type, external_id, sample_time, value_numeric, payload_json) VALUES (7, 'manual', 'weight', 'w1', '2026-09-01T07:00:00Z', ?, '{}')").run(weight);
   if (profile) db.sqlite.prepare("INSERT INTO dashboard_profile VALUES (7, 1, ?)").run(JSON.stringify(profile));
+  if(providers.length)db.sqlite.prepare("INSERT INTO health_datapoints(user_id,source_family,data_type,start_time,payload_json) VALUES(7,'intervals','activity',?,'{}')").run(new Date().toISOString());
   const env = { DB: db, USER_ID: 7, USER_IS_OWNER: isOwner, CONNECTED_PROVIDERS: providers };
   const response = await legacy.fetch(new Request("https://internal/analysis/daily?date=2099-01-05"), env, { waitUntil() {} });
   return response.json();
@@ -130,6 +132,6 @@ test("the dashboard works without connections", () => {
   const client = readFileSync(new URL("../src/dashboard-client.js", import.meta.url), "utf8");
   assert.doesNotMatch(entry, /status:"onboarding"/);
   assert.match(entry, /source:"none",connected:false/);
-  assert.match(client, /id="onboardingSkip"/);
-  assert.match(client, /const open=!me\.missingProviders\?\.length\|\|onboardingSkipped\(\);/);
+  assert.match(client, /Přeskočit a otevřít aplikaci/);
+  assert.match(client, /me\.onboarding\?\.completed===true/);
 });

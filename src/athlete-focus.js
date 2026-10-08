@@ -1,6 +1,7 @@
+import { L } from './lang.js';
 // "Hlavní sport a cíl" from the settings: what the athlete trains for. The
-// coach prompts take their role and direction from it; without it they keep
-// their general endurance + strength role.
+// coach prompts take their role and direction from it; without it they use
+// general fitness. Sport history never selects a specialization for the user.
 const SPORTS = {
   cycling: { label: "cyklistika", role: "cyklistiky a silové přípravy" },
   running: { label: "běh", role: "běhu a silové přípravy" },
@@ -8,6 +9,7 @@ const SPORTS = {
   strength: { label: "silový trénink", role: "silového tréninku a kondice" },
   general: { label: "všeobecná kondice", role: "kondice (vytrvalost i síla)" }
 };
+const SPORT_LABEL_EN = { cycling: "cycling", running: "running", triathlon: "triathlon", strength: "strength training", general: "general fitness" };
 export const MAIN_SPORTS = Object.fromEntries(Object.entries(SPORTS).map(([k, v]) => [k, v.label]));
 
 const text = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -16,7 +18,7 @@ const text = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, ma
 export function normalizeFocus(p = {}) {
   const hours = Number(p.weeklyHours);
   return {
-    mainSport: Object.hasOwn(SPORTS, p.mainSport) ? p.mainSport : "",
+    mainSport: Object.hasOwn(SPORTS, p.mainSport) ? p.mainSport : "general",
     sportGoal: text(p.sportGoal, 300),
     eventName: text(p.eventName, 120),
     eventDate: /^\d{4}-\d{2}-\d{2}$/.test(String(p.eventDate || "")) && Number.isFinite(Date.parse(p.eventDate + "T12:00:00Z")) ? p.eventDate : "",
@@ -24,13 +26,12 @@ export function normalizeFocus(p = {}) {
   };
 }
 
-// The focus for a given day, or null when nothing is set. A past event is left out.
+// The focus for a given day; general fitness when nothing is set.
 export function athleteFocus(profile, today) {
   const f = normalizeFocus(profile || {});
-  if (!f.mainSport && !f.sportGoal && !f.eventName && !f.eventDate && !f.weeklyHours) return null;
   const daysLeft = f.eventDate && today ? Math.round((Date.parse(f.eventDate + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) / 86400000) : null;
   return {
-    sport: f.mainSport || null, sportLabel: SPORTS[f.mainSport]?.label || null,
+    sport: f.mainSport || null, sportLabel: SPORTS[f.mainSport] ? L(SPORTS[f.mainSport].label, SPORT_LABEL_EN[f.mainSport]) : null,
     goal: f.sportGoal || null,
     event: (f.eventName || f.eventDate) && (daysLeft == null || daysLeft >= 0) ? { name: f.eventName || null, date: f.eventDate || null, daysLeft } : null,
     weeklyHours: f.weeklyHours

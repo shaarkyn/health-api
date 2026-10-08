@@ -100,13 +100,13 @@ test("automatic activity matching does not claim interval completion", () => {
   assert.equal(result.attempts, 4);
 });
 
-test("indoor keeps exact targets; outdoor uses ranges, free sprints and a longer warm-up", () => {
+test("indoor keeps prescribed targets; genuine sprints are free indoors and outdoors", () => {
   const sprint = byId("pfd-sprint-10-8-75");
   const indoor = renderForEnvironment(sprint, "indoor"), outdoor = renderForEnvironment(sprint, "outdoor");
   assert.equal(indoor.intervals_type, "VirtualRide");
   assert.equal(outdoor.intervals_type, "Ride");
-  assert.match(indoor.intervals_description, /- 10s 200%/);
-  assert.match(outdoor.intervals_description, /- 10s 200% max/);
+  assert.match(indoor.intervals_description, /- 10s freeride 110-125rpm/);
+  assert.match(outdoor.intervals_description, /- 10s freeride 110-125rpm/);
   const threshold = renderForEnvironment(byId("pfd-thr-3x12-90"), "outdoor");
   assert.match(threshold.intervals_description, /12m 95-101%/);
   assert.equal(JSON.parse(threshold.structure_json)[0].durationMinutes, 15);
@@ -136,7 +136,7 @@ test("Intervals event is deterministic per environment", () => {
 });
 
 // Real SQL through the user-scoped facade.
-function users() { const raw = createD1(); return { raw, alice: scopedDb(raw, 1), bob: scopedDb(raw, 2) }; }
+function users() { const raw = createD1(); raw.sqlite.exec("CREATE TABLE health_datapoints (id INTEGER PRIMARY KEY,user_id INTEGER,source_family TEXT,data_type TEXT,external_id TEXT,sample_time TEXT,start_time TEXT,end_time TEXT,payload_json TEXT,updated_at TEXT,UNIQUE(user_id,source_family,data_type,external_id))"); return { raw, alice: scopedDb(raw, 1), bob: scopedDb(raw, 2) }; }
 async function withIntervals(fn) {
   const original = globalThis.fetch; let calls = 0;
   globalThis.fetch = async () => { calls++; return new Response(JSON.stringify([{ id: 100 + calls, category: "WORKOUT" }]), { status: 200, headers: { "Content-Type": "application/json" } }); };
@@ -154,7 +154,7 @@ test("scheduling is idempotent per user and separate between users", async () =>
   });
   assert.equal((await getScheduledWorkouts(alice)).length, 2);
   assert.equal((await getScheduledWorkouts(bob)).length, 1);
-  await assert.rejects(scheduleWorkoutInIntervals({}, alice, args), /není připojeno/);
+  assert.equal((await scheduleWorkoutInIntervals({}, alice, {...args,date:'2026-10-04'})).sync.status,'not_connected');
 });
 
 test("feedback changes only the reviewer's capability", async () => {
@@ -162,7 +162,7 @@ test("feedback changes only the reviewer's capability", async () => {
   const result = await recordWorkoutFeedback(alice, { workoutId: "pfd-thr-3x12-90", scheduledDate: "2026-10-01", completedPercent: 100, rpe: 6 });
   assert.ok(result.after > result.before);
   assert.equal((await getCapabilities(alice)).threshold.level, result.after);
-  assert.equal((await getCapabilities(bob)).threshold.level, 3);
+  assert.equal((await getCapabilities(bob)).threshold.level, 1);
   await assert.rejects(recordWorkoutFeedback(alice, { workoutId: "pfd-thr-3x12-90", scheduledDate: "2026-10-01", rpe: 6 }), /už má uložené/);
 });
 

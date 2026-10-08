@@ -29,9 +29,9 @@ function googleClientEnv(env) {
 }
 
 function configured(env) {
-  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.STRENGTH_API_KEY && env.OWNER_EMAIL && env.DB);
+  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.SESSION_SECRET && env.OWNER_EMAIL && env.DB);
 }
-const NOT_CONFIGURED = ["Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET nebo OWNER_EMAIL.", 503];
+const NOT_CONFIGURED = ["Přihlášení přes Google není nastavené", "Chybí GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET nebo OWNER_EMAIL.", 503];
 
 async function startLogin(env) {
   if (!configured(env)) return page(...NOT_CONFIGURED);
@@ -84,7 +84,7 @@ async function finishLogin(request, env, fetchImpl = fetch) {
   headers.append("Set-Cookie", STATE_COOKIE + "=; Max-Age=0; Path=/auth/google; Secure; HttpOnly; SameSite=Lax");
   return new Response(null, { status: 302, headers });
 }
-export { finishLogin as _finishLoginForTest };
+export { finishLogin as _finishLoginForTest, page as loginPage };
 
 export async function verifyGoogleIdToken(token, clientId, nonce, fetchImpl = fetch) {
   const parts = String(token).split(".");

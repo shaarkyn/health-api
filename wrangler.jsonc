@@ -10,6 +10,15 @@
     }
   ],
   "compatibility_date": "2026-09-15",
+  // AsyncLocalStorage (node:async_hooks) holds the user's language during a
+  // request, see src/lang.js.
+  "compatibility_flags": ["nodejs_als"],
+  // Smart Placement runs the Worker near the D1 database instead of near the
+  // visitor when that is faster: one page load makes many database reads.
+  // Its status is under Workers → health-api → Settings → Placement.
+  "placement": {
+    "mode": "smart"
+  },
   // Local development of an environment with a route (wrangler dev --env staging)
   // shows the Worker the route's address; https, as in production, so the
   // HTTPS redirect in web-security.js does not send the page back to itself.
@@ -45,6 +54,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Cloudflare Email Service: sign-in codes and notices about new passkeys. Nothing is sent
+  // until petrfitnessdata.eu is onboarded in Email Service → Email Sending and the Worker
+  // has the EMAIL_FROM secret (the sender address); until then e-mail sign-in stays hidden.
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
   "workers_dev": true,
   // The owner is the first admin; existing single-user data belongs to this account.
   "vars": {
@@ -66,6 +81,9 @@
         }
       ],
       "workers_dev": false,
+      "placement": {
+        "mode": "smart"
+      },
       "triggers": {
         "crons": []
       },
@@ -76,6 +94,10 @@
           "database_id": "6fbc690b-c776-42c9-b052-8f4ee44669fd",
           "migrations_dir": "migrations"
         }
+      ],
+      // Bindings are not inherited: the test copy sends its own sign-in codes.
+      "send_email": [
+        { "name": "EMAIL" }
       ],
       "vars": {
         "OWNER_EMAIL": "chelseafc.czsk@gmail.com",

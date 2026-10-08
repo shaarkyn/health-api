@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { assistantTask, isSimpleMessage, askCoach, coachContext, compactActivity, coachAnswerText, TRUNCATED_NOTE, strengthProgress, nutritionContext, engineSport, focusGoal, sleepNights, pragueNow } from '../src/coach-assistant.js';
+import { assistantTask, isSimpleMessage, askCoach, coachContext, compactActivity, coachAnswerText, TRUNCATED_NOTE, strengthProgress, nutritionContext, engineSport, focusGoal, sleepNights, localNow } from '../src/coach-assistant.js';
 import { isFoodLogMessage } from '../src/food-chat.js';
 import { validateCoachActions, actionSafetyContext, actionsNote, COACH_ACTION_FORMAT } from '../src/coach-actions.js';
 import { explicitPreference } from '../src/athlete-state.js';
@@ -82,7 +82,7 @@ test('dates, sleep, nutrition and strength progression are in the context',()=>{
   const context=coachContext({date:today,now:'2026-10-05 07:30',week:{days:[{date:'2026-10-08'}]},gym:{history},health:{sleep:[{date:today,durationMin:410}]},availabilityByDate:{'2026-10-08':{minutes:60}}});
   assert.equal(context.weekday,'pondělí');assert.equal(context.now,'2026-10-05 07:30');assert.deepEqual(context.week[0],{date:'2026-10-08',weekday:'čtvrtek',availabilityMinutes:60,planned:undefined,completed:undefined});
   assert.equal(context.sleep[0].minutes,410);assert.equal(context.strengthProgress[0].exercise,'Bench press');assert.deepEqual(Object.keys(context.gym[0]).sort(),['date','exercise','kg','reps','rpe','set']);
-  assert.match(pragueNow(new Date('2026-10-05T05:30:00Z')),/^2026-10-05 07:30$/);
+  assert.match(localNow(new Date('2026-10-05T05:30:00Z')),/^2026-10-05 07:30$/);
 });
 
 test('the main sport and the event steer the engine',()=>{
@@ -92,7 +92,7 @@ test('the main sport and the event steer the engine',()=>{
   assert.equal(context.cyclingCoachV2.sport,'run');assert.ok(!context.cyclingCoachV2.missingData.includes('explicit goal/event and phase'));
 });
 
-test('chat proposals respect the day budget and sessions already planned',()=>{
+test('automatic proposals respect availability while user initiated chat actions may exceed it and add sessions',()=>{
   const days=[{date:'2026-10-04',planned:[{id:'planned:old',name:'Old'}]},{date:'2026-10-06',planned:[{id:'planned:7',name:'Long ride',durationHours:1}]},{date:'2026-10-07',planned:[{id:'planned:n',name:'Nutrition note'}]},{date:'2026-10-08',planned:[]},{date:'2026-10-12',planned:[]}];
   const plans={'2026-10-05':{availability:[{minutes:60},{minutes:90},{minutes:45},{minutes:60},{minutes:0},{minutes:180},{minutes:240}]},'2026-10-12':{availability:[{minutes:30}]}};
   const safety=actionSafetyContext(days,today,d=>plans[d<'2026-10-12'?'2026-10-05':'2026-10-12']);
@@ -105,6 +105,13 @@ test('chat proposals respect the day budget and sessions already planned',()=>{
   assert.equal(validateCoachActions([workout('2026-10-08',60)],context,today)[0].minutes,60);
   assert.deepEqual(validateCoachActions([{type:'move',eventId:'planned:7',date:'2026-10-07',reason:'Více času'}],context,today),[]);
   assert.equal(validateCoachActions([{type:'move',eventId:'planned:7',date:'2026-10-08',reason:'Více času'}],context,today)[0].date,'2026-10-08');
+  const user={userInitiated:true};
+  for(const a of [workout('2026-10-08',90),workout('2026-10-06',180),workout('2026-10-12',60)])assert.equal(validateCoachActions([a],context,today,user)[0].minutes,a.minutes);
+  const noTime={...context,availabilityByDate:{'2026-10-07':{minutes:0}}};
+  assert.equal(validateCoachActions([workout('2026-10-07',60)],noTime,today,user)[0].minutes,60);
+  assert.equal(validateCoachActions([{type:'move',eventId:'planned:7',date:'2026-10-07',reason:'Přesun na žádost'}],noTime,today,user)[0].date,'2026-10-07');
+  assert.deepEqual(validateCoachActions([workout('2026-02-30',90)],context,today,user),[]);
+  assert.deepEqual(validateCoachActions([workout('2026-10-08',90)],{...context,athleteState:'sick'},today,user),[]);
 });
 
 test('a workout proposal carries only a library workout the coach was offered',()=>{
@@ -165,13 +172,13 @@ test('earlier turns go to the model as messages with the data first and the ques
     assert.match(body.input[0].content,/^Kontext aplikace/);assert.doesNotMatch(body.input[0].content,/conversation/);assert.equal(body.input.at(-1).content,'Požadavek: A co zítra?');
   }finally{globalThis.fetch=original;}
   const move={type:'move',eventId:'planned:7',date:'2026-10-08',reason:'x',eventSnapshot:{name:'Long ride',date:'2026-10-06'}};
-  assert.equal(actionsNote([move,{type:'status',status:'sick',statusUntil:'2026-10-09'}]),'[Návrhy: Přesunout Long ride na čt 8. 10.; Stav Sick (znovu Active od pá 9. 10.)]');assert.equal(actionsNote([]),'');
+  assert.equal(actionsNote([move,{type:'status',status:'sick',statusUntil:'2026-10-09'}]),'[Návrhy: Přesunout Long ride na čt 8. 10.; Stav Nemoc (znovu Trénink od pá 9. 10.)]');assert.equal(actionsNote([]),'');
 });
 
 test('the panel shows only open proposals from today and this chat; streaming repaints are throttled',()=>{
   const client=readFileSync(new URL('../src/dashboard-client.js',import.meta.url),'utf8');
   assert.match(client,/renderCoachActionCards\(\(state\.inbox\|\|\[\]\)\.filter\(openCoachDraft\)/);
-  assert.match(client,/day===pragueToday\(\)&&\(!a\?\.date\|\|a\.date>=pragueToday\(\)\)&&\(x\.draft\.chatId==null\|\|x\.draft\.chatId===assistantChat\.id\)/);
+  assert.match(client,/day===localToday\(\)&&\(!a\?\.date\|\|a\.date>=localToday\(\)\)&&\(x\.draft\.chatId==null\|\|x\.draft\.chatId===assistantChat\.id\)/);
   assert.match(client,/pendingAnswer=answer;if\(Date\.now\(\)-paintedAt>=100\)paint\(\);/);
   const entry=readFileSync(new URL('../src/entrypoint.js',import.meta.url),'utf8');
   assert.match(entry,/UPDATE coach_inbox SET status='expired' WHERE user_id=\? AND status='draft' AND created_at<\?/);

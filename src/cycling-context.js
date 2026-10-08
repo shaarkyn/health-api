@@ -1,11 +1,9 @@
-import { dateFormat } from "./date-format.js";
-const TZ = "Europe/Prague";
+import { L } from './lang.js';
+import { localToday, timeZone } from "./user-time.js";
 const DEFAULT_LAT = 50.0;
 const DEFAULT_LON = 15.3;
 
-function localDate() {
-  return dateFormat("en-CA", { timeZone: TZ }).format(new Date());
-}
+const localDate = () => localToday();
 
 function seasonFor(date) {
   const m = Number(String(date).slice(5, 7));
@@ -61,10 +59,10 @@ function adaptRide({ date, rideType, durationMinutes, startTime, weather, season
 
   if (badWeather || strongWind || cold && season === "winter") {
     mode = "indoor";
-    reasons.push(badWeather ? "nepříznivé srážky" : strongWind ? "silný vítr" : "nízká teplota");
+    reasons.push(badWeather ? L("nepříznivé srážky", "unfavourable rain") : strongWind ? L("silný vítr", "strong wind") : L("nízká teplota", "low temperature"));
   } else if (darkSoon && evening) {
     mode = "indoor_or_short_outdoor";
-    reasons.push("málo denního světla");
+    reasons.push(L("málo denního světla", "little daylight"));
   }
 
   let recommendedDuration = Number(durationMinutes || 90);
@@ -74,7 +72,7 @@ function adaptRide({ date, rideType, durationMinutes, startTime, weather, season
     if (String(rideType).toLowerCase().includes("endurance")) {
       intensity = "structured_endurance_or_sweet_spot";
       recommendedDuration = Math.min(recommendedDuration, 90);
-      reasons.push("omezený čas ve všední den → vyšší tréninková hustota");
+      reasons.push(L("omezený čas ve všední den → vyšší tréninková hustota", "limited time on weekdays → denser training"));
     }
   }
 
@@ -101,7 +99,7 @@ async function fetchWeather(date, lat, lon) {
   url.searchParams.set("longitude", String(lon));
   url.searchParams.set("start_date", date);
   url.searchParams.set("end_date", date);
-  url.searchParams.set("timezone", TZ);
+  url.searchParams.set("timezone", timeZone());
   url.searchParams.set("daily", [
     "weather_code",
     "temperature_2m_max",
@@ -155,7 +153,7 @@ export async function getCyclingContext(env, options = {}) {
   return {
     status: "ok",
     date,
-    timezone: TZ,
+    timezone: timeZone(),
     season,
     weekday: weekdayFor(date),
     location: { latitude: lat, longitude: lon },

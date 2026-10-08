@@ -1,6 +1,7 @@
 // Personal energy baseline: resting expenditure from sex, age, height and
 // weight (Mifflin-St Jeor) times everyday activity, the weekly goal, and a
 // sport estimate for users whose training is not tracked by a connected source.
+import { bilingual } from "./lang.js";
 import { normalizeFocus } from "./athlete-focus.js";
 
 // Everyday movement outside sport. Sport itself comes from tracked activities
@@ -12,7 +13,7 @@ export const ACTIVITY_LEVELS = {
   heavy: { factor: 1.6, label: "Fyzicky náročná práce" }
 };
 
-// Hours of sport per week, used only when no activity source is connected.
+// Hours of sport per week, used when no recent activity data is available.
 export const SPORT_HOURS = { "0": 0, "1-3": 2, "3-6": 4.5, "6-10": 8, "10+": 12 };
 
 // Weekly weight change; 7700 kcal per kg.
@@ -55,7 +56,7 @@ export function normalizeProfile(p = {}) {
     hrmax: inRange(p.hrmax, 100, 230),
     rhr: inRange(p.rhr, 25, 120),
     activity: Object.hasOwn(ACTIVITY_LEVELS, p.activity) ? p.activity : "",
-    sportHours: Object.hasOwn(SPORT_HOURS, p.sportHours) ? p.sportHours : "",
+    sportHours: p.sportHours==='auto'||Object.hasOwn(SPORT_HOURS, p.sportHours) ? p.sportHours : "",
     goal: Object.hasOwn(GOALS, p.goal) ? p.goal : "",
     targetWeight: inRange(p.targetWeight, 35, 250),
     ...normalizeFocus(p)
@@ -74,7 +75,6 @@ export function energyBaseline(profile, weightKg, { isOwner = false, activityTra
   const missing = [];
   if (!(weight > 0)) missing.push("weight");
   for (const key of ["sex", "age", "height", "activity", "goal"]) if (!p[key]) missing.push(key);
-  if (!activityTracked && !p.sportHours) missing.push("sportHours");
   const goal = GOALS[p.goal] || GOALS["lose_0.5"];
   if (missing.length) {
     // The owner keeps the calibrated baseline until the profile is complete;
@@ -83,7 +83,8 @@ export function energyBaseline(profile, weightKg, { isOwner = false, activityTra
     return { ready: false, source: null, missing, weightKg: weight > 0 ? weight : null };
   }
   const bmr = restingMetabolicRate(p, weight);
-  const sportDaily = activityTracked ? 0 : SPORT_HOURS[p.sportHours] * weight * SPORT_KCAL_PER_KG_HOUR / 7;
+  const sportHours = Object.hasOwn(SPORT_HOURS, p.sportHours) ? SPORT_HOURS[p.sportHours] : p.weeklyHours ?? 0;
+  const sportDaily = activityTracked ? 0 : sportHours * weight * SPORT_KCAL_PER_KG_HOUR / 7;
   return {
     ready: true,
     source: "profile",
@@ -100,7 +101,52 @@ export function energyBaseline(profile, weightKg, { isOwner = false, activityTra
   };
 }
 
-export const MISSING_LABELS = { weight: "váha", sex: "pohlaví", age: "datum narození", height: "výška", activity: "denní aktivita", goal: "cíl", sportHours: "sport za týden" };
+// Protein follows lean mass more than total weight: above BMI 30 the weight
+// at BMI 27 is the reference, so a heavy beginner is not told to eat 250 g.
+export function proteinReferenceKg(weightKg, heightCm) {
+  const kg = Number(weightKg), m = Number(heightCm) / 100;
+  if (!(kg > 0)) return null;
+  if (!(m >= 1 && m <= 2.3) || kg / (m * m) <= 30) return kg;
+  return Math.round(27 * m * m * 10) / 10;
+}
+
+// A correction from the weight trend by energy balance: intake = expenditure
+// + change in body stores (Racette 2012). The gap between the measured weekly
+// rate (a least-squares slope of the weigh-ins, see d1WeightTrend) and the
+// goal, at 7700 kcal per kg, is how much the day's intake is off. Half of it is
+// applied, at most ±250 kcal, rounded to 25: early weight change is partly
+// water and glycogen, worth less energy than tissue (Hall 2011), and a
+// smaller step keeps the target from chasing noise. Needs 4 weigh-ins over 3
+// weeks. No change while the rate is within the goal's range: losing between
+// half and 1.5× the goal, maintaining within ±0.25 kg a week.
+// The loop also corrects a systematic error of the wearable's energy figures.
+export function trendAdjustment(goalKey, trend) {
+  const rate = Number(trend?.weeklyRateKg), samples = Number(trend?.samples || 0), span = trend?.spanDays;
+  if (trend?.weeklyRateKg == null || !Number.isFinite(rate) || samples < 4 || (span != null && Number(span) < 21)) return { adjustment: 0, reason: "insufficient_weight_history" };
+  const goal = (GOALS[goalKey] || GOALS["lose_0.5"]).kgPerWeek;
+  const step = gap => { const kcal = Math.max(-250, Math.min(250, -gap * 7700 / 7 * 0.5)); return Math.round(kcal / 25) * 25 || 0; };
+  if (goal < 0) {
+    if (rate > goal / 2) return { adjustment: step(rate - goal), reason: "loss_below_target" };
+    if (rate < goal * 1.5) return { adjustment: step(rate - goal), reason: "loss_above_target" };
+    return { adjustment: 0, reason: "within_target_range" };
+  }
+  if (rate > 0.25) return { adjustment: step(rate), reason: "gaining_while_maintaining" };
+  if (rate < -0.25) return { adjustment: step(rate), reason: "losing_while_maintaining" };
+  return { adjustment: 0, reason: "within_target_range" };
+}
+export const TREND_REASONS = bilingual({
+  loss_below_target: "váha klesá pomaleji, než je cíl",
+  loss_above_target: "váha klesá rychleji, než je cíl",
+  gaining_while_maintaining: "váha při udržování roste",
+  losing_while_maintaining: "váha při udržování klesá"
+}, {
+  loss_below_target: "weight is falling slower than the goal",
+  loss_above_target: "weight is falling faster than the goal",
+  gaining_while_maintaining: "weight is rising while maintaining",
+  losing_while_maintaining: "weight is falling while maintaining"
+});
+
+export const MISSING_LABELS = bilingual({ weight: "váha", sex: "pohlaví", age: "datum narození", height: "výška", activity: "denní aktivita", goal: "cíl", sportHours: "sport za týden" }, { weight: "weight", sex: "sex", age: "date of birth", height: "height", activity: "daily activity", goal: "goal", sportHours: "sport per week" });
 
 // The user's own values, with what the app worked out itself (height,
 // activity, resting and maximum heart rate, birth date) filling only the
@@ -109,6 +155,7 @@ export const SUGGESTED_FIELDS = ["height", "activity", "rhr", "hrmax", "birthDat
 export function effectiveProfile(saved, suggested) {
   const profile = { ...(saved || {}) };
   for (const key of SUGGESTED_FIELDS) if ((profile[key] == null || profile[key] === "") && suggested?.[key]) profile[key] = suggested[key];
+  profile.mainSport = normalizeFocus(profile).mainSport;
   if (ageFrom(profile.birthDate) != null) profile.age = ageFrom(profile.birthDate);
   return profile;
 }

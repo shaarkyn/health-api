@@ -26,7 +26,7 @@ test("Dnes is the one day screen: no separate Přehled tab, the rest of Přehled
 });
 
 test("the timeline shows the day's weigh-ins and logs a weight for the shown day", () => {
-  assert.match(client, /cls:'weight',title:'Váha · '/);
+  assert.match(client, /cls:'weight',title:uiText\('Váha · ','Weight · '\)/);
   assert.match(client, /\$\('timelineWeight'\)\.onclick=\(\)=>openWeightSheet\(date\)/);
   assert.match(client, /body:JSON\.stringify\(\{kg:v,date\}\)/);
 });
@@ -38,12 +38,12 @@ function weightEnv() {
 }
 const post = (env, body) => legacy.fetch(new Request("https://internal/app/api/weight", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), env, { waitUntil() {} });
 
-test("today's manual weigh-in keeps its Prague time, an earlier day gets noon", async () => {
+test("today's manual weigh-in keeps its local time, an earlier day gets local noon (Prague by default)", async () => {
   const env = weightEnv();
   assert.equal((await post(env, { kg: 80.2 })).status, 200);
   assert.equal((await post(env, { kg: 80.9, date: "2026-01-05" })).status, 200);
   const rows = env.DB.sqlite.prepare("SELECT sample_time FROM health_datapoints ORDER BY sample_time").all().map(r => r.sample_time);
-  assert.equal(rows[0], "2026-01-05T12:00:00+02:00");
+  assert.equal(rows[0], "2026-01-05T12:00:00+01:00");
   assert.match(rows[1], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0[12]:00$/);
 });
 
@@ -54,7 +54,7 @@ test("a weight for a future or malformed day is refused", async () => {
 });
 
 test("one bad record does not empty the timeline: each source is drawn on its own", () => {
-  for (const source of ["sleep", "activities", "other activities", "planned", "food", "weight", "coach"]) assert.ok(client.includes("add('" + source + "',()=>{"), source);
+  for (const source of ["sleep", "activities", "other activities", "planned", "food", "weight"]) assert.ok(client.includes("add('" + source + "',()=>{"), source);
   assert.match(client, /add=\(source,fn\)=>\{try\{fn\(\);\}catch\(error\)\{console\.error\('Timeline: '\+source,error\);\}\}/);
   // A weight without a valid day (null sample_time) is skipped before dateLabel can throw.
   assert.match(client, /\.filter\(r=>\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(r\.day\)/);

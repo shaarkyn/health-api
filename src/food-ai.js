@@ -2,6 +2,7 @@
 // (and, after a scan, its barcode). The result is a proposal: the user checks
 // it in the food editor, and the confirmed values are saved as their own food
 // with the barcode, so the next scan finds it without AI.
+import { L } from './lang.js';
 import { callOpenAI, lightModel } from "./coach-assistant.js";
 import { normalizeBarcode } from "./food-sources.js";
 
@@ -61,10 +62,10 @@ export function foodLookupLanguages(language='cs'){
 }
 export async function lookupFoodWithAI(env, { name = "", barcode = "", language=env.INTERFACE_LANGUAGE||'cs' } = {}) {
   const product = String(name || "").trim().slice(0, 180), code = normalizeBarcode(barcode);
-  if (!product && !code) throw new Error("Napiš název potraviny nebo načti čárový kód.");
+  if (!product && !code) throw new Error(L("Napiš název potraviny nebo načti čárový kód.", "Write the food name or scan the barcode."));
   let model=null;
   for(const sourceLanguage of foodLookupLanguages(language)){
-    const r = await callOpenAI(env, {
+    const r = await callOpenAI(env, { feature: "food-lookup",
       instructions: foodLookupInstructions+'\nJazyk rozhraní: '+foodLookupLanguages(language)[0]+'. Odpověď (note) napiš v tomto jazyce. V tomto pokusu hledej '+(sourceLanguage==='any'?'ve všech jazycích.':'pouze zdroje v jazyce '+sourceLanguage+'. Pokud v něm konkrétní výrobek nenajdeš, vrať found=false; aplikace pak zkusí další jazyk. Nepoužívej jinou variantu výrobku jen kvůli jazyku.'),
       input: "Potravina: " + JSON.stringify({ name: product || null, barcode: code || null }),
       tools: [{ type: "web_search" }], format: FOOD_LOOKUP_SCHEMA,

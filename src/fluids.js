@@ -1,6 +1,8 @@
 // Fluid intake: drinks logged per day and a daily target worked out from body
 // weight and the day's training. The target is a guide, not a prescription.
-import { activityFromRow, dedupeActivities, pragueLocal } from "./coach-reflection.js";
+import { L } from './lang.js';
+import { activityFromRow, dedupeActivities } from "./coach-reflection.js";
+import { localDateTime } from "./user-time.js";
 
 const KINDS = ["water", "coffee", "tea", "juice", "milk", "sport", "other"];
 const round100 = ml => Math.round(ml / 100) * 100;
@@ -36,8 +38,8 @@ async function ensure(db) {
 
 export async function addFluid(db, { date, ml, kind = "water", at = null }) {
   const amount = Math.round(Number(ml));
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Error("Neplatné datum.");
-  if (!(amount >= 10 && amount <= 3000)) throw new Error("Zadej množství 10–3000 ml.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Error(L("Neplatné datum.", "Invalid date."));
+  if (!(amount >= 10 && amount <= 3000)) throw new Error(L("Zadej množství 10–3000 ml.", "Enter an amount of 10–3,000 ml."));
   await ensure(db);
   const consumedAt = at && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(at)) ? String(at).slice(0, 16) : `${date}T12:00`;
   const r = await db.prepare("INSERT INTO fluid_log(user_id,date,consumed_at,ml,kind) VALUES(?,?,?,?,?)")
@@ -88,7 +90,7 @@ export async function dayActivityHours(db, userId, date) {
   const hours = list => list.reduce((s, a) => s + (Number(a.minutes) || 0), 0) / 60;
   let planned = 0;
   for (const r of rows.filter(r => r.data_type === "planned-workout")) {
-    if (pragueLocal(r.start_time).slice(0, 10) !== date) continue;
+    if (localDateTime(r.start_time).slice(0, 10) !== date) continue;
     let p = {}; try { p = JSON.parse(r.payload_json || "{}"); } catch { p = {}; }
     const seconds = Number(p.moving_time ?? p.duration ?? p.duration_seconds ?? p.elapsed_time);
     if (seconds > 0 && seconds <= 8 * 3600 && !/nutrition/i.test(String(p.name || p.type || ""))) planned += seconds / 3600;

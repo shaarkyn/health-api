@@ -1,9 +1,10 @@
-import { pragueToday } from "./prague-date.js";
+import { L } from './lang.js';
+import { localToday } from "./user-time.js";
 const n=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
 const dateKey=v=>String(v||"").slice(0,10);
 function daysAgo(date,days){const d=new Date(date+"T12:00:00Z");d.setUTCDate(d.getUTCDate()-days);return d.toISOString().slice(0,10);}
 export async function buildWeeklyReview(env,context,date){
-  const end=date||context?.date||pragueToday();
+  const end=date||context?.date||localToday();
   const start=daysAgo(end,6);
   const activities=(context?.cycling?.recentActivities||[]).filter(a=>a.date>=start&&a.date<=end);
   const rides=activities.filter(a=>a.cycling);
@@ -21,9 +22,9 @@ export async function buildWeeklyReview(env,context,date){
   const nutrition={loggedDays:foodDays.length,avgCalories:avg(foodDays.map(d=>({calories:eaten.filter(r=>r.date===d).reduce((s,r)=>s+n(r.calories),0)})),"calories"),avgProtein:avg(foodDays.map(d=>({protein_g:eaten.filter(r=>r.date===d).reduce((s,r)=>s+n(r.protein_g),0)})),"protein_g"),days:foodDays};
   const weight=context?.weightTrend||null;
   const observations=[];
-  if(cycling.hours>0) observations.push(`Kolo: ${cycling.hours} h / ${cycling.tss} TSS za 7 dní.`);
-  if(strengthSummary.workouts>0) observations.push(`Síla: ${strengthSummary.workouts} tréninků a ${strengthSummary.completedSets} pracovních sérií.`);
-  if(nutrition.loggedDays>0) observations.push(`Výživa: zapsáno ${nutrition.loggedDays}/7 dní, průměr ${nutrition.avgCalories} kcal a ${nutrition.avgProtein} g proteinu na zapsaný den.`);
-  if(weight?.weeklyRateKg!=null) observations.push(`Trend hmotnosti: ${weight.weeklyRateKg} kg/týden.`);
+  if(cycling.hours>0) observations.push(L(`Kolo: ${cycling.hours} h / ${cycling.tss} TSS za 7 dní.`, `Bike: ${cycling.hours} h / ${cycling.tss} TSS in 7 days.`));
+  if(strengthSummary.workouts>0) observations.push(L(`Síla: ${strengthSummary.workouts} tréninků a ${strengthSummary.completedSets} pracovních sérií.`, `Strength: ${strengthSummary.workouts} workouts and ${strengthSummary.completedSets} work sets.`));
+  if(nutrition.loggedDays>0) observations.push(L(`Výživa: zapsáno ${nutrition.loggedDays}/7 dní, průměr ${nutrition.avgCalories} kcal a ${nutrition.avgProtein} g proteinu na zapsaný den.`, `Nutrition: logged ${nutrition.loggedDays}/7 days, average ${nutrition.avgCalories} kcal and ${nutrition.avgProtein} g protein per logged day.`));
+  if(weight?.weeklyRateKg!=null) observations.push(L(`Trend hmotnosti: ${weight.weeklyRateKg} kg/týden.`, `Weight trend: ${weight.weeklyRateKg} kg/week.`));
   return {status:"ok",period:{start,end,days:7},cycling,strength:strengthSummary,nutrition,weightTrend:weight,observations};
 }

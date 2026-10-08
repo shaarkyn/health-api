@@ -1,3 +1,5 @@
+import { L } from "./lang.js";
+
 // Equipment of the gym the plans are built for. METAGYM Kutná Hora
 // (https://metagym.cz/kutnahora, checked 2026-10-01; the squat rack and the
 // Smith machine confirmed by the athlete 2026-10-03): every exercise in the
@@ -35,6 +37,22 @@ export const METAGYM_KUTNA_HORA = {
   }
 };
 
+// Station names in English (lang.js); names that are already English stay.
+const STATION_EN = {
+ "Činkárna – sada jednoruček": "Dumbbell rack",
+ "Polohovací lavice (5×)": "Adjustable bench (5×)",
+ "Stojan na rovné osy + trny na kotouče": "Barbell rack + plate posts",
+ "Klec na dřepy (power rack)": "Power rack",
+ "Smith stroj": "Smith machine",
+ "Podložky na zem": "Floor mats",
+ "Lýtka v polostoji": "Standing calf raise machine",
+ "Rowing stroj na záda vestoje": "Standing rowing machine",
+ "Standing multi flight (roztahování na ramena)": "Standing multi flight (shoulder flyes)",
+ "Multi-station kladky (5×)": "Multi-station cables (5×)",
+ "Abs lavička": "Abs bench",
+ "Běžecký pás (2×)": "Treadmill (2×)"
+};
+
 // Where each catalog exercise is done.
 export const EXERCISE_STATIONS = {
   "DB bench press": ["dumbbells", "adjustable_bench"],
@@ -63,6 +81,7 @@ export const EXERCISE_STATIONS = {
   "Pendulum squat": ["pendulum_squat"],
   "Leg extension Prime": ["leg_extension"],
   "Goblet squat": ["dumbbells"],
+  "Dead bug": ["floor_mats"], "Push-up": ["floor_mats"], "Bodyweight squat": ["floor_mats"], "Glute bridge": ["floor_mats"],
   "DB Bulgarian split squat": ["dumbbells", "adjustable_bench"],
   "Prone leg curl Prime": ["prone_leg_curl"],
   "Hip thrust": ["hip_thrust"],
@@ -120,7 +139,7 @@ export const EXERCISE_STATIONS = {
 };
 
 export function stationLabel(exercise, gym = METAGYM_KUTNA_HORA) {
-  return (EXERCISE_STATIONS[exercise] || []).map(id => gym.stations[id]?.label).filter(Boolean).join(" + ") || null;
+  return (EXERCISE_STATIONS[exercise] || []).map(id => gym.stations[id]?.label).map(label => label && L(label, STATION_EN[label] || label)).filter(Boolean).join(" + ") || null;
 }
 export function availableAt(exercise, gym = METAGYM_KUTNA_HORA) {
   const stations = EXERCISE_STATIONS[exercise];

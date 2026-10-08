@@ -1,3 +1,5 @@
+import {trainingSetup} from './onboarding.js';
+import {storeLocalEvent,syncLocalWorkout,ensureLocalWorkouts} from './local-workouts.js';
 // Adaptive workout library: the shared catalog (built-in workouts plus any
 // rows in workout_library), per-user capability progression, ranking, "generate a
 // workout for this day" and scheduling to the user's Intervals.icu calendar.
@@ -7,14 +9,19 @@ import { CYCLING_WORKOUTS } from "./cycling-workouts.js";
 import { RUNNING_WORKOUTS } from "./running-workouts.js";
 import { explainWorkout, stepRows } from "./workout-explanation.js";
 import { getAthleteState, assertTrainingAllowed } from './athlete-state.js';
-import { getWeekPlan } from './week-planner.js';
-import { availabilityOn, parseTimeWindow } from './training-availability.js';
+import { intervalsAuthorization } from "./intervals-auth.js";
+import { workoutEn } from "./workout-i18n.js";
+import { L, lang } from "./lang.js";
 
 export const SYSTEMS = ["recovery", "endurance", "tempo", "sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"];
 const HARD_SYSTEMS = new Set(["sweet_spot", "threshold", "vo2max", "anaerobic", "sprint"]);
 export { CYCLING_WORKOUTS, RUNNING_WORKOUTS, stepRows };
-const BUILT_IN = { ride: CYCLING_WORKOUTS, run: RUNNING_WORKOUTS };
-const BUILT_IN_BY_ID = new Map(Object.values(BUILT_IN).flat().map(w => [w.id, w]));
+// The catalog in the user's language; the English one is made on first use.
+const CATALOG_CS = { ride: CYCLING_WORKOUTS, run: RUNNING_WORKOUTS };
+let catalogEn = null;
+const builtIn = () => L(CATALOG_CS, catalogEn ??= { ride: CYCLING_WORKOUTS.map(workoutEn), run: RUNNING_WORKOUTS.map(workoutEn) });
+const BY_ID = new Map();
+const builtInById = () => { const key = lang(); if (!BY_ID.has(key)) BY_ID.set(key, new Map(Object.values(builtIn()).flat().map(w => [w.id, w]))); return BY_ID.get(key); };
 const now = () => new Date().toISOString();
 const sportOf = value => value === "run" ? "run" : "ride";
 const environmentOf = value => value === "outdoor" ? "outdoor" : "indoor";
@@ -41,10 +48,10 @@ async function importedWorkouts(db, sport) {
 }
 export async function catalog(db, sport = "ride") {
   await ensureTrainingTables(db);
-  return [...(BUILT_IN[sport] || []), ...await importedWorkouts(db, sport)];
+  return [...(builtIn()[sport] || []), ...(await importedWorkouts(db, sport)).map(w => L(w, workoutEn(w)))];
 }
 export async function getWorkout(db, id) {
-  if (BUILT_IN_BY_ID.has(id)) return BUILT_IN_BY_ID.get(id);
+  if (builtInById().has(id)) return builtInById().get(id);
   // "<id>~<minutes>": a workout resized to another length (see resizeWorkout).
   const resized = String(id).match(/^(.+)~(\d{2,3})$/);
   if (resized) { const base = await getWorkout(db, resized[1]); return base ? resizeWorkout(base, Number(resized[2])) : null; }
@@ -55,7 +62,9 @@ export async function getWorkout(db, id) {
 export async function getCapabilities(db, sport = "ride") {
   await ensureTrainingTables(db);
   const rows = await db.prepare("SELECT * FROM training_capabilities WHERE user_id=? AND sport=?").bind(db.userId, sport).all();
-  return { ...defaultCapabilities(sport), ...Object.fromEntries((rows.results || []).map(x => [x.system, x])) };
+  const training=await trainingSetup(db),defaults=defaultCapabilities(sport);
+  if(training.experience)for(const value of Object.values(defaults))value.level=training.experience==='beginner'?1:training.experience==='experienced'?4:3;
+  return { ...defaults, ...Object.fromEntries((rows.results || []).map(x => [x.system, x])) };
 }
 
 export function parseWorkoutSearchFilters(params) {
@@ -70,6 +79,7 @@ export function parseWorkoutSearchFilters(params) {
     targetLoad: num("load") ?? num("targetLoad"),
     loadTolerance: num("loadTolerance"),
     maxDifficulty: num("maxDifficulty"),
+    sort: get("sort"),
     source: get("source"),
     limit: num("limit")
   };
@@ -87,24 +97,27 @@ export function rankWorkoutCandidates(workouts, filters = {}, context = {}, capa
   const recentFamilies = new Set(context.recentFamilies || []);
   const source = filters.source ? String(filters.source) : null;
   const preferred = !system && filters.preferredSystem ? String(filters.preferredSystem) : null;
-  const reachable = 25 + (system ? 25 : preferred ? 15 : 0) + (duration != null ? 20 : 0) + (targetLoad != null ? 12 : 0) + 18;
-  return workouts.filter(w => (!system || w.primary_system === system || w.secondary_system === system)
+  // Within an explicit window, all lengths are legitimate choices. A coach's
+  // soft duration still carries more weight when generating the daily plan.
+  const durationWeight = softDuration ? 20 : 8;
+  const reachable = 25 + (system ? 25 : preferred ? 15 : 0) + (duration != null ? durationWeight : 0) + (targetLoad != null ? 12 : 0) + 18;
+  const ranked = workouts.filter(w => (!system || w.primary_system === system || w.secondary_system === system)
     && (duration == null || softDuration || Math.abs(n(w.duration_minutes, 0) - duration) <= durationTolerance)
     && (maxDifficulty == null || n(w.difficulty, 99) <= maxDifficulty)
     && (filters.environment !== "outdoor" || !n(w.indoor_only, 0))
     && (!source || w.source_kind === source)).map(w => {
     let score = 25; const reasons = [];
     if (system) {
-      if (w.primary_system === system) { score += 25; reasons.push("přesný tréninkový systém"); }
-      else { score += 4; reasons.push("sekundární zásah cílového systému"); }
+      if (w.primary_system === system) { score += 25; reasons.push(L("přesný tréninkový systém", "exact training system")); }
+      else { score += 4; reasons.push(L("sekundární zásah cílového systému", "also targets the chosen system")); }
     }
-    if (preferred && w.primary_system === preferred) { score += 15; reasons.push("typ, který trenér na dnešek doporučuje"); }
+    if (preferred && w.primary_system === preferred) { score += 15; reasons.push(L("typ, který trenér na dnešek doporučuje", "the type the coach recommends for today")); }
     if (duration != null) {
       const diff = Math.abs(n(w.duration_minutes, 0) - duration), fit = clamp(1 - diff / Math.max(durationScale, 1), 0, 1);
-      score += 20 * fit; if (diff <= 5) reasons.push(softDuration ? "délka, kterou trenér pro dnešek doporučuje" : "téměř přesná délka"); else if (!softDuration) reasons.push("délka v toleranci");
+      score += durationWeight * fit; if (diff <= 5) reasons.push(softDuration ? L("délka, kterou trenér pro dnešek doporučuje", "the duration the coach recommends for today") : L("téměř přesná délka", "almost exact duration")); else if (!softDuration) reasons.push(L("délka v toleranci", "duration within tolerance"));
     }
     if (targetLoad != null) {
-      const diff = Math.abs(n(w.target_load, 0) - targetLoad), fit = clamp(1 - diff / Math.max(loadTolerance, 1), 0, 1); score += 12 * fit; if (diff <= 10) reasons.push("zátěž blízko cíli");
+      const diff = Math.abs(n(w.target_load, 0) - targetLoad), fit = clamp(1 - diff / Math.max(loadTolerance, 1), 0, 1); score += 12 * fit; if (diff <= 10) reasons.push(L("zátěž blízko cíli", "load close to target"));
     }
     const capability = capabilities[w.primary_system] || { level: 3, confidence: .1 };
     const readinessOffset = readiness === "green" ? .45 : readiness === "yellow" ? -.25 : -1;
@@ -112,18 +125,50 @@ export function rankWorkoutCandidates(workouts, filters = {}, context = {}, capa
     const ideal = clamp(n(context.targetDifficulty, n(capability.level, 3) + readinessOffset + phaseOffset), 1, 10);
     const gap = Math.abs(n(w.difficulty, 5) - ideal);
     score += clamp(18 - gap * 4, 0, 18);
-    if (gap <= .75) reasons.push("obtížnost odpovídá tvé aktuální úrovni");
-    if (readiness === "red" && HARD_SYSTEMS.has(w.primary_system)) { score -= 30; reasons.push("penalizace kvůli nízké připravenosti"); }
+    if (gap <= .75) reasons.push(L("obtížnost odpovídá tvé aktuální úrovni", "difficulty matches your current level"));
+    if (readiness === "red" && HARD_SYSTEMS.has(w.primary_system)) { score -= 30; reasons.push(L("penalizace kvůli nízké připravenosti", "penalized for low readiness")); }
     if (readiness === "yellow" && ["vo2max", "anaerobic", "sprint"].includes(w.primary_system)) score -= 12;
-    if (hardDays >= 2 && HARD_SYSTEMS.has(w.primary_system)) { score -= 24; reasons.push("penalizace po dvou kvalitních dnech"); }
-    if (w.family && recentFamilies.has(w.family)) { score -= 6; reasons.push("podobný trénink byl nedávno"); }
-    if (w.source_kind === "research") { score += 2; reasons.push("ověřený vědecký protokol"); }
+    if (hardDays >= 2 && HARD_SYSTEMS.has(w.primary_system)) { score -= 24; reasons.push(L("penalizace po dvou kvalitních dnech", "penalized after two quality days")); }
+    if (w.family && recentFamilies.has(w.family)) { score -= 6; reasons.push(L("podobný trénink byl nedávno", "a similar workout was recent")); }
+    if (w.source_kind === "research") { score += 2; reasons.push(L("ověřený vědecký protokol", "proven research protocol")); }
     if (n(w.verified, 0)) score += 2;
     score += Math.min(3, Math.log10(1 + n(w.popularity, 0)) * 1.5);
     // The points available depend on the filters in use (no type or load
     // filter = fewer points), so the score is a share of the reachable maximum.
-    return { ...w, suitability: Math.round(clamp(score / reachable * 100, 0, 100)), score_points: Math.round(score), capability_level: n(capability.level, 3), challenge_gap: Math.round((n(w.difficulty, 5) - n(capability.level, 3)) * 10) / 10, reasons };
-  }).sort((a, b) => b.suitability - a.suitability || Math.abs((duration ?? a.duration_minutes) - a.duration_minutes) - Math.abs((duration ?? b.duration_minutes) - b.duration_minutes) || a.difficulty - b.difficulty || a.id.localeCompare(b.id));
+    return { ...w, suitability: Math.round(clamp(score / reachable * 100, 0, 100)), score_points: Math.round(score * 10) / 10, capability_level: n(capability.level, 3), capability_confidence: n(capability.confidence, .2), capability_attempts: n(capability.attempts, 0), challenge_gap: Math.round((n(w.difficulty, 5) - n(capability.level, 3)) * 10) / 10, reasons };
+  });
+  const durationGap = w => Math.abs((duration ?? w.duration_minutes) - w.duration_minutes);
+  return ranked.sort((a, b) => (filters.sort === "difficulty" ? b.difficulty - a.difficulty : filters.sort === "duration" ? durationGap(a) - durationGap(b) : 0)
+    || b.score_points - a.score_points || durationGap(a) - durationGap(b) || a.id.localeCompare(b.id));
+}
+
+// Present alternatives, rather than a ladder of almost identical workouts.
+// Variety only breaks ties among candidates within 12 points of the best
+// remaining match. Readiness and capability remain part of that score.
+export function diversifyWorkoutCandidates(ranked, filters = {}, limit = 30) {
+  if (filters.sort === "difficulty" || filters.sort === "duration") return ranked.slice(0, limit);
+  const remaining = [...ranked], chosen = [], families = new Map(), durations = new Map(), placements = new Map();
+  const placement = w => {
+    let tags = []; try { tags = JSON.parse(w.tags_json || "[]"); } catch {}
+    return tags.includes("late-quality") ? "late" : tags.includes("split-quality") ? "split" : "standard";
+  };
+  while (remaining.length && chosen.length < limit) {
+    const primary = filters.system && remaining.some(w => w.primary_system === filters.system);
+    const eligible = remaining.filter(w => !primary || w.primary_system === filters.system);
+    const best = Math.max(...eligible.map(w => w.score_points));
+    let winner = null, bestAdjusted = -Infinity;
+    for (const w of eligible) {
+      if (w.score_points < best - 12) continue;
+      const adjusted = w.score_points - 14 * (families.get(w.family || w.id) || 0)
+        - (filters.durationMinutes != null && !filters.durationSoft ? 4 * (durations.get(w.duration_minutes) || 0) : 0)
+        - 4 * (placements.get(placement(w)) || 0);
+      if (adjusted > bestAdjusted) { winner = w; bestAdjusted = adjusted; }
+    }
+    chosen.push(winner);
+    for (const [map, key] of [[families, winner.family || winner.id], [durations, winner.duration_minutes], [placements, placement(winner)]]) map.set(key, (map.get(key) || 0) + 1);
+    remaining.splice(remaining.indexOf(winner), 1);
+  }
+  return chosen;
 }
 
 async function recentFamilies(db, sport, days = 14) {
@@ -135,9 +180,13 @@ async function recentFamilies(db, sport, days = 14) {
 export async function searchWorkoutLibrary(db, filters = {}, context = {}) {
   const sport = sportOf(filters.sport), environment = environmentOf(filters.environment);
   const [workouts, capabilities, families] = await Promise.all([catalog(db, sport), getCapabilities(db, sport), recentFamilies(db, sport).catch(() => [])]);
-  const ranked = rankWorkoutCandidates(workouts, { ...filters, environment }, { ...context, recentFamilies: context.recentFamilies || families }, capabilities);
+  // The outdoor warm-up and rounded steps can change the actual duration.
+  // Apply the hard duration window to the workout the athlete will receive.
+  const candidates = workouts.map(w => renderForEnvironment(w, environment));
+  const ranked = rankWorkoutCandidates(candidates, { ...filters, environment }, { ...context, recentFamilies: context.recentFamilies || families }, capabilities);
   const limit = clamp(n(filters.limit, 30), 1, 100);
-  return { status: "ok", sport, environment, count: Math.min(limit, ranked.length), total: ranked.length, catalogSize: workouts.length, filters, capabilities, workouts: ranked.slice(0, limit).map(w => renderForEnvironment(w, environment)) };
+  const selected = diversifyWorkoutCandidates(ranked, filters, limit);
+  return { status: "ok", sport, environment, count: selected.length, total: ranked.length, catalogSize: workouts.length, filters, capabilities, sort: ["difficulty", "duration"].includes(filters.sort) ? filters.sort : "recommended", workouts: selected };
 }
 
 // "Generate a workout": the coach decides the energy system, duration and the
@@ -154,10 +203,12 @@ export async function generateWorkout(db, { sport = "ride", environment = "indoo
   const context = { readiness: coach.readiness?.status || "green", hardBikeDaysRolling7d: coach.load?.hardBikeDaysRolling7d ?? 0, phase: coach.constraints?.phase === "auto" ? "" : coach.constraints?.phase, targetDifficulty: coach.recommendation?.progression?.targetDifficulty };
   let result = await searchWorkoutLibrary(db, { sport, environment, system: kind, durationMinutes: minutes, durationTolerance: 15, limit: 12 }, context);
   if (!result.workouts.length) result = await searchWorkoutLibrary(db, { sport, environment, system: kind, durationMinutes: minutes, durationTolerance: 45, limit: 12 }, context);
-  if (!result.workouts.length) return { status: "empty", message: "Pro tento den jsem nenašel vhodný workout. Zkus jinou délku.", system: kind, durationMinutes: minutes };
+  if (!result.workouts.length) return { status: "empty", message: L("Pro tento den jsem nenašel vhodný workout. Zkus jinou délku.", "I couldn't find a suitable workout for this day. Try a different duration."), system: kind, durationMinutes: minutes };
   // Prefer distinct families among the alternatives so "another option" is really different.
   const seen = new Set(), distinct = [];
   for (const w of result.workouts) if (!seen.has(w.family || w.id)) { seen.add(w.family || w.id); distinct.push(w); }
+  // A beginning runner starts with run/walk when the session is easy.
+  if (sport === "run" && coach.constraints?.novice && ["endurance", "recovery"].includes(kind)) distinct.sort((a, b) => (b.family === "run-walk") - (a.family === "run-walk"));
   const pool = distinct.slice(0, 5), pick = pool[Math.abs(Math.trunc(n(variant, 0))) % pool.length];
   const plannedToday = coach.constraints?.plannedToday;
   const planned = plannedToday?.system ? { name: plannedToday.name, minutes: plannedToday.minutes, system: plannedToday.system, intensityFactor: plannedToday.intensityFactor, structure: plannedToday.structure } : null;
@@ -179,20 +230,28 @@ export function resizeStructure(structure = [], target, { sport = "ride", system
   const aerobic = run ? 82 : 65, wholeEasy = ["recovery", "endurance"].includes(system);
   const fillers = () => s.map((b, i) => i > 0 && i < s.length - 1 && easy(b) ? i : -1).filter(i => i >= 0);
   const round1 = x => Math.round(x * 10) / 10;
+  // Run/walk changes length by its run/walk cycles: a beginner does not get continuous jogging.
+  const cycle = run && wholeEasy ? s.find(b => b.steps && b.steps.some(x => n(x.power, 100) < 60)) : null;
+  if (cycle) {
+    const per = totalMinutes([{ ...cycle, repeats: 1 }]), before = n(cycle.repeats, 1);
+    cycle.repeats = Math.max(1, before + Math.round((target - totalMinutes(s)) / per));
+    if (cycle.repeats !== before) notes.push(L("úseků běhu s chůzí ", "run-walk repeats ") + before + " → " + cycle.repeats);
+    return { structure: s, notes };
+  }
   let delta = target - totalMinutes(s);
   if (delta > 0) {
     const f = fillers();
     if (f.length && (wholeEasy || delta < 30)) {
       const sum = f.reduce((x, i) => x + n(s[i].durationMinutes, 0), 0) || 1;
       f.forEach(i => { s[i].durationMinutes = round1(n(s[i].durationMinutes, 0) + delta * n(s[i].durationMinutes, 0) / sum); });
-      notes.push(wholeEasy ? "prodloužená aerobní část" : "delší aerobní část kolem hlavní série");
+      notes.push(wholeEasy ? L("prodloužená aerobní část", "longer aerobic part") : L("delší aerobní část kolem hlavní série", "longer aerobic part around the main set"));
     } else {
       // Long sessions put the quality after a first aerobic block, like a real ride.
       const firstSet = s.findIndex((b, i) => i > 0 && !easy(b));
       const before = delta >= 30 && firstSet > 0 ? Math.round(delta / 2) : 0;
-      if (before) s.splice(firstSet, 0, step(before, aerobic, null, run ? "lehce" : "aerobní blok"));
-      s.splice(s.length - 1, 0, step(round1(delta - before), aerobic, null, run ? "volný klus" : "aerobní dojezd"));
-      notes.push(before ? "aerobní blok před hlavní sérií a dojezd po ní" : "aerobní dojezd po hlavní sérii");
+      if (before) s.splice(firstSet, 0, step(before, aerobic, null, run ? L("lehce", "easy") : L("aerobní blok", "aerobic block")));
+      s.splice(s.length - 1, 0, step(round1(delta - before), aerobic, null, run ? L("volný klus", "easy jog") : L("aerobní dojezd", "aerobic finish")));
+      notes.push(before ? L("aerobní blok před hlavní sérií a dojezd po ní", "aerobic block before the main set and a finish after it") : L("aerobní dojezd po hlavní sérii", "aerobic finish after the main set"));
     }
   } else if (delta < 0) {
     let cut = -delta;
@@ -201,13 +260,13 @@ export function resizeStructure(structure = [], target, { sport = "ride", system
       s[i].durationMinutes = round1(n(s[i].durationMinutes, 0) - take); cut -= take;
       if (cut <= 0) break;
     }
-    if (-delta - cut > 0) notes.push("kratší aerobní část");
+    if (-delta - cut > 0) notes.push(L("kratší aerobní část", "shorter aerobic part"));
     for (let i = s.length - 1; i >= 0; i--) if (!s[i].steps && n(s[i].durationMinutes, 0) < (wholeEasy ? 1 : 3) && i > 0 && i < s.length - 1 && easy(s[i])) s.splice(i, 1);
     // Trim warm-up and cool-down down to a minimum, then the repetitions.
     for (const [i, min] of [[0, run ? 8 : 10], [s.length - 1, 5]]) {
       if (cut <= .5 || !s[i] || s[i].steps) continue;
       const take = Math.min(cut, Math.max(0, n(s[i].durationMinutes, 0) - min));
-      if (take > 0) { s[i].durationMinutes = round1(n(s[i].durationMinutes, 0) - take); cut -= take; notes.push(i === 0 ? "kratší rozjetí" : "kratší vyjetí"); }
+      if (take > 0) { s[i].durationMinutes = round1(n(s[i].durationMinutes, 0) - take); cut -= take; notes.push(i === 0 ? L("kratší rozjetí", "shorter warm-up") : L("kratší vyjetí", "shorter cool-down")); }
     }
     // Fewer repetitions of the biggest set, never below one.
     let repsFrom = null, repsTo = null;
@@ -219,9 +278,9 @@ export function resizeStructure(structure = [], target, { sport = "ride", system
       if (per > cut + per / 2 && n(b.repeats, 1) <= 2) break;
       repsFrom ??= b.repeats; b.repeats -= 1; repsTo = b.repeats; cut -= per;
     }
-    if (repsFrom != null) notes.push("méně opakování (" + repsFrom + " → " + repsTo + ")");
+    if (repsFrom != null) notes.push(L("méně opakování (", "fewer repeats (") + repsFrom + " → " + repsTo + ")");
     // Removing a repetition can overshoot: give the rest back as easy riding.
-    if (cut < -.5) s.splice(s.length - 1, 0, step(round1(-cut), aerobic, null, run ? "volný klus" : "aerobní dojezd"));
+    if (cut < -.5) s.splice(s.length - 1, 0, step(round1(-cut), aerobic, null, run ? L("volný klus", "easy jog") : L("aerobní dojezd", "aerobic finish")));
   }
   return { structure: s, notes: [...new Set(notes)] };
 }
@@ -234,8 +293,8 @@ export function resizeWorkout(base, minutes) {
   const target = Math.round(clamp(n(minutes, n(base.duration_minutes, 60)), run ? 20 : 30, run ? 240 : 360));
   if (Math.abs(target - n(base.duration_minutes, 0)) <= 1) return base;
   const prefix = String(base.id).replace(/-\d+$/, "");
-  const sibling = (BUILT_IN[sport] || []).find(w => w.family === base.family && w.id !== base.id && String(w.id).replace(/-\d+$/, "") === prefix && Math.abs(n(w.duration_minutes, 0) - target) <= 2);
-  if (sibling) return { ...sibling, resize_notes: [(["recovery", "endurance"].includes(base.primary_system) ? "stejný typ jízdy" : "stejná hlavní série") + " v délce " + sibling.duration_minutes + " min z knihovny"] };
+  const sibling = (builtIn()[sport] || []).find(w => w.family === base.family && w.id !== base.id && String(w.id).replace(/-\d+$/, "") === prefix && Math.abs(n(w.duration_minutes, 0) - target) <= 2);
+  if (sibling) return { ...sibling, resize_notes: [(["recovery", "endurance"].includes(base.primary_system) ? L("stejný typ jízdy", "same type of ride") : L("stejná hlavní série", "same main set")) + L(" v délce ", " at ") + sibling.duration_minutes + L(" min z knihovny", " min from the library")] };
   let structure = [];
   try { structure = JSON.parse(base.structure_json || "[]"); } catch {}
   const resized = resizeStructure(structure, target, { sport, system: base.primary_system });
@@ -254,7 +313,7 @@ export function resizeWorkout(base, minutes) {
 async function resizeGenerated(db, { sport, environment, date, coach, thresholds, workoutId, resizeTo }) {
   sport = sportOf(sport);
   const base = await getWorkout(db, String(workoutId).replace(/~\d+$/, ""));
-  if (!base) return { status: "empty", message: "Původní trénink jsem nenašel – vygeneruj nový." };
+  if (!base) return { status: "empty", message: L("Původní trénink jsem nenašel – vygeneruj nový.", "I couldn't find the original workout – generate a new one.") };
   let resized = resizeWorkout(base, resizeTo);
   // Outdoor rendering can lengthen the warm-up; correct once so the ridden length matches.
   const drift = renderForEnvironment(resized, environmentOf(environment)).duration_minutes - Math.round(resizeTo);
@@ -266,7 +325,7 @@ async function resizeGenerated(db, { sport, environment, date, coach, thresholds
   const plannedToday = coach.constraints?.plannedToday;
   const planned = plannedToday?.system ? { name: plannedToday.name, minutes: plannedToday.minutes, system: plannedToday.system, intensityFactor: plannedToday.intensityFactor, structure: plannedToday.structure } : null;
   const explanation = explainWorkout(pick, { coach, environment: pick.environment, thresholds, planned, sport });
-  if (resized.id !== base.id) explanation.why = ["Délku jsem změnil z " + base.duration_minutes + " na " + pick.duration_minutes + " min – princip tréninku zůstává" + (resized.resize_notes?.length ? ": " + resized.resize_notes.join(", ") : "") + ".", ...explanation.why.filter(x => !/^Délka \d+ min:/.test(x))];
+  if (resized.id !== base.id) explanation.why = [L("Délku jsem změnil z " + base.duration_minutes + " na " + pick.duration_minutes + " min – princip tréninku zůstává", "I changed the duration from " + base.duration_minutes + " to " + pick.duration_minutes + " min – the principle of the workout stays the same") + (resized.resize_notes?.length ? ": " + resized.resize_notes.join(", ") : "") + ".", ...explanation.why.filter(x => !/^(?:Délka|Duration) \d+ min:/.test(x))];
   return {
     status: "ok", sport, environment: pick.environment, date, system: pick.primary_system, durationMinutes: pick.duration_minutes, resizedFrom: base.id,
     readiness: coach.readiness || null, progression: coach.recommendation?.progression || null, adaptations: coach.recommendation?.adaptations || [],
@@ -293,15 +352,15 @@ export function calculateCapabilityUpdate(current,workout,feedback={}){
 }
 
 export async function recordWorkoutFeedback(db, { workoutId, scheduledDate = null, completedPercent = 100, rpe = null, survey = "completed", notes = null }) {
-  if (!Number.isFinite(Number(completedPercent)) || Number(completedPercent) < 0 || Number(completedPercent) > 150) throw new Error("Dokončení musí být 0–150 %.");
-  if (rpe != null && (!Number.isFinite(Number(rpe)) || Number(rpe) < 1 || Number(rpe) > 10)) throw new Error("RPE musí být 1–10.");
-  if (scheduledDate && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) throw new Error("Neplatné datum tréninku.");
+  if (!Number.isFinite(Number(completedPercent)) || Number(completedPercent) < 0 || Number(completedPercent) > 150) throw new Error(L("Dokončení musí být 0–150 %.", "Completion must be 0–150 %."));
+  if (rpe != null && (!Number.isFinite(Number(rpe)) || Number(rpe) < 1 || Number(rpe) > 10)) throw new Error(L("RPE musí být 1–10.", "RPE must be 1–10."));
+  if (scheduledDate && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) throw new Error(L("Neplatné datum tréninku.", "Invalid workout date."));
   await ensureTrainingTables(db);
-  const w = await getWorkout(db, workoutId); if (!w) throw new Error("Workout nebyl nalezen.");
+  const w = await getWorkout(db, workoutId); if (!w) throw new Error(L("Workout nebyl nalezen.", "Workout not found."));
   const sport = sportOf(w.sport);
   if (scheduledDate && survey !== "auto_completed") {
     const previous = await db.prepare("SELECT id FROM workout_feedback WHERE user_id=? AND workout_id=? AND scheduled_date=? AND survey<>'auto_completed' LIMIT 1").bind(db.userId, workoutId, scheduledDate).first();
-    if (previous) throw new Error("Tento workout už má uložené hodnocení.");
+    if (previous) throw new Error(L("Tento workout už má uložené hodnocení.", "This workout already has a saved rating."));
   }
   const capabilities = await getCapabilities(db, sport), current = capabilities[w.primary_system];
   const next = calculateCapabilityUpdate(current, w, { completedPercent, rpe, survey });
@@ -355,7 +414,7 @@ export async function hasFeedback(db, workoutId, date) {
 }
 
 export function buildIntervalsEvent(workout, date, environment = "indoor") {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Error("Neplatné datum.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Error(L("Neplatné datum.", "Invalid date."));
   const rendered = renderForEnvironment(workout, environment);
   const externalId = "pfd-library:" + workout.id + ":" + date + (rendered.environment === "outdoor" ? ":outdoor" : "");
   const tags = (() => { try { return JSON.parse(workout.tags_json || "[]"); } catch { return []; } })();
@@ -368,44 +427,23 @@ export function buildIntervalsEvent(workout, date, environment = "indoor") {
 }
 
 export async function scheduleWorkoutInIntervals(env, db, { workoutId, date, confirm = false, environment = "indoor" }) {
-  if (confirm !== true) throw new Error("Zápis do Intervals.icu vyžaduje potvrzení.");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) || new Date(date + "T12:00:00Z").toISOString().slice(0, 10) !== date) throw new Error("Neplatné datum.");
-  const workout = await getWorkout(db, workoutId); if (!workout) throw new Error("Workout nebyl nalezen.");
+  if (confirm !== true) throw new Error(L("Uložení tréninku vyžaduje potvrzení.", "Saving the workout requires confirmation."));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) || new Date(date + "T12:00:00Z").toISOString().slice(0, 10) !== date) throw new Error(L("Neplatné datum.", "Invalid date."));
+  const workout = await getWorkout(db, workoutId); if (!workout) throw new Error(L("Workout nebyl nalezen.", "Workout not found."));
   assertTrainingAllowed(await getAthleteState(db));
-  const available=availabilityOn(await getWeekPlan(db,date),date);
-  if(available.minutes!=null&&renderForEnvironment(workout,environmentOf(environment)).duration_minutes>available.minutes)throw new Error('Trénink přesahuje dostupný čas pro tento den.');
-  if (!env.INTERVALS_API_KEY) throw new Error("Intervals.icu není připojeno.");
+  // Confirmation saves the athlete's choice, including replacements and chat
+  // proposals. Availability limits belong to generation, never to this write.
   await ensureTrainingTables(db);
-  const event = buildIntervalsEvent(workout, date, environmentOf(environment)), auth = "Basic " + btoa("API_KEY:" + String(env.INTERVALS_API_KEY));
+  await ensureLocalWorkouts(db);
+  const event = buildIntervalsEvent(workout, date, environmentOf(environment));
   const existing = await db.prepare("SELECT intervals_event_id,status FROM workout_schedule_links WHERE user_id=? AND intervals_external_id=?").bind(db.userId, event.external_id).first();
-  if (existing) return { status: "already_scheduled", workout: { id: workout.id, name: workout.name }, date, externalId: event.external_id, intervalsEventId: existing.intervals_event_id || null };
-  const links=await db.prepare("SELECT workout_id,environment,intervals_event_id FROM workout_schedule_links WHERE user_id=? AND scheduled_date=? AND status='scheduled'").bind(db.userId,date).all();
-  let usedMinutes=0;
-  for(const link of links.results||[]){const w=await getWorkout(db,link.workout_id);if(w)usedMinutes+=renderForEnvironment(w,link.environment).duration_minutes;}
-  // Include calendar workouts created outside the library, without counting
-  // the cached copy of a linked workout twice.
-  const linkedIds=new Set((links.results||[]).map(l=>String(l.intervals_event_id)));
-  const planned=await db.prepare("SELECT external_id,payload_json FROM health_datapoints WHERE user_id=? AND source_family='intervals' AND data_type='planned-workout' AND start_time>=? AND start_time<?").bind(db.userId,date,date+'T23:59:59').all().catch(()=>({results:[]}));
-  for(const row of planned.results||[]){
-    let p;try{p=JSON.parse(row.payload_json);}catch{continue;}
-    if(linkedIds.has(String(p.id??String(row.external_id||'').replace(/^planned:/,'')))||/nutrition|food|meal/i.test(String(p.name||'')+' '+String(p.category||'')))continue;
-    const seconds=Number(p.moving_time??p.duration_seconds??p.duration),start=p.start_date_local,end=p.end_date_local;
-    usedMinutes+=Number.isFinite(seconds)&&seconds>0?seconds/60:start&&end?Math.max(0,(Date.parse(end)-Date.parse(start))/60000):0;
-  }
-  if(available.minutes!=null&&usedMinutes+renderForEnvironment(workout,environmentOf(environment)).duration_minutes>available.minutes)throw new Error('Součet tréninků přesahuje dostupný čas pro tento den.');
-  const window=parseTimeWindow(available.window);
-  if(window){const start=Number(window.start.slice(0,2))*60+Number(window.start.slice(3))+Math.ceil(usedMinutes);event.start_date_local=date+'T'+String(Math.floor(start/60)).padStart(2,'0')+':'+String(start%60).padStart(2,'0')+':00';}
-  const response = await fetch("https://intervals.icu/api/v1/athlete/0/events/bulk?upsert=true", { method: "POST", headers: { Authorization: auth, Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify([event]) });
-  const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error("Intervals.icu HTTP " + response.status);
-  const first = Array.isArray(data) ? data[0] : data;
-  if (!first?.id || first.category !== "WORKOUT") throw new Error("Intervals.icu nepotvrdilo vytvoření workoutu.");
+  if (existing) return { sync: await syncLocalWorkout({...env,DB:db},existing.intervals_event_id), status: "already_scheduled", workout: { id: workout.id, name: workout.name }, date, externalId: event.external_id, intervalsEventId: existing.intervals_event_id || null };
+  const rendered=renderForEnvironment(workout,environmentOf(environment));
+  event.moving_time=Math.round(rendered.duration_minutes*60);event.icu_training_load=event.load_target;
+  const local=await storeLocalEvent(db,event);
   await db.prepare(`INSERT INTO workout_schedule_links(user_id,sport,workout_id,family,scheduled_date,environment,intervals_external_id,intervals_event_id,status) VALUES(?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(user_id,intervals_external_id) DO UPDATE SET intervals_event_id=excluded.intervals_event_id,status=excluded.status`)
-    .bind(db.userId, sportOf(workout.sport), workout.id, workout.family || null, date, event.tags.includes("outdoor") ? "outdoor" : "indoor", event.external_id, String(first.id), "scheduled").run();
-  // The local copy of the event, so the week shows it now and not after the next sync.
-  const start = first.start_date_local || event.start_date_local || date + "T00:00:00";
-  await db.prepare("INSERT INTO health_datapoints(user_id,source_family,data_type,external_id,sample_time,start_time,end_time,payload_json) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,source_family,data_type,external_id) DO UPDATE SET sample_time=excluded.sample_time,start_time=excluded.start_time,end_time=excluded.end_time,payload_json=excluded.payload_json,updated_at=CURRENT_TIMESTAMP")
-    .bind(db.userId, "intervals", "planned-workout", "planned:" + first.id, start, start, first.end_date_local || null, JSON.stringify({ ...event, ...first })).run().catch(() => {});
-  return { status: "ok", workout: { id: workout.id, name: workout.name }, date, environment: event.tags.includes("outdoor") ? "outdoor" : "indoor", externalId: event.external_id, intervalsEventId: first.id, eventId: "planned:" + first.id };
+    ON CONFLICT(user_id,intervals_external_id) DO NOTHING`)
+    .bind(db.userId,sportOf(workout.sport),workout.id,workout.family||null,date,rendered.environment,event.external_id,local.id,'scheduled').run();
+  const sync=await syncLocalWorkout({...env,DB:db},local.id);
+  return {status:'ok',workout:{id:workout.id,name:workout.name},date,environment:rendered.environment,externalId:event.external_id,intervalsEventId:sync.eventId||null,eventId:'planned:'+local.id,sync};
 }

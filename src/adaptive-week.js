@@ -1,5 +1,7 @@
+import { L } from './lang.js';
 import { availabilityOn, parseTimeWindow } from './training-availability.js';
-import { planWeekRoles, weekTargets, weekLoadsBefore, weeklyRunCap, capRunVolume, isRunActivity } from './week-planner.js';
+import { planWeekRoles, weekTargets, weekLoadsBefore, weeklyRunCap, capRunVolume, isRunActivity, hrvWeekTrendDown } from './week-planner.js';
+import { timeZone } from "./user-time.js";
 
 const shift = (date, n) => new Date(Date.parse(date + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 export const sportOf = a => /ride|bike|cycl/i.test(a.type || '') ? 'ride' : /run/i.test(a.type || '') ? 'run' : /weight|strength|gym/i.test(a.type || '') ? 'gym' : null;
@@ -11,8 +13,8 @@ export function activityHistoryEstimate(history = [], reference) {
   const days = dates.length ? Math.min(21,Math.max(1,(Date.parse(reference+'T12:00:00Z')-Date.parse(dates[0]+'T12:00:00Z'))/86400000)) : 0;
   const enough = days >= 14 && activities >= 4;
   const count = enough ? Math.min(14,Math.max(1,Math.round(activities/(days/7)))) : 3;
-  const message = enough ? 'Odhad '+count+' aktivit týdně z '+activities+' dokončených aktivit za '+days+' dní.'
-    : (activities ? 'Historie je zatím krátká ('+activities+' aktivit, '+days+' dní).' : 'Zatím tu není historie dokončených aktivit.')+' Pro odhad potřebujeme alespoň 2 týdny a 4 aktivity. Do té doby navrhneme nejvýše 3 aktivity týdně podle dostupného času. Počet můžeš nastavit ručně.';
+  const message = enough ? L('Odhad ', 'Estimate: ')+count+L(' aktivit týdně z ', ' activities a week from ')+activities+L(' dokončených aktivit za ', ' completed activities in ')+days+L(' dní.', ' days.')
+    : (activities ? L('Historie je zatím krátká (', 'The history is still short (')+activities+L(' aktivit, ', ' activities, ')+days+L(' dní).', ' days).') : L('Zatím tu není historie dokončených aktivit.', 'There\'s no history of completed activities yet.'))+L(' Pro odhad potřebujeme alespoň 2 týdny a 4 aktivity. Do té doby navrhneme nejvýše 3 aktivity týdně podle dostupného času. Počet můžeš nastavit ručně.', ' An estimate needs at least 2 weeks and 4 activities. Until then we\'ll suggest at most 3 activities a week based on your available time. You can set the number by hand.');
   return { status: enough ? 'ready' : activities ? 'short' : 'empty', activities, days, count, message };
 }
 export function environmentFor(date, sport, weather = null) {
@@ -21,14 +23,14 @@ export function environmentFor(date, sport, weather = null) {
   const winter = [11, 12, 1, 2].includes(month);
   const poor = weather && (Number(weather.max) < (sport === 'ride' ? 8 : 0) || Number(weather.wind) >= (sport === 'ride' ? 35 : 50) || Number(weather.rain) >= 3 || Number(weather.rainProb) >= 70 || Number(weather.code) >= 95);
   const indoor = poor || (sport === 'ride' && winter);
-  return { environment: indoor ? 'indoor' : 'outdoor', reason: poor ? 'Předpověď nepřeje venkovnímu tréninku.' : indoor ? 'V zimním období preferuji indoor kolo.' : weather ? 'Podle dostupné předpovědi.' : 'Předpověď není dostupná; volba vychází z ročního období.' };
+  return { environment: indoor ? 'indoor' : 'outdoor', reason: poor ? L('Předpověď nepřeje venkovnímu tréninku.', 'The forecast isn\'t good for training outdoors.') : indoor ? L('V zimním období preferuji indoor kolo.', 'In winter I prefer indoor riding.') : weather ? L('Podle dostupné předpovědi.', 'Based on the available forecast.') : L('Předpověď není dostupná; volba vychází z ročního období.', 'No forecast is available; the choice is based on the season.') };
 }
 // Weather is fetched on the server as well as in the calendar. Client data is
 // never the authority for training or health constraints.
 export async function weekWeather(location, start) {
   const end = shift(start, 6);
   try {
-    const query = new URLSearchParams({ latitude: location.latitude, longitude: location.longitude, daily: 'weather_code,temperature_2m_max,precipitation_probability_max,precipitation_sum,wind_speed_10m_max', timezone: 'Europe/Prague', start_date: start, end_date: end });
+    const query = new URLSearchParams({ latitude: location.latitude, longitude: location.longitude, daily: 'weather_code,temperature_2m_max,precipitation_probability_max,precipitation_sum,wind_speed_10m_max', timezone: timeZone(), start_date: start, end_date: end });
     const r = await fetch('https://api.open-meteo.com/v1/forecast?' + query, { signal: AbortSignal.timeout(6000) });
     if (!r.ok) return {};
     const { daily: d } = await r.json();
@@ -56,7 +58,7 @@ export function capWeekTargets(targets, prefs, days = [], weather = {}) {
   for (const x of targets.items || []) {
     const available = availabilityOn(prefs, x.date), own = prefs?.sessions?.[weekdayOf(x.date) + '|' + x.sport + '|' + (x.slot || 0)] || {};
     const auto = environmentFor(x.date, x.sport, weather[x.date]);
-    const env = own.environment ? { environment: own.environment, reason: 'Zvoleno ručně.' } : auto;
+    const env = own.environment ? { environment: own.environment, reason: L('Zvoleno ručně.', 'Chosen by hand.') } : auto;
     const open = openCounts.get(x.date);openCounts.set(x.date,open-1);
     let minutes;
     if (own.minutes) minutes = own.minutes;
@@ -65,7 +67,7 @@ export function capWeekTargets(targets, prefs, days = [], weather = {}) {
       if (env.environment === 'indoor') minutes = Math.min(minutes, indoorMinutes(x.sport, x.minutes));
       minutes = Math.floor(minutes / 5) * 5;
       const minimum = x.sport === 'run' ? 20 : 30;
-      if (minutes < minimum) { skipped.push({ ...x, reason: 'Na tento trénink nezbývá dost času.' }); continue; }
+      if (minutes < minimum) { skipped.push({ ...x, reason: L('Na tento trénink nezbývá dost času.', 'There isn\'t enough time left for this workout.') }); continue; }
     }
     remaining.set(x.date, remaining.get(x.date) - minutes);
     items.push({ ...x, minutes, tss: Math.round(x.tss * minutes / x.minutes), ...env, autoEnvironment: auto.environment, chosenMinutes: Boolean(own.minutes), chosenEnvironment: Boolean(own.environment), window: available.window, startTime: parseTimeWindow(available.window)?.start || null });
@@ -106,17 +108,19 @@ export function weekProposal({ prefs, start, today, week = {}, fitness = {}, sta
   if(prefs.weeklyActivities==null&&historyEstimate.status!=='ready')warnings.push({text:historyEstimate.message});
   for (const d of existing.filter(d => d.date >= today)) {
     const sessions = sessionsOn(d), minutes = sessions.reduce((n, a) => n + (Number(a.durationHours) || 0) * 60, 0), available = availabilityOn(prefs, d.date);
-    if (available.minutes != null && minutes > available.minutes) warnings.push({ date: d.date, text: 'Plán má ' + Math.round(minutes) + ' min, dostupných je ' + available.minutes + ' min.' });
-    for (const a of d.daily?.training?.planned || []) if (sportOf(a) === 'ride' && environmentFor(d.date, 'ride', weather[d.date]).environment === 'indoor' && !/virtual|indoor/i.test(a.type + ' ' + a.name)) warnings.push({ date: d.date, text: 'Zvaž indoor variantu: ' + a.name + '.', eventId: a.id });
+    if (available.minutes != null && minutes > available.minutes) warnings.push({ date: d.date, text: L('Plán má ', 'The plan has ') + Math.round(minutes) + L(' min, dostupných je ', ' min, you have ') + available.minutes + L(' min.', ' min available.') });
+    for (const a of d.daily?.training?.planned || []) if (sportOf(a) === 'ride' && environmentFor(d.date, 'ride', weather[d.date]).environment === 'indoor' && !/virtual|indoor/i.test(a.type + ' ' + a.name)) warnings.push({ date: d.date, text: L('Zvaž indoor variantu: ', 'Consider an indoor version: ') + a.name + '.', eventId: a.id });
   }
-  if (state.status && state.status !== 'active') return { prefs: proposedPrefs, items: [], warnings: [...warnings, { text: 'Stav ' + state.status + ' pozastavuje návrhy tréninků.' }], mode: 'review' };
+  if (state.status && state.status !== 'active') return { prefs: proposedPrefs, items: [], warnings: [...warnings, { text: L('Stav ', 'Status ') + state.status + L(' pozastavuje návrhy tréninků.', ' pauses workout proposals.') }], mode: 'review' };
   const wellness = (fitness.wellness || []).filter(w => w.id <= today).at(-1), ctl = Number(wellness?.ctl) || null;
   const loads = existing.map(d => ({ date: d.date, done: Number(d.daily?.training?.actualTss) || (d.daily?.training?.completed || []).reduce((n, a) => n + (Number(a.tss) || 0), 0), planned: (d.daily?.training?.planned || []).reduce((n, a) => n + (Number(a.tss) || 0), 0), sports: sessionsOn(d).map(sportOf) }));
   const roles = planWeekRoles(proposedPrefs.days, { readiness: Number(wellness?.tsb) < -20 ? 'red' : 'green' });
   // Running this week so far (done, and planned still ahead) counts against the weekly running cap.
   const runCommitted = existing.reduce((n, d) => n + (d.date > today ? d.daily?.training?.planned || [] : d.daily?.training?.completed || []).filter(isRunActivity).reduce((m, a) => m + (Number(a.durationHours) || 0) * 60, 0), 0);
-  let targets = capRunVolume(weekTargets({ roles, ctl, days: loads, today, weekStart: start, weekLoads: weekLoadsBefore(fitness.wellness || [], start), lastWeekLoad: (fitness.wellness || []).filter(w => w.id >= shift(start, -7) && w.id < start).reduce((n, w) => n + (Number(w.ctlLoad) || 0), 0) }), history ? weeklyRunCap(history, start) : null, runCommitted);
-  if (!ctl) targets = { status: 'estimated', items: roles.flatMap((d, i) => d.items.filter(x => shift(start, i) >= today && !loads[i]?.sports.includes(x.sport)).map(x => ({ ...x, date: shift(start, i), minutes: x.sport === 'run' ? 30 : 60, tss: 25 }))) };
+  let targets = capRunVolume(weekTargets({ roles, ctl, days: loads, today, weekStart: start, weekLoads: weekLoadsBefore(fitness.wellness || [], start), hrvDown: hrvWeekTrendDown(fitness.wellness || [], start), rampRate: [...(fitness.wellness || [])].reverse().find(r => Number.isFinite(Number(r.rampRate)))?.rampRate ?? null, lastWeekLoad: (fitness.wellness || []).filter(w => w.id >= shift(start, -7) && w.id < start).reduce((n, w) => n + (Number(w.ctlLoad) || 0), 0) }), history ? weeklyRunCap(history, start) : null, runCommitted);
+  // Without fitness data the estimate keeps the same running cap: a beginner's
+  // runs share the floor (60 min a week) or what the recent weeks allow.
+  if (!ctl) targets = capRunVolume({ status: 'estimated', items: roles.flatMap((d, i) => d.items.filter(x => shift(start, i) >= today && !loads[i]?.sports.includes(x.sport)).map(x => ({ ...x, date: shift(start, i), minutes: x.sport === 'run' ? 30 : 60, tss: 25 }))) }, weeklyRunCap(history || [], start), runCommitted);
   targets = capWeekTargets(targets, proposedPrefs, existing, weather);
   return { prefs: proposedPrefs, items: targets.items, targets, warnings, mode: existing.some(d => sessionsOn(d).length) ? 'review_and_fill' : 'fill', missingAvailability: !proposedPrefs.days.some(d => d.length) && !prefs.availability.some(d => d.minutes > 0) };
 }
