@@ -12,7 +12,7 @@ enum DemoData {
     {
       "status": "ok",
       "date": "2026-10-08",
-      "readiness": { "score": 78, "zone": "green" },
+      "readiness": { "score": 78, "zone": "green", "asOf": "2026-10-08" },
       "sleep": { "minutes": 432, "inBedMinutes": 458, "index": 86, "need": 485, "start": "23:48", "end": "07:02" },
       "strain": { "score": 8.4, "planned": 13.1 },
       "hrv": { "value": 64, "baseline": 58, "low": 52, "high": 65, "trend": "up", "series": [

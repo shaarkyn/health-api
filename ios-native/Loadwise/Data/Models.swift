@@ -18,9 +18,13 @@ struct TodaySnapshot: Decodable, Equatable {
     struct Readiness: Decodable, Equatable {
         let score: Int?
         let zone: String?
+        /// The morning the score belongs to: yesterday's until tonight's sleep syncs.
+        let asOf: String?
     }
 
     struct Sleep: Decodable, Equatable {
+        /// The day the night ended.
+        let date: String?
         let minutes: Double?
         let inBedMinutes: Double?
         let index: Int?

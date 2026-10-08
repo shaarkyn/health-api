@@ -49,17 +49,30 @@ export function buildToday({ date, hour = null, daily = {}, health = {}, fitness
   const nights = primaryNights(sessions);
   const age = num(profile.age);
 
-  // Sleep and readiness for the night that ended this morning.
-  const night = nights.get(date) || null;
-  const need = sleepNeedFor({ date, age, strain: dayStrain(google, shift(date, -1)), rows, sessions }).need;
-  const readiness = recoveryReadiness({ rows, date, night, sleepNeed: need });
+  // Sleep and readiness for the night that ended this morning. Until that
+  // night has synced (after midnight, or in the morning before the watch has
+  // uploaded it) today shows the last morning's, as WHOOP does.
+  const morningOf = d => {
+    const night = nights.get(d) || null;
+    const need = sleepNeedFor({ date: d, age, strain: dayStrain(google, shift(d, -1)), rows, sessions }).need;
+    return { date: d, night, need, readiness: recoveryReadiness({ rows, date: d, night, sleepNeed: need }) };
+  };
+  let morning = morningOf(date);
+  if (hour != null && !morning.night && morning.readiness.score == null) {
+    const previous = morningOf(shift(date, -1));
+    if (previous.night || previous.readiness.score != null) morning = previous;
+  }
+  const { night, need, readiness } = morning;
   const hrv = readiness.components?.hrv || null;
 
-  // Tonight: the need from today's strain so far and the usual wake time.
+  // The coming night: the need from the strain of the day before it and the
+  // usual wake time. Between midnight and 6:00 without today's night yet the
+  // coming night is the one that ends this morning.
+  const sleepDay = hour != null && hour < 6 && !nights.get(date) ? shift(date, -1) : date;
   const strainNow = dayStrain(google, date);
-  const tonightNeed = sleepNeedFor({ date: shift(date, 1), age, strain: strainNow, rows, sessions }).need;
+  const tonightNeed = sleepNeedFor({ date: shift(sleepDay, 1), age, strain: dayStrain(google, sleepDay), rows, sessions }).need;
   const plan = bedtimePlan({
-    date,
+    date: sleepDay,
     need: tonightNeed,
     nights: [...nights.values()].map(n => ({ date: nightDate(n), wakeMin: minutesOf(n.endTime), durationMin: num(n.durationMin), timeInBedMin: num(n.timeInBedMin) }))
   });
@@ -106,8 +119,9 @@ export function buildToday({ date, hour = null, daily = {}, health = {}, fitness
   return {
     status: "ok",
     date,
-    readiness: { score: readiness.score, zone: readiness.zone, missing: readiness.missing || [], flags: readiness.flags || [] },
+    readiness: { score: readiness.score, zone: readiness.zone, asOf: morning.date, missing: readiness.missing || [], flags: readiness.flags || [] },
     sleep: night ? {
+      date: morning.date,
       minutes: num(night.durationMin),
       inBedMinutes: num(night.timeInBedMin),
       index: sleepIndexScore(night, need),

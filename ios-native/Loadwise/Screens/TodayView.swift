@@ -46,7 +46,7 @@ struct TodayContent: View {
                 .accessibilityLabel("Profil a nastavení")
             }
 
-            ReadinessHero(readiness: today.readiness)
+            ReadinessHero(readiness: today.readiness, fromYesterday: today.readiness.asOf.map { $0 < today.date } ?? false)
                 .padding(.top, 40)
 
             KeyNumbers(today: today)
@@ -102,20 +102,30 @@ struct TodayContent: View {
 
 struct ReadinessHero: View {
     let readiness: TodaySnapshot.Readiness
+    var fromYesterday = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Připravenost").font(Typo.body).foregroundStyle(Palette.muted)
-            HStack(alignment: .lastTextBaseline, spacing: 14) {
-                Text(readiness.score.map { String($0) } ?? "–")
-                    .font(Typo.number(132))
-                    .foregroundStyle(Palette.ink)
-                if let pill = pill {
-                    Pill(text: pill.text, foreground: pill.fg, background: pill.bg)
+            Text(fromYesterday ? "Připravenost · včera" : "Připravenost").font(Typo.body).foregroundStyle(Palette.muted)
+            if let score = readiness.score {
+                HStack(alignment: .lastTextBaseline, spacing: 14) {
+                    Text(String(score))
+                        .font(Typo.number(132))
+                        .foregroundStyle(fromYesterday ? Palette.muted : Palette.ink)
+                    if let pill = pill {
+                        Pill(text: pill.text, foreground: pill.fg, background: pill.bg)
+                    }
                 }
-            }
-            if readiness.score == nil {
-                Text("Zatím málo dat. Připravenost potřebuje aspoň 14 dní HRV nebo klidového tepu.")
+                if fromYesterday {
+                    Text("Dnešní se ukáže, až se nahraje dnešní noc.")
+                        .font(Typo.small).foregroundStyle(Palette.muted)
+                }
+            } else {
+                Text("Zatím bez čísla")
+                    .font(Typo.sentence(34, relativeTo: .largeTitle))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.top, 8)
+                Text("Připravenost potřebuje aspoň 14 dní HRV nebo klidového tepu a dnešní noc.")
                     .font(Typo.small).foregroundStyle(Palette.muted)
             }
         }
