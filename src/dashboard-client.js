@@ -1,3 +1,5 @@
+// The device's time zone; the server learns it from X-Time-Zone and uses the same days.
+const USER_TZ=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/Prague"}catch{return "Europe/Prague"}})();
 const $=id=>document.getElementById(id);
 let coachRefreshRunning=false;
 // Plan edits not yet in Intervals.icu (see "Plan changes" below); declared first
@@ -40,8 +42,6 @@ async function refreshCoachLifecycle(){
 // New activities arrive through the five-minute sync, so two minutes keep the advisers current.
 setInterval(refreshCoachLifecycle,120000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshCoachLifecycle();});
-// The device's time zone; the server learns it from X-Time-Zone and uses the same days.
-const USER_TZ=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/Prague"}catch{return "Europe/Prague"}})();
 let weekStart=localMonday(),selectedHistoryDate=localToday(),state={};
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 function czPlural(n,one,few,many){return n+' '+(n===1?one:n>=2&&n<=4?few:many)}
