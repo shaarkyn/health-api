@@ -15,7 +15,7 @@ import { deleteDailyNutritionNotes } from "./intervals-nutrition-notes.js";
 import { verifyGitHubActionsToken } from "./github-oidc.js";
 import { dashboardPage } from "./dashboard.js";
 import { connectionStatus } from "./connections.js";
-import { connectionEnvironment, saveConnectionSecret, deleteConnectionSecret, missingProviders } from "./connection-secrets.js";
+import { connectionEnvironment, saveConnectionSecret, deleteConnectionSecret, missingProviders, migrateConnectionSecrets } from "./connection-secrets.js";
 import { parseNutritionLabel, parseNutritionPortion, nutritionConsistency } from './food-label.js';
 import { readFoodPhotoWithAI, readBarcodeWithAI } from './food-photo.js';
 import { withIntervalsSleep } from './intervals-sleep.js';
@@ -91,7 +91,8 @@ import { chatContext, appendChatTurn, listChats, readChat, deleteChat } from "./
 import { intervalsAuthorization } from "./intervals-auth.js";
 import { isStaging, markStaging } from "./staging.js";
 import { techniqueFor, ownExerciseVideo, saveOwnExerciseVideo, storedTechnique, generateTechnique, exerciseInUse } from "./exercise-technique.js";
-import { isPublicPath, resolvePrincipal, unauthorizedResponse, handleDashboardLogout, verifyDashboardSession, sessionSecret } from "./dashboard-auth.js";
+import { isPublicPath, resolvePrincipal, unauthorizedResponse, handleDashboardLogout, verifyDashboardSession, sessionSecret, foreignOriginChange } from "./dashboard-auth.js";
+import { internalHeaders } from "./internal-auth.js";
 import { aiAllowance } from "./ai-usage.js";
 import { exportAccountData, deleteAccount, finishAccountDeletions, inactiveAccounts } from "./account-data.js";
 import { handleIntervalsOAuth } from "./intervals-oauth.js";
@@ -144,6 +145,8 @@ const worker = {
       }
     }
     await forEachUser(env, ["google", "intervals"], scoped => app.scheduled(controller, scoped, ctx));
+    // Connection keys saved before CONNECTION_KEY existed get it (connection-secrets.js).
+    if (controller.cron === "* * * * *" && new Date().getUTCMinutes() % 5 === 0) await migrateConnectionSecrets(env).then(result => { if (result.migrated || result.failed) console.log("Connection key migration", result); }).catch(error => console.error("Connection key migration failed", error.message));
     if(controller.cron==='* * * * *'&&new Date().getUTCMinutes()%5===0)await forEachUser(env,['google'],async scoped=>{await backfillFoodGoogle(scoped.DB);return processFoodGoogle(scoped,{token:googleToken});});
     if(controller.cron==='* * * * *'&&new Date().getUTCMinutes()%5===0)await forEachUser(env,['intervals'],async scoped=>{await retryWorkoutExports(scoped);});
     if(controller.cron==='* * * * *'&&new Date().getUTCMinutes()%5===0)await forEachUser(env,['intervals'],scoped=>legacyHealthApi.fetch(new Request('https://internal/sync/intervals/recent',{method:'POST'}),scoped,ctx));
@@ -192,6 +195,8 @@ const worker = {
 
 async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, isPublic }) {
     {
+    // Every change made with the session cookie, whatever the route.
+    if (foreignOriginChange(request, principal)) return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
     const signedIn = principal?.kind === "user" && Boolean(user);
     if(signedIn&&request.method==='POST'&&/^\/app\/api\/(assistant(?:\/stream)?$|gym\/adjust$|food\/(ai-lookup|photo|chat)$|review(?:\/|$))/.test(url.pathname)){
       try{await assertAIAccess(env);}catch(error){return error.consent?Response.json({status:'ai_consent_required',message:error.message},{status:403}):Response.json({status:'subscription_required',message:error.message},{status:402});}
@@ -201,10 +206,10 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
     // Legacy Google Health endpoints live in index.js. The deployed Worker
     // uses entrypoint.js, so expose these routes explicitly instead of letting
     // them fall through to the dashboard gateway.
-    if (url.pathname === "/sync/intervals" && principal?.kind === "system") {
+    if (url.pathname === "/sync/intervals" && principal?.kind === "system" && request.method === "POST") {
       return Response.json({status:"ok",users:await forEachUser(rawEnv,["intervals"],scoped=>legacyHealthApi.fetch(request.clone(),scoped,ctx).then(r=>r.json().catch(()=>({status:r.status}))))});
     }
-    if (url.pathname === "/sync/google" || url.pathname === "/sync/google/status" || url.pathname === "/health/sleep" || url.pathname === "/health/db") {
+    if (url.pathname === "/sync/google" || url.pathname === "/sync/google/status" || url.pathname === "/health/sleep") {
       return legacyHealthApi.fetch(request, env, ctx);
     }
     if (url.pathname === "/automation/strength") return handleStrengthAutomation(request, env, ctx);
@@ -524,7 +529,7 @@ function pragueDayStartUtc(date){
 
 async function handleDashboardApi(request, env, ctx, url, session = {}) {
   env={...env,INTERFACE_LANGUAGE:lang()};
-  const internalAuth = { "Authorization": "Bearer " + String(env.STRENGTH_API_KEY || "") };
+  const internalAuth = internalHeaders();
   if(url.pathname==='/app/api/athlete-state'){
     if(!session.signedIn)return Response.json({message:L('Přihlas se do dashboardu.', 'Sign in to the app.')},{status:401});
     try{
@@ -1434,8 +1439,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     "/app/api/weight": "/health/weight",
     "/app/api/activities": "/health/activities",
     "/app/api/nutrition": "/health/nutrition",
-    "/app/api/sleep": "/health/sleep",
-    "/app/api/health-db": "/health/db"
+    "/app/api/sleep": "/health/sleep"
   };
   const target = routes[url.pathname];
   if (!target) return Response.json({ status: "error", message: "Not found" }, { status: 404 });
@@ -1642,7 +1646,7 @@ async function handleStrengthAutomation(request, env, ctx) {
 
     const internalRequest = new Request(internalUrl, {
       method: "POST",
-      headers: { "Authorization": `Bearer ${env.STRENGTH_API_KEY}`, "Content-Type": "application/json" },
+      headers: { ...internalHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     const response = await app.fetch(internalRequest, env, ctx);
@@ -1665,7 +1669,7 @@ async function handleNutritionAutomation(request, env, ctx) {
     const internalUrl = new URL("/nutrition/plan", request.url);
     const internalRequest = new Request(internalUrl, {
       method: "POST",
-      headers: { "Authorization": `Bearer ${env.STRENGTH_API_KEY}`, "Content-Type": "application/json" },
+      headers: { ...internalHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, date })
     });
     const response = await app.fetch(internalRequest, env, ctx);
