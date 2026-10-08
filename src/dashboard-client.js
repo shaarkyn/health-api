@@ -2234,15 +2234,28 @@ function activitySport(a){const t=(String(a?.type||'')+' '+String(a?.name||'')+'
 const WEATHER_ICONS=[[0,'☀️','jasno'],[2,'🌤️','polojasno'],[3,'☁️','zataženo'],[48,'🌫️','mlha'],[57,'🌦️','mrholení'],[67,'🌧️','déšť'],[77,'🌨️','sníh'],[82,'🌧️','přeháňky'],[86,'🌨️','sněhové přeháňky'],[99,'⛈️','bouřky']];
 function weatherIcon(code){const c=num(code,-1);return (WEATHER_ICONS.find(([max])=>c<=max)||[0,'·',''])}
 async function loadWeather(){
-  const loc=state.weekPlan?.prefs?.location;if(!loc)return;
+  const loc=state.weekPlan?.prefs?.location;if(!loc){state.weather={};state.weatherKey=null;return;}
   const key=loc.latitude+','+loc.longitude+','+state.hubWeek;if(state.weatherKey===key)return;if(state.weatherFailed?.key===key&&Date.now()-state.weatherFailed.at<6e5)return;
   try{
-    const url='https://api.open-meteo.com/v1/forecast?latitude='+loc.latitude+'&longitude='+loc.longitude+'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&timezone=Europe%2FPrague&past_days=14&forecast_days=16';
+    const url='https://api.open-meteo.com/v1/forecast?latitude='+loc.latitude+'&longitude='+loc.longitude+'&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&timezone='+encodeURIComponent(USER_TZ)+'&past_days=14&forecast_days=16';
     const r=await fetch(url),d=await r.json();if(!r.ok)throw new Error(d.reason||'HTTP '+r.status);
     state.weather=Object.fromEntries((d.daily?.time||[]).map((t,i)=>[t,{code:d.daily.weather_code[i],max:d.daily.temperature_2m_max[i],min:d.daily.temperature_2m_min[i],rainProb:d.daily.precipitation_probability_max?.[i],rain:d.daily.precipitation_sum?.[i],wind:d.daily.wind_speed_10m_max?.[i]}]));state.weatherKey=key;
   }catch(error){state.weather={};state.weatherError=error.message;state.weatherFailed={key,at:Date.now()};}
 }
-async function loadWeekPlan(force=false){const start=state.hubWeek||localMonday();if(state.weekPlan&&!force&&state.weekPlan.start===start)return state.weekPlan;try{state.weekPlan=await jsonFetch('/app/api/week-plan?start='+start);}catch{if(state.weekPlan)return state.weekPlan;state.weekPlan={start,prefs:{days:[[],[],[],[],[],[],[]],location:{name:'Kutná Hora',latitude:49.9484,longitude:15.2682}},roles:Array.from({length:7},(_,i)=>({weekday:i,items:[]}))};}return state.weekPlan;}
+// Weather only for a place the user chose: a searched place, or the device
+// location once the browser has their permission. A device location follows
+// them (refreshed once per app start while the permission stays granted) and
+// is rounded to about 1 km before it is saved or sent to Open-Meteo.
+function showWeatherPlace(){const loc=state.weekPlan?.prefs?.location;$('hubLocationName').textContent=loc?.name||uiText('Počasí','Weather');$('hubLocationOff').hidden=!loc;}
+function devicePosition(){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error(uiText('Prohlížeč polohu neumí.','This browser cannot share its location.')));navigator.geolocation.getCurrentPosition(p=>resolve({latitude:Math.round(p.coords.latitude*100)/100,longitude:Math.round(p.coords.longitude*100)/100}),()=>reject(new Error(uiText('Polohu se nepodařilo zjistit. Povol ji v prohlížeči, nebo místo vyhledej.','Could not get your location. Allow it in the browser, or search for a place.'))),{maximumAge:36e5,timeout:15000});});}
+async function setWeatherPlace(loc){state.weekPlan.prefs.location=loc;state.weatherKey=null;showWeatherPlace();$('hubLocationForm').hidden=true;$('hubLocationResults').innerHTML='';await saveWeekPlanner();}
+async function refreshDeviceLocation(){
+  const loc=state.weekPlan?.prefs?.location;if(state.deviceLocationChecked||loc?.source!=='device')return;state.deviceLocationChecked=true;
+  try{const perm=await navigator.permissions?.query({name:'geolocation'});if(perm?.state!=='granted')return;const pos=await devicePosition();
+    if(Math.abs(pos.latitude-loc.latitude)<0.05&&Math.abs(pos.longitude-loc.longitude)<0.05)return;
+    await setWeatherPlace({name:uiText('Moje poloha','My location'),...pos,source:'device'});await renderWeekHub();}catch{}
+}
+async function loadWeekPlan(force=false){const start=state.hubWeek||localMonday();if(state.weekPlan&&!force&&state.weekPlan.start===start)return state.weekPlan;try{state.weekPlan=await jsonFetch('/app/api/week-plan?start='+start);}catch{if(state.weekPlan)return state.weekPlan;state.weekPlan={start,prefs:{days:[[],[],[],[],[],[],[]],location:null},roles:Array.from({length:7},(_,i)=>({weekday:i,items:[]}))};}return state.weekPlan;}
 // One request per week at a time: the dashboard and the workouts hub ask for
 // the same week when the app opens, and the week is the slowest read.
 function fetchWeek(start){
@@ -2308,7 +2321,7 @@ async function renderWeekHub(){
   const el=$('hubWeek');if(!el)return;
   if(!state.hubWeek)state.hubWeek=localMonday();
   $('hubWeekTitle').textContent=uiText('Týden ','Week ')+isoWeek(state.hubWeek)+' · '+dateLabel(state.hubWeek)+' – '+dateLabel(dateShift(state.hubWeek,6));
-  const plan=await loadWeekPlan();$('hubLocationName').textContent=plan.prefs?.location?.name||'Kutná Hora';
+  const plan=await loadWeekPlan();showWeatherPlace();refreshDeviceLocation();
   let week;try{[week]=await Promise.all([hubWeekData(),loadWeather()]);}catch(error){el.innerHTML='<div class="notice status-error">'+esc(error.message)+'</div>';return;}
   applyPendingPlanned(week.days);
   const days=week.days||[],gym=weekGymSessions(days),today=localToday();
@@ -2474,11 +2487,14 @@ function installWorkoutsHub(){
   $('hubNextWeek').onclick=()=>goWeek(dateShift(state.hubWeek||localMonday(),7));
   $('hubThisWeek').onclick=()=>goWeek(localMonday());
   $('hubLocation').onclick=()=>{const f=$('hubLocationForm');f.hidden=!f.hidden;if(!f.hidden)$('hubLocationQuery').focus();};
+  $('hubLocationDevice').onclick=async()=>{const out=$('hubLocationResults');out.innerHTML='<span class="small">'+uiText('Zjišťuji polohu…','Getting your location…')+'</span>';
+    try{const pos=await devicePosition();await setWeatherPlace({name:uiText('Moje poloha','My location'),...pos,source:'device'});await renderWeekHub();}catch(error){out.innerHTML='<span class="small">'+esc(error.message)+'</span>';}};
+  $('hubLocationOff').onclick=async()=>{await setWeatherPlace(null);await renderWeekHub();};
   $('hubLocationForm').onsubmit=async e=>{
     e.preventDefault();const q=$('hubLocationQuery').value.trim(),out=$('hubLocationResults');if(!q)return;out.innerHTML='<span class="small">Hledám…</span>';
     try{const r=await fetch('https://geocoding-api.open-meteo.com/v1/search?count=5&language=cs&format=json&name='+encodeURIComponent(q)),d=await r.json(),rows=d.results||[];
       out.innerHTML=rows.length?rows.map((x,i)=>'<button class="btn" type="button" data-loc="'+i+'">'+esc(x.name+(x.admin1?', '+x.admin1:'')+(x.country_code?' ('+x.country_code+')':''))+'</button>').join(''):'<span class="small">Nic nenalezeno.</span>';
-      out.querySelectorAll('[data-loc]').forEach(b=>b.onclick=async()=>{const x=rows[Number(b.dataset.loc)];state.weekPlan.prefs.location={name:x.name,latitude:x.latitude,longitude:x.longitude};$('hubLocationForm').hidden=true;out.innerHTML='';state.weatherKey=null;await saveWeekPlanner();});
+      out.querySelectorAll('[data-loc]').forEach(b=>b.onclick=async()=>{const x=rows[Number(b.dataset.loc)];await setWeatherPlace({name:x.name,latitude:x.latitude,longitude:x.longitude,source:'search'});await renderWeekHub();});
     }catch(error){out.innerHTML='<span class="small">'+esc(error.message)+'</span>';}
   };
   installPlannerDrag();
