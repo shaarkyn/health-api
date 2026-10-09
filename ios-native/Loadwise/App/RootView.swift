@@ -30,7 +30,7 @@ struct RootView: View {
                     .padding(.bottom, 8)
             }
             .sheet(isPresented: $showAdd) { AddSheet() }
-            .sheet(isPresented: $showSettings) { SettingsSheet() }
+            .sheet(isPresented: $showSettings) { SettingsView() }
         }
     }
 }
@@ -119,32 +119,6 @@ struct AddSheet: View {
             Spacer()
         }
         .padding(24)
-        .presentationDetents([.medium])
-        .presentationBackground(Palette.background)
-    }
-}
-
-struct SettingsSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Nastavení").font(Typo.sentence(30, relativeTo: .title)).foregroundStyle(Palette.ink)
-            if model.demo {
-                Text("Prohlížíš ukázková data.").font(Typo.body).foregroundStyle(Palette.muted)
-            }
-            Button(model.demo ? "Ukončit ukázku" : "Odhlásit se", role: .destructive) {
-                model.signOut()
-                dismiss()
-            }
-            .font(Typo.bodyStrong)
-            Spacer()
-            Text("Loadwise \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
-                .font(Typo.caption).foregroundStyle(Palette.faint)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .presentationDetents([.medium])
         .presentationBackground(Palette.background)
     }

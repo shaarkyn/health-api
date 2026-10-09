@@ -47,6 +47,39 @@ final class APIClient: @unchecked Sendable {
         try await get("/app/api/training")
     }
 
+    // MARK: - Settings
+
+    func profile() async throws -> JSONObject {
+        let response: ProfileResponse = try await get("/app/api/profile")
+        return response.profile ?? [:]
+    }
+
+    /// The server stores the whole profile, so this sends all of it.
+    func saveProfile(_ profile: JSONObject) async throws {
+        let _: JSONValue = try await send("/app/api/profile", method: "POST", body: profile)
+    }
+
+    func trainingProfile() async throws -> TrainingProfileResponse {
+        try await get("/app/api/training-profile")
+    }
+
+    func saveTrainingProfile(_ profile: JSONObject) async throws -> TrainingProfileResponse {
+        try await send("/app/api/training-profile", method: "POST", body: profile)
+    }
+
+    func connections() async throws -> ConnectionsResponse {
+        try await get("/app/api/connections")
+    }
+
+    func syncStatus() async throws -> SyncStatus {
+        try await get("/app/api/sync")
+    }
+
+    /// Starts a sync of all sources; the server answers 202 and works on.
+    func startSync() async throws {
+        let _: JSONValue = try await send("/app/api/sync", method: "POST", body: JSONObject())
+    }
+
     /// Step 3 of the sign-in handoff (see AuthService): token + verifier for the cookie.
     func exchangeHandoff(token: String, verifier: String) async throws {
         var request = makeRequest("/auth/app/session", method: "POST")
@@ -55,6 +88,12 @@ final class APIClient: @unchecked Sendable {
         let (data, response) = try await session.data(for: request)
         try check(response, data)
         guard hasSession else { throw APIError.message("Server nevrátil přihlášení. Zkus to znovu.") }
+    }
+
+    /// Ends the session on the server too; the cookie goes either way.
+    func logout() async {
+        _ = try? await session.data(for: makeRequest("/app/logout", method: "POST"))
+        signOut()
     }
 
     func signOut() {
@@ -71,6 +110,21 @@ final class APIClient: @unchecked Sendable {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
+            throw APIError.message("Odpověď serveru se nepodařilo přečíst.")
+        }
+    }
+
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String, body: B) async throws -> T {
+        var request = makeRequest(path, method: method)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        try check(response, data)
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            // Writes whose answer the app does not read may answer with nothing.
+            if let ignored = JSONValue.null as? T { return ignored }
             throw APIError.message("Odpověď serveru se nepodařilo přečíst.")
         }
     }

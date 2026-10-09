@@ -25,6 +25,12 @@ installed side by side (different bundle IDs).
   - the main event and the phase of the preparation;
   - form, VO2max, this week, active energy and heart-rate zones;
   - tap Form for the detail (fitness and fatigue, weekly load, intensity).
+- Settings (the "P" on Today), a closed menu with pages:
+  - Profil: sex, age, height, heart rate, activity and the weight goal;
+  - Cíle: main sport, weekly hours and the main event;
+  - Zdroje dat: connected sources and "Synchronizovat teď";
+  - Tréninkové zóny: run and bike separately, thresholds, presets and zones;
+  - Vzhled (automatic, light, dark), Jednotky, signing out.
 - "Prohlédnout ukázku" on the sign-in screen shows sample data without an
   account.
 - Food and Health are placeholders that link to the web app.

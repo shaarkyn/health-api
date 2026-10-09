@@ -24,6 +24,26 @@ final class SnapshotTests: XCTestCase {
         try render("training-form", glow: Palette.Glow.training) { FormDetailContent(training: DemoData.training).padding(.top, 50).padding(.bottom, 40) }
     }
 
+    func testSettingsScreens() throws {
+        let store = SettingsStore(api: APIClient(), demo: true)
+        try render("settings", height: 1100) { NavigationStack { SettingsMenu(store: store) }.environment(AppModel(demo: true)) }
+        try render("settings-profile", height: 900) { NavigationStack { ProfileSettingsView(store: store) } }
+        try render("settings-sources", height: 900) { NavigationStack { SourcesSettingsView(store: store) } }
+    }
+
+    func testJSONValueKeepsUnknownKeys() throws {
+        let profile = try JSONDecoder().decode(JSONObject.self, from: Data(#"{"height":182,"sex":"male","birthDate":"x","extra":[1,null]}"#.utf8))
+        var next = profile
+        next.merge(["height": .field("183,5")]) { $1 }
+        let back = try JSONDecoder().decode(JSONObject.self, from: JSONEncoder().encode(next))
+        XCTAssertEqual(back["height"], .number(183.5))
+        XCTAssertEqual(back["extra"], .array([.number(1), .null]))
+        XCTAssertEqual(back["birthDate"], profile["birthDate"])
+        XCTAssertEqual(JSONValue.field(""), .null)
+        XCTAssertEqual(JSONValue.number(80).string, "80")
+        XCTAssertEqual(ZonesSettingsView.pace(275), "4:35")
+    }
+
     func testTrainingDemoDecodes() {
         let t = DemoData.training
         XCTAssertEqual(t.week, 41)

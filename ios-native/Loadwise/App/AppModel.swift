@@ -121,6 +121,12 @@ final class AppModel {
         return f.string(from: moved)
     }
 
+    /// Settings → "Odhlásit se": ends the session on the server as well.
+    func logout() async {
+        if !demo { await api.logout() }
+        signOut()
+    }
+
     func signOut() {
         api.signOut()
         demo = false

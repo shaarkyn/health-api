@@ -8,6 +8,19 @@ enum DemoData {
         try! JSONDecoder().decode(TodaySnapshot.self, from: Data(json.utf8))
     }()
 
+    /// Sample profile and sources for Settings in the demo.
+    static let profile: JSONObject = [
+        "sex": .string("male"), "age": .number(38), "height": .number(182), "hrmax": .number(188), "rhr": .number(48),
+        "activity": .string("light"), "sportHours": .string("auto"), "goal": .string("lose_0.25"), "targetWeight": .number(80),
+        "mainSport": .string("running"), "sportGoal": .string("Půlmaraton pod 1:40"), "eventName": .string("Pražský půlmaraton"),
+        "eventDate": .string("2026-11-01"), "weeklyHours": .number(7)
+    ]
+
+    static let connections: [ConnectionsResponse.Provider] = [
+        .init(id: "google", name: "Google Health", connected: true, configured: true, missingPermissions: [], metrics: ["Spánek a fáze", "Aktivity", "Hmotnost", "Jídlo"], note: nil),
+        .init(id: "intervals", name: "Intervals.icu", connected: true, configured: true, missingPermissions: nil, metrics: ["Aktivity a plán", "Fitness / únava / forma", "Wellness"], note: nil)
+    ]
+
     /// Sample week in the shape of /app/api/training (generated with
     /// src/app-training.js from a made-up week).
     static let training: TrainingSnapshot = {
