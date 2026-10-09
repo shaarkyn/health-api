@@ -28,6 +28,8 @@ final class AppModel {
     private(set) var offline = false
     /// The day on the Today screen, nil for today.
     private(set) var selectedDate: String?
+    /// The server answered 426: this build is too old (src/app-version.js).
+    private(set) var updateRequired = false
 
     let api: APIClient
     private let auth: AuthService
@@ -36,6 +38,9 @@ final class AppModel {
         self.api = api
         self.auth = AuthService(api: api)
         self.demo = demo
+        api.onUpdateRequired = { [weak self] in
+            Task { @MainActor in self?.updateRequired = true }
+        }
         if demo {
             phase = .signedIn
             today = DemoData.today

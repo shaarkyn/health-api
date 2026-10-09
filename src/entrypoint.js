@@ -107,6 +107,7 @@ import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.
 import { englishScript } from './i18n.js';
 import { dateFormat } from "./date-format.js";
 import { lang, withLang, storedLanguage, rememberLanguage, L } from "./lang.js";
+import { appUpdateRequired } from "./app-version.js";
 import { DEFAULT_TIME_ZONE, validTimeZone, withTimeZone, storedTimeZone, rememberTimeZone, dayStartUtc, localNow, localToday, localDate, localHour, timeZone } from "./user-time.js";
 
 // A month of Google Health samples summed per day: thousands of rows that only a
@@ -258,6 +259,9 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
 export default {
   scheduled: worker.scheduled,
   async fetch(request, env, ctx) {
+    // An installed iPhone app older than the API answers with 426 (app-version.js).
+    const outdated = appUpdateRequired(request);
+    if (outdated) return isStaging(env) ? markStaging(outdated) : outdated;
     const response = await worker.fetch(request, env, ctx);
     return isStaging(env) ? markStaging(response) : response;
   }

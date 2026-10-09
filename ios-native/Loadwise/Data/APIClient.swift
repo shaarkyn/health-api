@@ -5,12 +5,15 @@ enum APIError: LocalizedError, Equatable {
     case message(String)
     /// AI features need the user's AI consent first (403 ai_consent_required).
     case aiConsentRequired(String)
+    /// The server no longer serves this version of the app (426, src/app-version.js).
+    case updateRequired(String)
 
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "Přihlášení vypršelo. Přihlas se znovu."
         case .message(let text): return text
         case .aiConsentRequired(let text): return text
+        case .updateRequired(let text): return text
         }
     }
 }
@@ -19,6 +22,13 @@ enum APIError: LocalizedError, Equatable {
 /// pfd_session cookie, which URLSession keeps in the shared cookie storage.
 final class APIClient: @unchecked Sendable {
     static let sessionCookie = "pfd_session"
+    /// The version of the server's API this app reads, sent as X-Loadwise-Api.
+    /// Raise it together with MIN_APP_API in src/app-version.js when a server
+    /// change breaks what installed apps expect; older apps then ask for an update.
+    static let apiLevel = 1
+
+    /// Called on the first 426: AppModel swaps the screens for the update notice.
+    var onUpdateRequired: (@Sendable () -> Void)?
 
     let baseURL: URL
     private let session: URLSession
@@ -404,6 +414,7 @@ final class APIClient: @unchecked Sendable {
         // The server counts days in the user's zone and answers in Czech.
         request.setValue(TimeZone.current.identifier, forHTTPHeaderField: "X-Time-Zone")
         request.setValue("cs", forHTTPHeaderField: "X-Interface-Language")
+        request.setValue(String(Self.apiLevel), forHTTPHeaderField: "X-Loadwise-Api")
         // Writes with the session cookie must come from the site's own origin.
         if method != "GET" && path.hasPrefix("/app/") {
             request.setValue(baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), forHTTPHeaderField: "Origin")
@@ -417,6 +428,10 @@ final class APIClient: @unchecked Sendable {
         guard (200..<300).contains(http.statusCode) else {
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             let message = json?["message"] as? String
+            if http.statusCode == 426 {
+                onUpdateRequired?()
+                throw APIError.updateRequired(message ?? "Tahle verze aplikace je zastaralá. Nainstaluj novou.")
+            }
             if json?["status"] as? String == "ai_consent_required" {
                 throw APIError.aiConsentRequired(message ?? "AI funkce potřebují tvůj souhlas.")
             }

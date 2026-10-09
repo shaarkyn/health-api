@@ -18,6 +18,14 @@ struct RootView: View {
     @State private var showCoach = false
 
     var body: some View {
+        if model.updateRequired {
+            UpdateRequiredView()
+        } else {
+            screens
+        }
+    }
+
+    @ViewBuilder private var screens: some View {
         switch model.phase {
         case .signedOut:
             LoginView()
@@ -44,6 +52,26 @@ struct RootView: View {
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showCoach) { CoachView() }
         }
+    }
+}
+
+/// The server no longer serves this build: data would not load or would come
+/// out wrong, so the app asks for the new version instead of the screens.
+struct UpdateRequiredView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "arrow.down.app")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(Palette.ink)
+            Text("Je potřeba nová verze").font(Typo.sentence(30, relativeTo: .title)).foregroundStyle(Palette.ink)
+            Text("Server se změnil a tahle verze aplikace už jeho data nepřečte správně. Nainstaluj novou verzi přes Sideloadly. Data zůstávají uložená na serveru.")
+                .font(.subheadline)
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.background)
     }
 }
 
