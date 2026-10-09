@@ -133,6 +133,11 @@ struct MacroCells: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
     }
 
+    private func share(_ amount: FoodSnapshot.Amount) -> Double {
+        guard let target = amount.target, target > 0 else { return 0 }
+        return (amount.eaten ?? 0) / target
+    }
+
     private func cell(_ title: String, _ amount: FoodSnapshot.Amount, _ color: Color, first: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(Typo.caption).foregroundStyle(Palette.muted)
@@ -141,7 +146,7 @@ struct MacroCells: View {
                 if let target = amount.target { Text("/ " + Fmt.int(target) + " g").font(Typo.number(15)).foregroundStyle(Palette.faint) }
             }
             .lineLimit(1).minimumScaleFactor(0.7)
-            ProgressLine(fraction: (amount.target ?? 0) > 0 ? (amount.eaten ?? 0) / (amount.target ?? 1) : 0, color: color, height: 3)
+            ProgressLine(fraction: share(amount), color: color, height: 3)
                 .padding(.trailing, 14)
         }
         .padding(.vertical, 16)
@@ -184,58 +189,87 @@ struct WaterRow: View {
 }
 
 struct MealRow: View {
-    @Environment(AppModel.self) private var model
     let meal: FoodSnapshot.Meal
     var add: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 16) {
-                Text(meal.time).font(Typo.number(20)).foregroundStyle(meal.entries.isEmpty ? Palette.faint : Palette.muted)
-                    .frame(width: 50, alignment: .leading)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(meal.label).font(.subheadline.weight(.medium)).foregroundStyle(meal.entries.isEmpty ? Palette.muted : Palette.ink)
-                    if let s = meal.suggestion, meal.entries.isEmpty {
-                        Text("doporučeno · ~" + Fmt.int(s.kcal) + " kcal" + (s.protein.map { $0 > 0 ? " · aspoň " + Fmt.int($0) + " g bílkovin" : "" } ?? ""))
-                            .font(Typo.caption).foregroundStyle(Palette.amber)
-                    }
-                }
-                Spacer(minLength: 8)
-                if let kcal = meal.kcal {
-                    Text(Fmt.int(kcal)).font(Typo.number(20)).foregroundStyle(Palette.ink)
-                }
-                Button(action: add) {
-                    Image(systemName: "plus").font(.system(size: 13, weight: .bold))
-                        .frame(width: 32, height: 32)
-                        .foregroundStyle(meal.entries.isEmpty ? Palette.onButton : Palette.ink)
-                        .background(meal.entries.isEmpty ? Palette.button : Color.clear, in: Circle())
-                        .overlay(Circle().stroke(Palette.ink.opacity(meal.entries.isEmpty ? 0 : 0.2), lineWidth: 1))
-                }
-                .accessibilityLabel("Přidat " + MealSlot.toMeal(meal.type))
-            }
-            .padding(.vertical, 12)
+            header
             ForEach(meal.entries) { entry in
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.name).font(Typo.small).foregroundStyle(Palette.secondary).lineLimit(2)
-                        if let detail = [entry.amount, entry.brand].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty {
-                            Text(detail).font(Typo.tiny).foregroundStyle(Palette.faint)
-                        }
-                    }
-                    Spacer()
-                    Text(Fmt.int(entry.kcal)).font(Typo.number(17)).foregroundStyle(Palette.muted)
-                }
-                .padding(.leading, 66)
-                .padding(.bottom, 10)
-                .contentShape(Rectangle())
-                .contextMenu {
-                    Button(role: .destructive) { Task { await model.deleteFood(id: entry.id) } } label: { Label("Smazat", systemImage: "trash") }
-                }
+                EntryRow(entry: entry)
             }
         }
     }
+
+    private var empty: Bool { meal.entries.isEmpty }
+
+    private var header: some View {
+        HStack(spacing: 16) {
+            Text(meal.time).font(Typo.number(20)).foregroundStyle(empty ? Palette.faint : Palette.muted)
+                .frame(width: 50, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(meal.label).font(.subheadline.weight(.medium)).foregroundStyle(empty ? Palette.muted : Palette.ink)
+                if let hint = suggestion {
+                    Text(hint).font(Typo.caption).foregroundStyle(Palette.amber)
+                }
+            }
+            Spacer(minLength: 8)
+            if let kcal = meal.kcal {
+                Text(Fmt.int(kcal)).font(Typo.number(20)).foregroundStyle(Palette.ink)
+            }
+            addButton
+        }
+        .padding(.vertical, 12)
+    }
+
+    private var addButton: some View {
+        let fill: Color = empty ? Palette.button : .clear
+        let tint: Color = empty ? Palette.onButton : Palette.ink
+        let ring: Double = empty ? 0 : 0.2
+        return Button(action: add) {
+            Image(systemName: "plus").font(.system(size: 13, weight: .bold))
+                .frame(width: 32, height: 32)
+                .foregroundStyle(tint)
+                .background(fill, in: Circle())
+                .overlay(Circle().stroke(Palette.ink.opacity(ring), lineWidth: 1))
+        }
+        .accessibilityLabel("Přidat " + MealSlot.toMeal(meal.type))
+    }
+
+    private var suggestion: String? {
+        guard empty, let s = meal.suggestion else { return nil }
+        var text = "doporučeno · ~" + Fmt.int(s.kcal) + " kcal"
+        if let protein = s.protein, protein > 0 { text += " · aspoň " + Fmt.int(protein) + " g bílkovin" }
+        return text
+    }
 }
 
-extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
+struct EntryRow: View {
+    @Environment(AppModel.self) private var model
+    let entry: FoodSnapshot.Entry
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.name).font(Typo.small).foregroundStyle(Palette.secondary).lineLimit(2)
+                if let detail {
+                    Text(detail).font(Typo.tiny).foregroundStyle(Palette.faint)
+                }
+            }
+            Spacer()
+            Text(Fmt.int(entry.kcal)).font(Typo.number(17)).foregroundStyle(Palette.muted)
+        }
+        .padding(.leading, 66)
+        .padding(.bottom, 10)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(role: .destructive) { Task { await model.deleteFood(id: entry.id) } } label: { Label("Smazat", systemImage: "trash") }
+        }
+    }
+
+    private var detail: String? {
+        let parts = [entry.amount, entry.brand].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 }
+
