@@ -40,17 +40,17 @@ final class APIClient: @unchecked Sendable {
     func today(date: String? = nil) async throws -> TodaySnapshot {
         var path = "/app/api/today"
         if let date { path += "?date=" + date }
-        return try await get(path)
+        return try await get(path, cacheKey: date == nil ? "today" : nil)
     }
 
     func training() async throws -> TrainingSnapshot {
-        try await get("/app/api/training")
+        try await get("/app/api/training", cacheKey: "training")
     }
 
     // MARK: - Health
 
     func health(date: String? = nil) async throws -> HealthSnapshot {
-        try await get("/app/api/health" + (date.map { "?date=" + $0 } ?? ""))
+        try await get("/app/api/health" + (date.map { "?date=" + $0 } ?? ""), cacheKey: date == nil ? "health" : nil)
     }
 
     func night(date: String) async throws -> NightDetail {
@@ -64,7 +64,7 @@ final class APIClient: @unchecked Sendable {
     // MARK: - Food
 
     func food(date: String? = nil) async throws -> FoodSnapshot {
-        try await get("/app/api/food-today" + (date.map { "?date=" + $0 } ?? ""))
+        try await get("/app/api/food-today" + (date.map { "?date=" + $0 } ?? ""), cacheKey: date == nil ? "food" : nil)
     }
 
     /// Personal foods, the shared catalog and recipes; with a barcode, that code.
@@ -160,14 +160,18 @@ final class APIClient: @unchecked Sendable {
 
     // MARK: - Plumbing
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
+    /// With a cache key the answer is also kept on disk (SnapshotCache).
+    private func get<T: Decodable>(_ path: String, cacheKey: String? = nil) async throws -> T {
         let (data, response) = try await session.data(for: makeRequest(path))
         try check(response, data)
+        let value: T
         do {
-            return try decoder.decode(T.self, from: data)
+            value = try decoder.decode(T.self, from: data)
         } catch {
             throw APIError.message("Odpověď serveru se nepodařilo přečíst.")
         }
+        if let cacheKey { SnapshotCache.save(data, key: cacheKey) }
+        return value
     }
 
     private func send<T: Decodable, B: Encodable>(_ path: String, method: String, body: B) async throws -> T {
