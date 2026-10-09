@@ -79,7 +79,8 @@ struct SleepDetailContent: View {
                 }
                 if let r = health.respiration { StatRow(title: "Dechová frekvence", value: Fmt.decimal(r.value), unit: "/ min") }
                 if let t = health.skinTemp { StatRow(title: "Teplota zápěstí", value: Fmt.signed(t.deviation, digits: 1), unit: "°C od normy") }
-                if let o = health.oxygen { StatRow(title: "Kyslík v krvi", value: Fmt.decimal(o.value, digits: o.value.rounded() == o.value ? 0 : 1), unit: "%") }
+                if let o = health.oxygen { StatRow(title: "Kyslík v krvi", value: Fmt.decimal(o.value, digits: o.value.rounded() == o.value ? 0 : 1), unit: "%") } else { AppleHealthRow(title: "Kyslík v krvi") }
+                AppleHealthRow(title: "Poruchy dýchání")
             }
             .padding(.top, 14)
 
@@ -128,6 +129,7 @@ struct SleepDetailContent: View {
                 VStack(spacing: 0) {
                     if let latency = night.latencyMinutes { StatRow(title: "Doba do usnutí", value: Fmt.int(latency), unit: "min") }
                     if let eff = night.efficiency { StatRow(title: "Efektivita spánku", value: String(eff), unit: "%") }
+                    AppleHealthRow(title: "Večerní hluk v ložnici")
                 }
                 .padding(.top, 18)
             }
@@ -188,6 +190,25 @@ struct StatRow: View {
         .padding(.vertical, 13)
         .overlay(alignment: .top) { Rectangle().fill(Palette.hairline).frame(height: 1) }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A value that will come from Apple Health once the app may read it (it
+/// needs the paid developer signing); until then the row stays empty.
+struct AppleHealthRow: View {
+    let title: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title).font(.body).foregroundStyle(Palette.ink)
+            HealthKitTag()
+            Spacer()
+            Text("–").font(Typo.number(22)).foregroundStyle(Palette.faint)
+        }
+        .padding(.vertical, 13)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.hairline).frame(height: 1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue("zatím bez dat z Apple Health")
     }
 }
 
@@ -315,6 +336,14 @@ struct HeartDetailContent: View {
                           band: rhr.baseline.map { ($0 - 2)...($0 + 2) }, height: 80)
                     .padding(.top, 8)
             }
+            SectionLabel(text: "Srdce a návyky").padding(.top, 32)
+            VStack(spacing: 0) {
+                AppleHealthRow(title: "Zotavení tepu po tréninku")
+                AppleHealthRow(title: "Tep při chůzi")
+                AppleHealthRow(title: "Dechová cvičení")
+                AppleHealthRow(title: "Nálada")
+            }
+            .padding(.top, 8)
         }
     }
 
@@ -385,13 +414,17 @@ struct WeightDetailContent: View {
                 ThreeCells(cells: [("Průměr 7 dní", Fmt.decimal(w.average)), ("Za 30 dní", w.change.map { Fmt.signed($0, digits: 1) } ?? "–"),
                                    ("Do cíle", w.goal.map { Fmt.decimal(max(0, (w.average ?? w.latest) - $0)) + " kg" } ?? "–")])
                     .padding(.top, 20)
-                if let fat = w.bodyFat {
-                    SectionLabel(text: "Složení těla").padding(.top, 32)
-                    VStack(spacing: 0) {
+                SectionLabel(text: "Složení těla").padding(.top, 32)
+                VStack(spacing: 0) {
+                    if let fat = w.bodyFat {
                         StatRow(title: "Tělesný tuk", value: Fmt.decimal(fat.value), unit: "%" + (fat.change.map { " · " + ($0 < 0 ? "↓ " : "↑ ") + Fmt.decimal(abs($0)) } ?? ""))
+                    } else {
+                        AppleHealthRow(title: "Tělesný tuk")
                     }
-                    .padding(.top, 8)
+                    AppleHealthRow(title: "Svalová hmota")
+                    AppleHealthRow(title: "Obvod pasu")
                 }
+                .padding(.top, 8)
             } else {
                 Text("Zatím žádné vážení.").font(Typo.sentence(26, relativeTo: .title2)).foregroundStyle(Palette.ink).padding(.top, 24)
             }

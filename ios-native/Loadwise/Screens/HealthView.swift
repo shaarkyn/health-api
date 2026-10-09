@@ -102,8 +102,12 @@ struct HealthContent: View {
                     if let hrv = health.hrv {
                         NavigationLink(value: HealthDetail.heart) { HRVWideWidget(hrv: hrv, restingHR: health.restingHR?.value) }.buttonStyle(.plain)
                     }
-                    if let rhr = health.restingHR {
-                        RestingHRWidget(restingHR: TodaySnapshot.RestingHR(value: rhr.value, baseline: rhr.baseline, series: rhr.series))
+                    WidgetRow {
+                        if let rhr = health.restingHR {
+                            RestingHRWidget(restingHR: TodaySnapshot.RestingHR(value: rhr.value, baseline: rhr.baseline, series: rhr.series))
+                        } else { Color.clear }
+                    } right: {
+                        AppleHealthWidget(title: "Nálada", color: Palette.gold)
                     }
                 }
             }
@@ -115,6 +119,7 @@ struct HealthContent: View {
                     }
                     .buttonStyle(.plain)
                     if let fat = weight.bodyFat { BodyFatWidget(fat: fat) }
+                    AppleHealthWidget(title: "Svalová hmota", color: Palette.brown)
                 } else {
                     NavigationLink(value: HealthDetail.weight) {
                         Card {
@@ -440,6 +445,21 @@ struct HRVWideWidget: View {
     private var status: String {
         guard let v = hrv.value, let low = hrv.low, let high = hrv.high else { return "30 dní" }
         return v > high ? "nad normou" : v < low ? "pod normou" : "v normě"
+    }
+}
+
+/// A widget for an Apple Health value; empty until the app may read Apple Health.
+struct AppleHealthWidget: View {
+    let title: String
+    let color: Color
+
+    var body: some View {
+        Card {
+            WidgetHeader(title: title, color: color, appleHealth: true)
+            Text("–").font(Typo.number(34)).foregroundStyle(Palette.faint)
+            Text("z Apple Health · zatím bez dat").font(Typo.caption).foregroundStyle(Palette.faint)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
