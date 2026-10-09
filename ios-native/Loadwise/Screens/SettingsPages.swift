@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 // The pages behind the Settings menu. Each edits a copy and saves with the
 // "Uložit" button in the bar; the server checks the values again.
@@ -331,6 +332,50 @@ struct UnitsSettingsView: View {
                     SettingsRow(title: unit.0, value: unit.1, chevron: false)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Reminders
+
+struct NotificationsSettingsView: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(Reminders.bedtimeKey) private var bedtime = true
+    @AppStorage(Reminders.workoutKey) private var workout = true
+    @AppStorage(Reminders.waterKey) private var water = true
+    @AppStorage(Reminders.foodKey) private var food = true
+    @State private var allowed: Bool?
+
+    var body: some View {
+        SettingsPage(title: "Oznámení") {
+            if allowed == false {
+                SettingsGroup(footer: "Oznámení pro Loadwise jsou v iPhonu vypnutá.") {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    } label: { SettingsRow(title: "Otevřít nastavení iPhonu", titleColor: Palette.blue) }
+                    .buttonStyle(.plain)
+                }
+            }
+            SettingsGroup(footer: "Připomínky se plánují v telefonu podle dnešních dat, nic dalšího se neposílá. Upozornění ze serveru a widgety na ploše přijdou s placeným vývojářským účtem.") {
+                SettingsToggle(title: "Čas do postele", subtitle: "půl hodiny před doporučeným časem", isOn: $bedtime)
+                SettingsDivider()
+                SettingsToggle(title: "Trénink", subtitle: "hodinu před naplánovaným tréninkem", isOn: $workout)
+                SettingsDivider()
+                SettingsToggle(title: "Pití", subtitle: "v 10, 13 a 16 h, dokud nemáš splněno", isOn: $water)
+                SettingsDivider()
+                SettingsToggle(title: "Zapsat jídlo", subtitle: "ve 20:30", isOn: $food)
+            }
+        }
+        .task { await check() }
+        .onChange(of: [bedtime, workout, water, food]) { Task { await check(); if let today = model.today { await Reminders.reschedule(from: today) } } }
+    }
+
+    private func check() async {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        if status == .notDetermined, bedtime || workout || water || food {
+            allowed = await Reminders.requestPermission()
+        } else {
+            allowed = status == .authorized || status == .provisional
         }
     }
 }

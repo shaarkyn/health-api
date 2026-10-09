@@ -97,6 +97,7 @@ final class AppModel {
             today = try await api.today(date: selectedDate)
             errorMessage = nil
             _ = noteConnection(nil)
+            if selectedDate == nil, let today { await Reminders.reschedule(from: today) }
         } catch APIError.unauthorized {
             signOut()
         } catch {
@@ -222,6 +223,7 @@ final class AppModel {
     func signOut() {
         api.signOut()
         SnapshotCache.clear()
+        Reminders.cancelAll()
         offline = false
         demo = false
         today = nil
