@@ -424,7 +424,7 @@ struct PrivacySettingsView: View {
         .onChange(of: ai) { _, value in
             guard aiLoaded else { return }
             Task {
-                do { try await model.api.setAI(value) } catch { self.error = error.localizedDescription; aiLoaded = false; ai = !value; aiLoaded = true }
+                do { try await model.api.setAI(value); error = nil } catch { self.error = "Změna se neuložila: " + error.localizedDescription }
             }
         }
         .alert("Smazat účet?", isPresented: $confirmDelete) {
