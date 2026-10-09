@@ -70,7 +70,7 @@ jobs:
           xcrun simctl install "$udid" build/Build/Products/Debug-iphonesimulator/Loadwise.app
           for mode in light dark; do
             xcrun simctl ui "$udid" appearance "$mode"
-            for tab in today training; do
+            for tab in today training health food; do
               xcrun simctl launch --terminate-running-process "$udid" eu.petrfitnessdata.loadwise.native -demo -tab "$tab"
               sleep 6
               xcrun simctl io "$udid" screenshot "$GITHUB_WORKSPACE/screens/simulator-$tab-$mode.png"

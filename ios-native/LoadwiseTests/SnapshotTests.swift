@@ -24,6 +24,50 @@ final class SnapshotTests: XCTestCase {
         try render("training-form", glow: Palette.Glow.training) { FormDetailContent(training: DemoData.training).padding(.top, 50).padding(.bottom, 40) }
     }
 
+    func testHealthScreens() throws {
+        let health = DemoData.health
+        try render("health", glow: Palette.Glow.health) { NavigationStack { HealthContent(health: health) }.padding(.top, 50).padding(.bottom, 40) }
+        try render("health-readiness", glow: Palette.Glow.health) { ReadinessDetailContent(health: health).padding(24).padding(.top, 30) }
+        try render("health-sleep", glow: Palette.Glow.health) { SleepDetailContent(health: health, detail: nil).padding(24).padding(.top, 30) }
+        try render("health-heart", glow: Palette.Glow.health) { HeartDetailContent(health: health).padding(24).padding(.top, 30) }
+        try render("health-weight", glow: Palette.Glow.health) { WeightDetailContent(health: health).padding(24).padding(.top, 30) }
+    }
+
+    func testFoodScreens() throws {
+        try render("food", glow: Palette.Glow.food) { FoodContent(food: DemoData.food).padding(.top, 50).padding(.bottom, 40).environment(AppModel(demo: true)) }
+        try render("food-amount", height: 700) { NavigationStack { FoodAmountView(product: DemoData.foods[0], meal: "snack_pm") }.environment(AppModel(demo: true)) }
+    }
+
+    func testHealthAndFoodDecode() throws {
+        let h = DemoData.health
+        XCTAssertEqual(h.readiness.score, 89)
+        XCTAssertEqual(h.readiness.parts.map(\.key), ["hrv", "restingHR", "sleep"])
+        XCTAssertEqual(h.sleep.night?.stages?.deep, 83)
+        let f = DemoData.food
+        XCTAssertEqual(f.meals.map(\.type), ["breakfast", "snack_am", "lunch", "snack_pm", "dinner"])
+        XCTAssertEqual(f.meals[3].suggestion?.kcal, 360)
+        let yogurt = DemoData.foods[0]
+        XCTAssertEqual(yogurt.defaultAmount, 140)
+        XCTAssertEqual(yogurt.kcal(for: 140) ?? 0, 133, accuracy: 0.01)
+        XCTAssertEqual(MealSlot.now(Calendar.current.date(bySettingHour: 15, minute: 0, second: 0, of: Date())!), "snack_pm")
+        // Lenient product decoding: text numbers and unknown keys.
+        let product = try JSONDecoder().decode(FoodProduct.self, from: Data(#"{"name":"Rohlík","calories_100g":"287","protein_100g":9.2,"serving_size":"43 g","id":12,"confidence":"high"}"#.utf8))
+        XCTAssertEqual(product.calories_100g, 287)
+        XCTAssertEqual(product.defaultAmount, 43)
+        // The empty shapes the server returns without data.
+        let emptyHealth = """
+        {"status":"ok","date":"2026-10-08","readiness":{"score":null,"zone":null,"missing":[],"flags":[],"parts":[],"hrv":null,"restingHR":null,"sleepMinutes":null,"strainYesterday":null,"history":[]},
+         "sleep":{"night":null,"week":[],"need":480,"tonight":{"need":480,"base":480,"strain":0,"hrv":0,"debt":0,"naps":0,"bedtime":null,"wake":null},"debt":null,"regularity":null},
+         "hrv":null,"restingHR":null,"respiration":null,"skinTemp":null,"oxygen":null,"weight":null}
+        """
+        XCTAssertNil(try JSONDecoder().decode(HealthSnapshot.self, from: Data(emptyHealth.utf8)).weight)
+        let emptyFood = """
+        {"status":"ok","date":"2026-10-08","kcal":0,"target":null,"trainingBonus":null,"sentence":null,
+         "macros":{"carbs":{"eaten":0,"target":null},"protein":{"eaten":0,"target":null},"fat":{"eaten":0,"target":null}},"meals":[],"water":{"ml":null,"target":null,"entries":0}}
+        """
+        XCTAssertTrue(try JSONDecoder().decode(FoodSnapshot.self, from: Data(emptyFood.utf8)).meals.isEmpty)
+    }
+
     func testSettingsScreens() throws {
         let store = SettingsStore(api: APIClient(), demo: true)
         try render("settings", height: 1100) { NavigationStack { SettingsMenu(store: store) }.environment(AppModel(demo: true)) }

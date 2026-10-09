@@ -47,6 +47,62 @@ final class APIClient: @unchecked Sendable {
         try await get("/app/api/training")
     }
 
+    // MARK: - Health
+
+    func health(date: String? = nil) async throws -> HealthSnapshot {
+        try await get("/app/api/health" + (date.map { "?date=" + $0 } ?? ""))
+    }
+
+    func night(date: String) async throws -> NightDetail {
+        try await get("/app/api/night?date=" + date)
+    }
+
+    func addWeight(kg: Double) async throws {
+        let _: JSONValue = try await send("/app/api/weight", method: "POST", body: ["kg": JSONValue.number(kg)])
+    }
+
+    // MARK: - Food
+
+    func food(date: String? = nil) async throws -> FoodSnapshot {
+        try await get("/app/api/food-today" + (date.map { "?date=" + $0 } ?? ""))
+    }
+
+    /// Personal foods, the shared catalog and recipes; with a barcode, that code.
+    func searchFood(name: String, barcode: String? = nil) async throws -> [FoodProduct] {
+        var body: JSONObject = ["name": .string(name)]
+        if let barcode { body["barcode"] = .string(barcode) }
+        let response: FoodSearchResponse = try await send("/app/api/food/search", method: "POST", body: body)
+        return response.candidates ?? response.product.map { [$0] } ?? []
+    }
+
+    /// Foods saved before (newest first).
+    func personalFoods() async throws -> [FoodProduct] {
+        struct Response: Decodable { let products: [FoodProduct]? }
+        let response: Response = try await get("/app/api/food/personal")
+        return response.products ?? []
+    }
+
+    /// AI lookup of a food by name or barcode (counts against the AI allowance).
+    func lookupFood(name: String, barcode: String? = nil) async throws -> FoodProduct? {
+        var body: JSONObject = ["name": .string(name)]
+        if let barcode { body["barcode"] = .string(barcode) }
+        let response: FoodLookupResponse = try await send("/app/api/food/ai-lookup", method: "POST", body: body)
+        return response.status == "ok" ? response.product : nil
+    }
+
+    func logFood(_ request: FoodLogRequest) async throws {
+        let _: JSONValue = try await send("/app/api/food/log", method: "POST", body: request)
+    }
+
+    func deleteFoodEntry(id: Int) async throws {
+        let _: JSONValue = try await send("/app/api/food/entry", method: "DELETE", body: ["id": JSONValue.number(Double(id))])
+    }
+
+    /// water, coffee, tea, juice, milk, sport or other.
+    func addFluid(ml: Int, kind: String = "water") async throws {
+        let _: JSONValue = try await send("/app/api/fluids", method: "POST", body: ["ml": JSONValue.number(Double(ml)), "kind": .string(kind)])
+    }
+
     // MARK: - Settings
 
     func profile() async throws -> JSONObject {
