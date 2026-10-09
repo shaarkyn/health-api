@@ -105,6 +105,7 @@ struct AddSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var food = false
     @State private var weight = false
+    @State private var workout = false
     @State private var water: String?
 
     var body: some View {
@@ -124,6 +125,7 @@ struct AddSheet: View {
                     }
                 }
                 tile("Váha", "scalemass") { weight = true }
+                tile("Trénink", "figure.run") { workout = true }
             }
             Spacer()
         }
@@ -132,6 +134,7 @@ struct AddSheet: View {
         .presentationBackground(Palette.background)
         .sheet(isPresented: $food, onDismiss: { dismiss() }) { AddFoodSheet(meal: MealSlot.now()) }
         .sheet(isPresented: $weight, onDismiss: { dismiss() }) { WeightEntrySheet() }
+        .sheet(isPresented: $workout, onDismiss: { dismiss() }) { ManualWorkoutSheet() }
     }
 
     private func tile(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {

@@ -47,6 +47,76 @@ final class APIClient: @unchecked Sendable {
         try await get("/app/api/training", cacheKey: "training")
     }
 
+    // MARK: - Workouts
+
+    func gym(date: String) async throws -> GymDay {
+        try await get("/app/api/gym?date=" + date)
+    }
+
+    /// Saves the whole plan (the server keeps the sheet and the history of sets).
+    func saveGym(_ day: GymDay, date: String) async throws {
+        var body = day.saveBody
+        body["date"] = .string(date)
+        let _: JSONValue = try await send("/app/api/gym", method: "POST", body: body)
+    }
+
+    /// Builds the day's gym plan (deterministic, not AI) and puts it in Intervals.icu.
+    func generateGym(date: String, minutes: Int) async throws {
+        let _: JSONValue = try await send("/app/api/gym/generate", method: "POST",
+                                          body: ["date": JSONValue.string(date), "durationMinutes": .number(Double(minutes)), "userInitiated": .bool(true)])
+    }
+
+    func gymTechnique(exercise: String) async throws -> GymTechnique {
+        struct Response: Decodable { let technique: GymTechnique }
+        let r: Response = try await get("/app/api/gym/technique?exercise=" + Self.query(exercise))
+        return r.technique
+    }
+
+    func gymAlternatives(date: String, exercise: String) async throws -> [GymAlternative] {
+        struct Response: Decodable { let alternatives: [GymAlternative]? }
+        let r: Response = try await get("/app/api/gym/alternatives?date=" + date + "&exercise=" + Self.query(exercise))
+        return r.alternatives ?? []
+    }
+
+    func activityDetail(id: String) async throws -> ActivityDetail {
+        try await get("/app/api/activity-detail?id=" + Self.query(id))
+    }
+
+    func plannedWorkout(eventId: String) async throws -> PlannedWorkout {
+        try await get("/app/api/workouts/planned?id=" + Self.query(eventId))
+    }
+
+    func movePlanned(eventId: String, to date: String) async throws {
+        let _: JSONValue = try await send("/app/api/planned/move", method: "POST", body: ["eventId": JSONValue.string(eventId), "date": .string(date)])
+    }
+
+    func deletePlanned(eventId: String) async throws {
+        let _: JSONValue = try await send("/app/api/planned/delete", method: "POST", body: ["eventId": JSONValue.string(eventId)])
+    }
+
+    func setPlannedEnvironment(eventId: String, indoor: Bool) async throws {
+        let _: JSONValue = try await send("/app/api/planned/environment", method: "POST",
+                                          body: ["eventId": JSONValue.string(eventId), "environment": .string(indoor ? "indoor" : "outdoor")])
+    }
+
+    /// How a session went (RPE 1–10 and a note) for the coach.
+    func reflection(date: String, rpe: Int, notes: String) async throws {
+        let _: JSONValue = try await send("/app/api/coach/reflections", method: "POST",
+                                          body: ["date": JSONValue.string(date), "rpe": .number(Double(rpe)), "notes": .string(notes)])
+    }
+
+    /// A session typed in: sport ride, run or gym; done (past) or planned (future).
+    func manualWorkout(name: String, date: String, sport: String, minutes: Int, completed: Bool, rpe: Int?, notes: String) async throws {
+        var body: JSONObject = ["name": .string(name), "date": .string(date), "sport": .string(sport), "minutes": .number(Double(minutes)),
+                                "completed": .bool(completed), "notes": .string(notes), "requestId": .string(UUID().uuidString)]
+        if let rpe { body["rpe"] = .number(Double(rpe)) }
+        let _: JSONValue = try await send("/app/api/workouts/manual", method: "POST", body: body)
+    }
+
+    static func query(_ text: String) -> String {
+        text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))) ?? text
+    }
+
     // MARK: - Health
 
     func health(date: String? = nil) async throws -> HealthSnapshot {
