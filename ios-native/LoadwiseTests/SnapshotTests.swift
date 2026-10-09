@@ -112,6 +112,18 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(sessions.first { $0.eventId != nil }?.eventId, "planned:42")
     }
 
+    func testCoachActions() throws {
+        let json = #"{"status":"ok","answer":"**Dnes** lehce.","chatId":12,"actions":[{"type":"move","eventId":"planned:9","date":"2026-10-10","reason":"Nohy potřebují den navíc.","draftId":456,"eventSnapshot":{"name":"Dlouhý běh","date":"2026-10-09","durationHours":1.5}},{"type":"workout","date":"2026-10-09","sport":"ride","minutes":60,"draftId":457,"preview":{"x":1}}]}"#
+        let result = try JSONDecoder().decode(AssistantResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.chatId, 12)
+        XCTAssertEqual(result.actions?.count, 2)
+        XCTAssertEqual(result.actions?[0].title, "Přesunout „Dlouhý běh“ na So 10. října")
+        XCTAssertEqual(result.actions?[1].title, "Naplánovat: jízda · 1 h · Pá 9. října")
+        try render("coach-action", height: 300) {
+            VStack { ForEach(result.actions ?? []) { ActionCard(action: $0, result: nil, decide: { _ in }) } }.padding(24)
+        }
+    }
+
     func testSettingsScreens() throws {
         let store = SettingsStore(api: APIClient(), demo: true)
         try render("settings", height: 1100) { NavigationStack { SettingsMenu(store: store) }.environment(AppModel(demo: true)) }

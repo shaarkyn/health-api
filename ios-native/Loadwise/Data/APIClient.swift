@@ -3,11 +3,14 @@ import Foundation
 enum APIError: LocalizedError, Equatable {
     case unauthorized
     case message(String)
+    /// AI features need the user's AI consent first (403 ai_consent_required).
+    case aiConsentRequired(String)
 
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "Přihlášení vypršelo. Přihlas se znovu."
         case .message(let text): return text
+        case .aiConsentRequired(let text): return text
         }
     }
 }
@@ -45,6 +48,87 @@ final class APIClient: @unchecked Sendable {
 
     func training() async throws -> TrainingSnapshot {
         try await get("/app/api/training", cacheKey: "training")
+    }
+
+    // MARK: - Coach
+
+    /// Asks the coach; yields the answer as it grows and the final result.
+    func askCoach(_ message: String, chatId: Int?, view: String) -> AsyncThrowingStream<AssistantEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = makeRequest("/app/api/assistant", method: "POST")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("application/x-ndjson, application/json", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = 180
+                    var body: JSONObject = ["message": .string(message), "stream": .bool(true), "mode": .string("coach"),
+                                            "appContext": .object(["view": .string(view), "date": .string(Self.localToday())])]
+                    if let chatId { body["chatId"] = .number(Double(chatId)) }
+                    request.httpBody = try JSONEncoder().encode(body)
+                    let (bytes, response) = try await session.bytes(for: request)
+                    let http = response as? HTTPURLResponse
+                    let streaming = (http?.value(forHTTPHeaderField: "Content-Type") ?? "").contains("ndjson")
+                    if !streaming {
+                        // Gate failures and the short answers come as plain JSON.
+                        var data = Data()
+                        for try await byte in bytes { data.append(byte) }
+                        try check(response, data)
+                        continuation.yield(.done(try decoder.decode(AssistantResult.self, from: data)))
+                        continuation.finish()
+                        return
+                    }
+                    for try await line in bytes.lines {
+                        guard let data = line.data(using: .utf8),
+                              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                        switch object["type"] as? String {
+                        case "progress": continuation.yield(.progress(object["message"] as? String ?? ""))
+                        case "answer": continuation.yield(.answer(object["answer"] as? String ?? ""))
+                        case "error": throw APIError.message(object["message"] as? String ?? "Kouč teď neodpověděl.")
+                        case "done":
+                            let result = try JSONSerialization.data(withJSONObject: object["result"] ?? [:])
+                            continuation.yield(.done(try decoder.decode(AssistantResult.self, from: result)))
+                        default: break
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    func decideCoachAction(draftId: Int, confirm: Bool) async throws -> String? {
+        struct Response: Decodable { let message: String? }
+        let r: Response = try await send("/app/api/assistant/action", method: "POST",
+                                         body: ["draftId": JSONValue.number(Double(draftId)), "decision": .string(confirm ? "confirm" : "reject")])
+        return r.message
+    }
+
+    func chats() async throws -> [ChatSummary] {
+        struct Response: Decodable { let chats: [ChatSummary]? }
+        let r: Response = try await get("/app/api/assistant/chats")
+        return r.chats ?? []
+    }
+
+    func chat(id: Int) async throws -> ChatDetail {
+        struct Response: Decodable { let chat: ChatDetail }
+        let r: Response = try await get("/app/api/assistant/chats/\(id)")
+        return r.chat
+    }
+
+    func deleteChat(id: Int) async throws {
+        let _: JSONValue = try await send("/app/api/assistant/chats/\(id)", method: "DELETE", body: JSONObject())
+    }
+
+    func coaches(date: String) async throws -> CoachesSnapshot {
+        try await get("/app/api/coaches?date=" + date)
+    }
+
+    /// Turns on the AI features (the user's consent, as in the web settings).
+    func allowAI() async throws {
+        let _: JSONValue = try await send("/app/api/consent", method: "POST", body: ["ai": JSONValue.bool(true)])
     }
 
     // MARK: - Workouts
@@ -111,6 +195,15 @@ final class APIClient: @unchecked Sendable {
                                 "completed": .bool(completed), "notes": .string(notes), "requestId": .string(UUID().uuidString)]
         if let rpe { body["rpe"] = .number(Double(rpe)) }
         let _: JSONValue = try await send("/app/api/workouts/manual", method: "POST", body: body)
+    }
+
+    /// Today's date in the phone's zone, usable off the main actor.
+    static func localToday() -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     static func query(_ text: String) -> String {
@@ -277,7 +370,11 @@ final class APIClient: @unchecked Sendable {
         guard let http = response as? HTTPURLResponse else { throw APIError.message("Server neodpověděl.") }
         if http.statusCode == 401 { throw APIError.unauthorized }
         guard (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["message"] as? String
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let message = json?["message"] as? String
+            if json?["status"] as? String == "ai_consent_required" {
+                throw APIError.aiConsentRequired(message ?? "AI funkce potřebují tvůj souhlas.")
+            }
             throw APIError.message(message ?? "Server odpověděl chybou \(http.statusCode).")
         }
     }

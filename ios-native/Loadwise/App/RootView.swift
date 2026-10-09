@@ -15,6 +15,7 @@ struct RootView: View {
     }()
     @State private var showAdd = false
     @State private var showSettings = false
+    @State private var showCoach = false
 
     var body: some View {
         switch model.phase {
@@ -24,7 +25,7 @@ struct RootView: View {
             ZStack(alignment: .bottom) {
                 Group {
                     switch tab {
-                    case .today: TodayView(openSettings: { showSettings = true })
+                    case .today: TodayView(openSettings: { showSettings = true }, openCoach: { showCoach = true })
                     case .training: TrainingView()
                     case .food: FoodView()
                     case .health: HealthView()
@@ -41,6 +42,7 @@ struct RootView: View {
             }
             .sheet(isPresented: $showAdd) { AddSheet() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showCoach) { CoachView() }
         }
     }
 }
