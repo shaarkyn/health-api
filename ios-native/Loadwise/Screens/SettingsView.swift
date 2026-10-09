@@ -111,8 +111,8 @@ struct SettingsMenu: View {
             .buttonStyle(.plain)
 
             SettingsGroup(title: "Ostatní") {
-                Link(destination: URL(string: "https://petrfitnessdata.eu/app")!) {
-                    SettingsRow(icon: SettingsIcon(systemImage: "lock.fill", color: Palette.faint), title: "Soukromí a export dat", subtitle: "ve webové aplikaci")
+                NavigationLink { PrivacySettingsView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "lock.fill", color: Palette.faint), title: "Soukromí a data")
                 }
                 SettingsDivider()
                 Link(destination: URL(string: "https://petrfitnessdata.eu/app")!) {

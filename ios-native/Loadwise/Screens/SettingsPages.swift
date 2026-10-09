@@ -379,3 +379,79 @@ struct NotificationsSettingsView: View {
         }
     }
 }
+
+// MARK: - Privacy and the account
+
+struct PrivacySettingsView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var ai = false
+    @State private var aiLoaded = false
+    @State private var exportURL: URL?
+    @State private var exporting = false
+    @State private var confirmDelete = false
+    @State private var deleteText = ""
+    @State private var error: String?
+
+    var body: some View {
+        SettingsPage(title: "Soukromí a data") {
+            SettingsGroup(footer: "Kouč, čtení fotek jídla a dohledání potravin posílají potřebná data k AI. Bez souhlasu fungují ostatní části aplikace dál.") {
+                SettingsToggle(title: "AI funkce", isOn: $ai, disabled: !aiLoaded || model.demo)
+            }
+            SettingsGroup(footer: "Soubor JSON se vším, co o tobě Loadwise ukládá.") {
+                if let exportURL {
+                    ShareLink(item: exportURL) { SettingsRow(title: "Sdílet soubor s daty", chevron: false, titleColor: Palette.blue) }
+                } else {
+                    Button { Task { await export() } } label: {
+                        SettingsRow(title: exporting ? "Připravuji…" : "Stáhnout moje data", chevron: false, titleColor: Palette.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(exporting || model.demo)
+                }
+            }
+            SettingsGroup(footer: "Smaže účet i všechna data na serveru. Nejde vrátit. Data v Intervals.icu a Google zůstanou, kde jsou.") {
+                Button { confirmDelete = true } label: { SettingsRow(title: "Smazat účet", chevron: false, titleColor: Palette.rust) }
+                    .buttonStyle(.plain)
+                    .disabled(model.demo)
+            }
+            if let error { Text(error).font(Typo.small).foregroundStyle(Palette.rust) }
+        }
+        .task {
+            guard !model.demo else { return }
+            ai = (try? await model.api.aiAllowed()) ?? false
+            aiLoaded = true
+        }
+        .onChange(of: ai) { _, value in
+            guard aiLoaded else { return }
+            Task {
+                do { try await model.api.setAI(value) } catch { self.error = error.localizedDescription; aiLoaded = false; ai = !value; aiLoaded = true }
+            }
+        }
+        .alert("Smazat účet?", isPresented: $confirmDelete) {
+            TextField("SMAZAT", text: $deleteText).textInputAutocapitalization(.characters)
+            Button("Smazat", role: .destructive) { Task { await delete() } }
+            Button("Zrušit", role: .cancel) { deleteText = "" }
+        } message: {
+            Text("Pro potvrzení napiš SMAZAT.")
+        }
+    }
+
+    private func export() async {
+        exporting = true
+        defer { exporting = false }
+        do { exportURL = try await model.api.exportData() } catch { self.error = error.localizedDescription }
+    }
+
+    private func delete() async {
+        guard deleteText.trimmingCharacters(in: .whitespaces).uppercased() == "SMAZAT" else {
+            error = "Účet zůstal: pro smazání je potřeba napsat SMAZAT."
+            return
+        }
+        do {
+            try await model.api.deleteAccount()
+            model.signOut()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}

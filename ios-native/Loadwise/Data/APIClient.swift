@@ -126,6 +126,33 @@ final class APIClient: @unchecked Sendable {
         try await get("/app/api/coaches?date=" + date)
     }
 
+    /// Whether the AI features are allowed (GET /app/api/me → consent).
+    func aiAllowed() async throws -> Bool {
+        struct Consent: Decodable { let aiAllowed: Bool? }
+        struct Me: Decodable { let consent: Consent? }
+        let me: Me = try await get("/app/api/me")
+        return me.consent?.aiAllowed ?? false
+    }
+
+    func setAI(_ allowed: Bool) async throws {
+        let _: JSONValue = try await send("/app/api/consent", method: "POST", body: ["ai": JSONValue.bool(allowed)])
+    }
+
+    /// All the account's data as a JSON file in the temporary folder, to share.
+    func exportData() async throws -> URL {
+        let (data, response) = try await session.data(for: makeRequest("/app/api/account/export"))
+        try check(response, data)
+        let url = FileManager.default.temporaryDirectory.appending(path: "loadwise-data-" + Self.localToday() + ".json")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    /// Deletes the account and everything in it (the user typed SMAZAT).
+    func deleteAccount() async throws {
+        let _: JSONValue = try await send("/app/api/account/delete", method: "POST", body: ["confirm": JSONValue.string("SMAZAT")])
+        signOut()
+    }
+
     /// Turns on the AI features (the user's consent, as in the web settings).
     func allowAI() async throws {
         let _: JSONValue = try await send("/app/api/consent", method: "POST", body: ["ai": JSONValue.bool(true)])
