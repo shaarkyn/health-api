@@ -18,9 +18,16 @@ installed side by side (different bundle IDs).
   - steps;
   - resting heart rate;
   - weight.
+- The Training screen (`/app/api/training`):
+  - today's strain and where the plan takes it;
+  - the week Monday to Sunday;
+  - the next session;
+  - the main event and the phase of the preparation;
+  - form, VO2max, this week, active energy and heart-rate zones;
+  - tap Form for the detail (fitness and fatigue, weekly load, intensity).
 - "Prohlédnout ukázku" on the sign-in screen shows sample data without an
   account.
-- Training, Food and Health are placeholders that link to the web app.
+- Food and Health are placeholders that link to the web app.
 
 ## Build without a Mac
 

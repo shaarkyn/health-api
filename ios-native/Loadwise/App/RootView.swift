@@ -6,7 +6,8 @@ enum AppTab: Hashable {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    @State private var tab: AppTab = .today
+    // "-tab training" (simulator screenshots) opens another tab first.
+    @State private var tab: AppTab = ProcessInfo.processInfo.arguments.contains("training") ? .training : .today
     @State private var showAdd = false
     @State private var showSettings = false
 
@@ -19,7 +20,7 @@ struct RootView: View {
                 Group {
                     switch tab {
                     case .today: TodayView(openSettings: { showSettings = true })
-                    case .training: ComingSoonView(title: "Trénink", glow: Palette.Glow.training, text: "Zátěž, forma, plán tréninků a závod přijdou v dalším kroku.")
+                    case .training: TrainingView()
                     case .food: ComingSoonView(title: "Jídlo", glow: Palette.Glow.food, text: "Jídla dne, přidávání a skener přijdou v dalším kroku.")
                     case .health: ComingSoonView(title: "Zdraví", glow: Palette.Glow.health, text: "Spánek, srdce a tělo přijdou v dalším kroku.")
                     }

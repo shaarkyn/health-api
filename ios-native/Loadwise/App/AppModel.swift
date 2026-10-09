@@ -12,6 +12,8 @@ final class AppModel {
 
     private(set) var phase: Phase
     private(set) var today: TodaySnapshot?
+    private(set) var training: TrainingSnapshot?
+    var trainingError: String?
     private(set) var loading = false
     private(set) var signingIn = false
     var errorMessage: String?
@@ -30,6 +32,7 @@ final class AppModel {
         if demo {
             phase = .signedIn
             today = DemoData.today
+            training = DemoData.training
         } else {
             phase = api.hasSession ? .signedIn : .signedOut
         }
@@ -54,6 +57,7 @@ final class AppModel {
     func showDemo() {
         demo = true
         today = DemoData.today
+        training = DemoData.training
         phase = .signedIn
     }
 
@@ -68,6 +72,18 @@ final class AppModel {
             signOut()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshTraining() async {
+        guard !demo, phase == .signedIn else { return }
+        do {
+            training = try await api.training()
+            trainingError = nil
+        } catch APIError.unauthorized {
+            signOut()
+        } catch {
+            trainingError = error.localizedDescription
         }
     }
 
@@ -109,6 +125,7 @@ final class AppModel {
         api.signOut()
         demo = false
         today = nil
+        training = nil
         selectedDate = nil
         phase = .signedOut
     }

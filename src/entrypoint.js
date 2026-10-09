@@ -26,6 +26,7 @@ import {getCookbookRecipeByPage,useCookbookDatabase,saveCookbook} from './cookbo
 import {googleDashboard} from './google-dashboard.js';
 import {applyEnergyBudget} from './energy-budget.js';
 import {buildToday} from './app-today.js';
+import {buildTraining, weekStart} from './app-training.js';
 import {normalizeProfile} from './energy-profile.js';
 import {athleteFocus} from './athlete-focus.js';
 import {loadEffectiveProfile,refreshSuggestions} from './profile-suggestions.js';
@@ -1135,6 +1136,26 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     }catch(error){return Response.json({message:error.message},{status:500})}
   }
 
+  // The native app's Training screen (app-training.js): the week Monday to
+  // Sunday and the coming week for the next session, cached for two minutes.
+  if(url.pathname==='/app/api/training'&&request.method==='GET'){
+    try{
+      const date=localToday(),start=weekStart(date),end=shiftDate(date,7)>shiftDate(start,6)?shiftDate(date,7):shiftDate(start,6);
+      const dates=[];for(let d=start;d<=end;d=shiftDate(d,1))dates.push(d);
+      const read=path=>app.fetch(new Request('https://internal'+path,{headers:internalAuth}),env,ctx).then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const api=path=>handleDashboardApi(new Request(url.origin+path,{headers:request.headers}),env,ctx,new URL(url.origin+path),session).then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const [days,gym,health,fitness,insights,coaches,profile]=await Promise.all([
+        cached(env,ctx,'training-days:'+start+':'+date,()=>mapLimit(dates,3,async d=>({date:d,daily:await read('/analysis/daily?date='+d)})),{ttl:120}),
+        trainingGymPlans(env,start,end).catch(()=>({})),
+        googleHealthFor(env,ctx,date).catch(()=>({})),
+        cached(env,ctx,'fitness:180',()=>api('/app/api/fitness?days=180')).catch(()=>({})),
+        loadFitnessInsights(env.DB,date).catch(()=>({})),
+        api('/app/api/coaches?date='+date),dashboardProfile(env).catch(()=>null)
+      ]);
+      return Response.json(buildTraining({date,days,gym,health,fitness,insights,coaches,profile:profile||{}}),{headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({message:error.message},{status:500})}
+  }
+
   if(url.pathname==='/app/api/coaches'&&request.method==='GET'){
     try{
       // Up to two weeks ahead: the advisers then talk about the planned day.
@@ -1686,6 +1707,23 @@ function userWeekStart() {
   return shiftDate(`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`, -index);
 }
 // Like Promise.all over items, with at most `limit` running at a time; keeps order.
+// Saved gym plans per day (not cancelled): the name and the exercises in order.
+async function trainingGymPlans(env,from,to){
+  await ensureGymPlans(env.DB);
+  const [plans,cancelled]=await Promise.all([
+    env.DB.prepare('SELECT workout_date,values_json FROM gym_plans WHERE user_id=? AND workout_date>=? AND workout_date<=?').bind(env.USER_ID,from,to).all(),
+    env.DB.prepare('SELECT workout_date FROM gym_plan_cancellations WHERE user_id=? AND workout_date>=? AND workout_date<=?').bind(env.USER_ID,from,to).all()
+  ]);
+  const skip=new Set((cancelled.results||[]).map(r=>r.workout_date)),out={};
+  for(const r of plans.results||[]){
+    if(skip.has(r.workout_date))continue;
+    let v=[];try{v=JSON.parse(r.values_json);}catch{}
+    const rows=(Array.isArray(v)?v.slice(7):[]).filter(x=>x?.[1]);
+    if(rows.length)out[r.workout_date]={name:String(v[2]?.[3]||'').slice(0,120),exercises:[...new Set(rows.map(x=>String(x[1]).slice(0,80)))]};
+  }
+  return out;
+}
+
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);let next = 0;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); } }));

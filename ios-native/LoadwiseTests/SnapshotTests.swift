@@ -16,6 +16,27 @@ final class SnapshotTests: XCTestCase {
         try render("today", glow: Palette.Glow.today) { TodayContent(today: DemoData.today).padding(.top, 50).padding(.bottom, 40).environment(AppModel(demo: true)) }
     }
 
+    func testTrainingScreen() throws {
+        try render("training", glow: Palette.Glow.training) { TrainingContent(training: DemoData.training).padding(.top, 50).padding(.bottom, 40).environment(AppModel(demo: true)) }
+    }
+
+    func testFormDetailScreen() throws {
+        try render("training-form", glow: Palette.Glow.training) { FormDetailContent(training: DemoData.training).padding(.top, 50).padding(.bottom, 40) }
+    }
+
+    func testTrainingDemoDecodes() {
+        let t = DemoData.training
+        XCTAssertEqual(t.week, 41)
+        XCTAssertEqual(t.days.count, 7)
+        XCTAssertEqual(t.next?.exercises.first, "Dřep")
+        XCTAssertEqual(t.event?.phases.map(\.state), ["done", "now", "next"])
+        XCTAssertEqual(Fmt.weekdayShort("2026-10-08"), "Čt")
+        XCTAssertEqual(Fmt.dayMonth("2026-11-01"), "1. listopadu")
+        XCTAssertEqual(Fmt.relativeDay("2026-10-10", today: "2026-10-08"), "v sobotu")
+        XCTAssertEqual(Fmt.duration(75), "1 h 15 min")
+        XCTAssertEqual(Fmt.plural(24, "den", "dny", "dní"), "dní")
+    }
+
     func testSignInScreen() throws {
         try render("login", height: 844) { LoginView().environment(AppModel()) }
     }
@@ -48,6 +69,19 @@ final class SnapshotTests: XCTestCase {
         let today = try JSONDecoder().decode(TodaySnapshot.self, from: Data(json.utf8))
         XCTAssertNil(today.readiness.score)
         XCTAssertEqual(today.steps.goal, 10000)
+    }
+
+    func testEmptyTrainingDecodes() throws {
+        // The shape src/app-training.js returns without any data.
+        let json = """
+        {"status":"ok","date":"2026-10-08","week":41,"strain":{"score":null,"target":null,"band":null},
+         "days":[{"date":"2026-10-05","strain":null,"planned":null,"today":false}],"next":null,"event":null,"form":null,
+         "load":{"weeks":[{"start":"2026-10-05","week":41,"load":0,"planned":0}],"intensity":null},"zones":null,"vo2max":null,
+         "activeCalories":null,"thisWeek":{"done":0,"planned":0,"doneLoad":0,"plannedLoad":0}}
+        """
+        let t = try JSONDecoder().decode(TrainingSnapshot.self, from: Data(json.utf8))
+        XCTAssertNil(t.next)
+        XCTAssertEqual(t.thisWeek.planned, 0)
     }
 
     private func render<V: View>(_ name: String, glow: Color = Palette.Glow.today, height: CGFloat? = nil, @ViewBuilder _ content: () -> V) throws {

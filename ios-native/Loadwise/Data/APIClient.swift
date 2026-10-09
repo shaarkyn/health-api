@@ -43,6 +43,10 @@ final class APIClient: @unchecked Sendable {
         return try await get(path)
     }
 
+    func training() async throws -> TrainingSnapshot {
+        try await get("/app/api/training")
+    }
+
     /// Step 3 of the sign-in handoff (see AuthService): token + verifier for the cookie.
     func exchangeHandoff(token: String, verifier: String) async throws {
         var request = makeRequest("/auth/app/session", method: "POST")
