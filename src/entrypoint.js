@@ -27,6 +27,8 @@ import {googleDashboard} from './google-dashboard.js';
 import {applyEnergyBudget} from './energy-budget.js';
 import {buildToday} from './app-today.js';
 import {buildTraining, weekStart} from './app-training.js';
+import {buildHealth} from './app-health.js';
+import {buildFood} from './app-food.js';
 import {normalizeProfile} from './energy-profile.js';
 import {athleteFocus} from './athlete-focus.js';
 import {loadEffectiveProfile,refreshSuggestions} from './profile-suggestions.js';
@@ -1137,6 +1139,39 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       ]);
       applyEnergyBudget(daily,profile,health);
       return Response.json(buildToday({date,hour:date===localToday()?localHour():null,daily,health,fitness,sleep,fluids,weight,coaches,profile:profile||{}}),{headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({message:error.message},{status:500})}
+  }
+
+  // The native app's Food screen (app-food.js): the day's food log against the
+  // same target as Today (energy budget), with water.
+  if(url.pathname==='/app/api/food-today'&&request.method==='GET'){
+    try{
+      const requested=url.searchParams.get('date'),date=validTrainingDay(requested)&&requested<=localToday()?requested:localToday();
+      const read=path=>app.fetch(new Request('https://internal'+path,{headers:internalAuth}),env,ctx).then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const api=path=>handleDashboardApi(new Request(url.origin+path,{headers:request.headers}),env,ctx,new URL(url.origin+path),session).then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const [daily,food,fluids,health,profile]=await Promise.all([
+        read('/analysis/daily?date='+date),read('/food/log?date='+date),api('/app/api/fluids?date='+date),
+        googleHealthFor(env,ctx,date).catch(()=>({})),dashboardProfile(env).catch(()=>null)
+      ]);
+      applyEnergyBudget(daily,profile,health);
+      return Response.json(buildFood({date,hour:date===localToday()?localHour():null,daily,food,fluids}),{headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({message:error.message},{status:500})}
+  }
+
+  // The native app's Health screen (app-health.js).
+  if(url.pathname==='/app/api/health'&&request.method==='GET'){
+    try{
+      const requested=url.searchParams.get('date'),date=validTrainingDay(requested)&&requested<=localToday()?requested:localToday();
+      const read=path=>app.fetch(new Request('https://internal'+path,{headers:internalAuth}),env,ctx).then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const api=path=>handleDashboardApi(new Request(url.origin+path,{headers:request.headers}),env,ctx,new URL(url.origin+path),session).then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const from=shiftDate(date,-30),to=shiftDate(date,1);
+      const [health,fitness,sleep,weight,profile]=await Promise.all([
+        googleHealthFor(env,ctx,date).catch(()=>({})),
+        cached(env,ctx,'fitness:90',()=>api('/app/api/fitness?days=90')).catch(()=>({})),
+        read('/health/sleep?start='+from+'&end='+to).then(d=>withIntervalsSleep(env,d,from,to)).catch(()=>({})),
+        read('/health/weight'),dashboardProfile(env).catch(()=>null)
+      ]);
+      return Response.json(buildHealth({date,hour:date===localToday()?localHour():null,health,fitness,sleep,weight,profile:profile||{}}),{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({message:error.message},{status:500})}
   }
 
