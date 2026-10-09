@@ -14,6 +14,7 @@ struct ZonesSettingsView: View {
     @State private var hrModel = "frielLthr"
     @State private var paceModel = "friel"
     @State private var original: JSONObject = [:]
+    @AppStorage("writeIntervals") private var writeIntervals = true
 
     var body: some View {
         SettingsPage(title: "Zóny") {
@@ -25,9 +26,7 @@ struct ZonesSettingsView: View {
 
             if let training = store.training {
                 if sport == "run" { run(training) } else { bike(training) }
-                Text("Prázdné prahy se berou z Intervals.icu. Zápis zón zpět do Intervals.icu přijde, až aplikace dostane oprávnění měnit tam nastavení.")
-                    .font(Typo.caption).foregroundStyle(Palette.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                intervals(training)
             } else if store.demo {
                 Text("V ukázce se zóny nenačítají.").font(Typo.small).foregroundStyle(Palette.muted)
             } else if store.loaded {
@@ -36,7 +35,9 @@ struct ZonesSettingsView: View {
                 ProgressView().frame(maxWidth: .infinity)
             }
         }
-        .toolbar { SaveButton(enabled: changes != original, saving: store.saving) { Task { await save() } } }
+        // Also without a change while Intervals.icu has not taken the zones yet
+        // (after connecting it again, one tap sends them).
+        .toolbar { SaveButton(enabled: changes != original || (writeIntervals && store.training?.intervals?.status != "ok" && store.training?.intervalsConnected == true), saving: store.saving) { Task { await save() } } }
         .onAppear(perform: fill)
         .onChange(of: store.training) { fill() }
     }
@@ -91,6 +92,39 @@ struct ZonesSettingsView: View {
             ForEach(t.hrZones) { z in
                 SettingsDivider()
                 ZoneRow(name: z.name, percent: nil, range: bpmRange(z))
+            }
+        }
+    }
+
+    // MARK: Intervals.icu
+
+    @ViewBuilder
+    private func intervals(_ t: TrainingProfileResponse) -> some View {
+        SettingsGroup(title: "Intervals.icu", footer: "Po uložení se prahy i hranice zón zapíšou do nastavení sportů Ride a Run v Intervals.icu, takže kalendář, hodinky i trenér počítají se stejnými čísly. Prázdné prahy se berou z Intervals.icu.") {
+            SettingsToggle(title: "Zapisovat do Intervals.icu", subtitle: t.intervalsConnected == false ? "Intervals.icu není připojené" : nil,
+                           isOn: $writeIntervals, disabled: t.intervalsConnected == false)
+        }
+        if let result = t.intervals {
+            switch result.status {
+            case "ok":
+                Label("Zapsáno do Intervals.icu" + ((result.updated ?? []).isEmpty ? "" : " (" + (result.updated ?? []).map { $0 == "Ride" ? "kolo" : "běh" }.joined(separator: ", ") + ")"), systemImage: "checkmark.circle.fill")
+                    .font(Typo.small).foregroundStyle(Palette.green)
+            case "needs-permission":
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Intervals.icu zápis odmítlo: připojení je starší a smí nastavení jen číst. Připoj Intervals.icu znovu a povol úpravu nastavení, pak ulož zóny ještě jednou.")
+                        .font(Typo.small).foregroundStyle(Palette.rust)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link(destination: URL(string: "https://petrfitnessdata.eu/app#settings-connections")!) {
+                        Text("Připojit znovu na webu").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.onButton)
+                            .padding(.horizontal, 16).frame(height: 40)
+                            .background(Palette.button, in: Capsule())
+                    }
+                }
+            case "error":
+                Text("Do Intervals.icu se nepodařilo zapsat" + (result.message.map { ": " + $0 } ?? "."))
+                    .font(Typo.small).foregroundStyle(Palette.rust)
+            default:
+                EmptyView()
             }
         }
     }
@@ -152,7 +186,7 @@ struct ZonesSettingsView: View {
     }
 
     private func save() async {
-        if await store.saveTraining(changes) { fill() }
+        if await store.saveTraining(changes, writeIntervals: writeIntervals) { fill() }
     }
 }
 

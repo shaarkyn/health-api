@@ -29,6 +29,9 @@ struct SyncStatus: Decodable, Equatable {
 /// GET /app/api/training-profile (src/training-zones.js, intervals-athlete.js).
 struct TrainingProfileResponse: Decodable, Equatable {
     let profile: JSONObject?
+    /// The write to Intervals.icu after a save (src/intervals-zones.js).
+    let intervals: IntervalsWrite?
+    let intervalsConnected: Bool?
     let resolved: Resolved
     let powerZones: [PowerZone]
     let hrZones: [HRZone]
@@ -37,6 +40,13 @@ struct TrainingProfileResponse: Decodable, Equatable {
     let powerZoneModels: [Model]
     let hrZoneModels: [Model]
     let paceZoneModels: [Model]
+
+    struct IntervalsWrite: Decodable, Equatable {
+        /// "ok", "needs-permission", "not-connected" or "error".
+        let status: String
+        let updated: [String]?
+        let message: String?
+    }
 
     struct Resolved: Decodable, Equatable {
         let ftp: Double?

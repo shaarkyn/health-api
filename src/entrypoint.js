@@ -96,6 +96,7 @@ import { internalHeaders } from "./internal-auth.js";
 import { aiAllowance } from "./ai-usage.js";
 import { exportAccountData, deleteAccount, finishAccountDeletions, revokeGoogle, inactiveAccounts } from "./account-data.js";
 import { handleIntervalsOAuth } from "./intervals-oauth.js";
+import { writeIntervalsZones } from "./intervals-zones.js";
 import { ensureTenancy, TenancyUpgradeInProgress, userEnv, findUser, ownerUser, usersWithProviders, listUsersAndInvites, inviteUser, removeInvite, setUserDisabled, changeUserEmail } from "./tenancy.js";
 import { handlePasskeyLogin, handlePasskeyApi, listPasskeys } from "./passkeys.js";
 import { handleEmailLogin, handleEmailChange, emailChangeRefusal, notifyOldAddress, requestLanguage } from "./email-login.js";
@@ -814,10 +815,13 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     if(!session.signedIn)return Response.json({message:L('Přihlas se do dashboardu.', 'Sign in to the app.')},{status:401});
     try{
       if(request.method==='POST'&&url.pathname.endsWith('/estimate')){const body=await request.json().catch(()=>({}));return Response.json({status:'ok',...(body.kind==='pace'?estimateThresholdPace(String(body.method||''),body.inputs||{}):estimateFtp(String(body.method||''),body.inputs||{}))});}
-      if(request.method==='POST'){await saveTrainingProfile(env.DB,await request.json().catch(()=>({})));}
+      let body=null;
+      if(request.method==='POST'){body=await request.json().catch(()=>({}));await saveTrainingProfile(env.DB,body);}
       else if(request.method!=='GET')return Response.json({message:'Method not allowed'},{status:405});
       const t=await athleteThresholds(env);
-      return Response.json({status:'ok',profile:t.profile,resolved:{ftp:t.ftp,ftpSource:t.source,indoorFtp:t.indoorFtp,intervalsFtp:t.intervalsFtp,latestRideFtp:t.latestRideFtp,lthr:t.lthr,maxHr:t.maxHr,restHr:t.restHr,runThresholdPace:t.runThresholdPace,runPaceSource:t.runPaceSource,intervalsRunPace:t.intervalsRunPace,runLthr:t.runLthr},powerZones:t.powerZones,hrZones:t.hrZones,paceZones:t.paceZones,runHrZones:t.runHrZones,
+      // Saved zones go to Intervals.icu too, unless the form says not to.
+      const intervals=body&&body.writeIntervals!==false?await writeIntervalsZones(env,t):null;
+      return Response.json({status:'ok',intervals,intervalsConnected:Boolean(env.INTERVALS_API_KEY),profile:t.profile,resolved:{ftp:t.ftp,ftpSource:t.source,indoorFtp:t.indoorFtp,intervalsFtp:t.intervalsFtp,latestRideFtp:t.latestRideFtp,lthr:t.lthr,maxHr:t.maxHr,restHr:t.restHr,runThresholdPace:t.runThresholdPace,runPaceSource:t.runPaceSource,intervalsRunPace:t.intervalsRunPace,runLthr:t.runLthr},powerZones:t.powerZones,hrZones:t.hrZones,paceZones:t.paceZones,runHrZones:t.runHrZones,
         ftpMethods:Object.entries(FTP_METHODS).map(([id,m])=>({id,label:m.label,inputs:m.inputs.map(([key,label])=>({key,label}))})),
         paceMethods:Object.entries(PACE_METHODS).map(([id,m])=>({id,label:m.label,inputs:m.inputs.map(([key,label])=>({key,label}))})),
         paceZoneModels:Object.entries(PACE_ZONE_MODELS).map(([id,m])=>({id,label:m.label,bounds:m.bounds})),

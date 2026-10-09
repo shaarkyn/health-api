@@ -63,12 +63,13 @@ final class SettingsStore {
         }
     }
 
-    func saveTraining(_ changes: JSONObject) async -> Bool {
+    func saveTraining(_ changes: JSONObject, writeIntervals: Bool) async -> Bool {
         guard !demo else { return true }
         saving = true
         defer { saving = false }
         var next = training?.profile ?? [:]
         next.merge(changes) { $1 }
+        next["writeIntervals"] = .bool(writeIntervals)
         do {
             training = try await api.saveTrainingProfile(next)
             errorMessage = nil
