@@ -6,6 +6,14 @@ struct TodayView: View {
     var openCoach: () -> Void = {}
 
     var body: some View {
+        NavigationStack(path: model.path(.today)) {
+            screen
+                .toolbar(.hidden, for: .navigationBar)
+                .appRoutes()
+        }
+    }
+
+    private var screen: some View {
         ZStack {
             ScreenBackground(glow: Palette.Glow.today)
             if let today = model.today {
@@ -30,18 +38,26 @@ struct TodayView: View {
 
 /// The Today screen without the scroll view, so tests can render it whole.
 struct TodayContent: View {
+    @Environment(AppModel.self) private var model
     let today: TodaySnapshot
     var openSettings: () -> Void = {}
     var openCoach: () -> Void = {}
+    /// The account's first letter on the settings button (GET /app/api/me).
+    @AppStorage(AppModel.accountInitialKey) private var initial = ""
+
+    /// The widgets hidden in "Upravit přehled" (comma-separated TodayWidget).
+    @AppStorage("todayHidden") private var hidden = ""
+    @State private var editing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 DayNavigator(date: today.date)
                 Spacer()
-                CircleButton(systemImage: "bubble.left.and.text.bubble.right", label: "Kouč", action: openCoach)
+                CircleButton(systemImage: "bubble.left.and.text.bubble.right", label: L10n.tr("Kouč"), action: openCoach)
                 Button(action: openSettings) {
-                    Text("P").font(.footnote.weight(.medium))
+                    Group { if initial.isEmpty { Image(systemName: "person") } else { Text(initial) } }
+                        .font(.footnote.weight(.medium))
                         .frame(width: 36, height: 36)
                         .overlay(Circle().stroke(Palette.ink.opacity(0.2), lineWidth: 1))
                 }
@@ -49,11 +65,23 @@ struct TodayContent: View {
                 .accessibilityLabel("Profil a nastavení")
             }
 
-            ReadinessHero(readiness: today.readiness, nightMissing: today.sleep == nil, isToday: today.steps.hour != nil)
-                .padding(.top, 40)
+            if model.selectedDate == nil && !model.demo {
+                ConnectionProblemCard()
+            }
+
+            RouteLink(route: .readiness) {
+                ReadinessHero(readiness: today.readiness, nightMissing: today.sleep == nil, isToday: today.steps.hour != nil)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .padding(.top, 40)
 
             KeyNumbers(today: today)
                 .padding(.top, 28)
+
+            if model.selectedDate == nil {
+                CoachCheckInCard(openCoach: openCoach).padding(.top, 24)
+            }
 
             if let summary = today.summary, summary.text != nil || summary.recommendation != nil {
                 VStack(alignment: .leading, spacing: 12) {
@@ -74,30 +102,43 @@ struct TodayContent: View {
             }
 
             VStack(spacing: 12) {
-                FoodWidget(nutrition: today.nutrition)
-                if !today.plan.isEmpty { PlanWidget(items: today.plan) }
-                StepsWidget(steps: today.steps)
-                WidgetRow {
-                    if let rhr = today.restingHR { RestingHRWidget(restingHR: rhr) } else { Color.clear }
-                } right: {
-                    if let hrv = today.hrv { HRVWidget(hrv: hrv) } else { Color.clear }
+                if shows(.food) { TabLinkCard(tab: .food) { FoodWidget(nutrition: today.nutrition) } }
+                if shows(.plan) {
+                    if !today.plan.isEmpty { PlanWidget(items: today.plan, today: today.date) }
+                    if today.tonight == nil, today.steps.hour != nil {
+                        RouteLink(route: .sleepSettings) { BedtimeSetupCard() }
+                    }
                 }
-                if let weight = today.weight { WeightWidget(weight: weight) }
+                if shows(.steps) { StepsWidget(steps: today.steps) }
+                if shows(.heart), today.restingHR != nil || today.hrv != nil {
+                    WidgetRow {
+                        if let rhr = today.restingHR { RouteLink(route: .heart) { RestingHRWidget(restingHR: rhr) } } else { Color.clear }
+                    } right: {
+                        if let hrv = today.hrv { RouteLink(route: .heart) { HRVWidget(hrv: hrv) } } else { Color.clear }
+                    }
+                }
+                if shows(.weight), let weight = today.weight { RouteLink(route: .weight) { WeightWidget(weight: weight) } }
             }
             .padding(.top, 28)
 
-            Label("Upravit přehled", systemImage: "slider.horizontal.3")
-                .font(Typo.bodyStrong)
-                .foregroundStyle(Palette.ink)
-                .padding(.horizontal, 18)
-                .frame(height: 40)
-                .overlay(Capsule().stroke(Palette.ink.opacity(0.18), lineWidth: 1))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 28)
-                .accessibilityHint("Úpravy widgetů přijdou v dalším kroku")
+            Button { editing = true } label: {
+                Label("Upravit přehled", systemImage: "slider.horizontal.3")
+                    .font(Typo.bodyStrong)
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, 18)
+                    .frame(height: 40)
+                    .overlay(Capsule().stroke(Palette.ink.opacity(0.18), lineWidth: 1))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 28)
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)
+        .sheet(isPresented: $editing) { TodayLayoutSheet(hidden: $hidden) }
+    }
+
+    private func shows(_ widget: TodayWidget) -> Bool {
+        !hidden.split(separator: ",").contains(Substring(widget.rawValue))
     }
 
     private func summaryText(_ s: TodaySnapshot.Summary) -> Text {
@@ -181,15 +222,19 @@ struct ReadinessHero: View {
 
 /// Sleep · Strain · HRV under the readiness number.
 struct KeyNumbers: View {
+    @Environment(AppModel.self) private var model
     let today: TodaySnapshot
 
     var body: some View {
         HStack(spacing: 0) {
-            cell("Spánek", Fmt.hoursMinutes(today.sleep?.minutes), today.sleep?.index.map { "index \($0)" }, Palette.indigo)
+            RouteLink(route: .sleep) { cell("Spánek", Fmt.hoursMinutes(today.sleep?.minutes), today.sleep?.index.map { L10n.f("index %@", "\($0)") }, Palette.indigo) }
             Divider().overlay(Palette.hairline)
-            cell("Zátěž", Fmt.decimal(today.strain.score), today.strain.planned.map { "plán ~" + Fmt.decimal($0) }, Palette.amber)
+            Button { model.tab = .training } label: {
+                cell("Zátěž", Fmt.decimal(today.strain.score), today.strain.planned.map { L10n.f("plán ~%@", Fmt.decimal($0)) }, Palette.amber)
+            }
+            .buttonStyle(PressableCardStyle())
             Divider().overlay(Palette.hairline)
-            cell("HRV", Fmt.int(today.hrv?.value), hrvDelta, hrvColor)
+            RouteLink(route: .heart) { cell("HRV", Fmt.int(today.hrv?.value), hrvDelta, hrvColor) }
         }
         .fixedSize(horizontal: false, vertical: true)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -216,6 +261,173 @@ struct KeyNumbers: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The widgets "Upravit přehled" can hide.
+enum TodayWidget: String, CaseIterable {
+    case food, plan, steps, heart, weight
+
+    var title: String {
+        switch self {
+        case .food: return "Jídlo a pití"
+        case .plan: return "Plán dne a večerka"
+        case .steps: return "Pohyb"
+        case .heart: return "Klidový tep a HRV"
+        case .weight: return "Váha"
+        }
+    }
+}
+
+struct TodayLayoutSheet: View {
+    @Binding var hidden: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            SettingsPage(title: L10n.tr("Upravit přehled")) {
+                SettingsGroup(footer: "Skryté karty najdeš dál v sekcích Trénink, Jídlo a Zdraví.") {
+                    ForEach(Array(TodayWidget.allCases.enumerated()), id: \.element) { index, widget in
+                        if index > 0 { SettingsDivider() }
+                        SettingsToggle(title: widget.title, isOn: binding(widget))
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Hotovo") { dismiss() }.font(.subheadline.weight(.semibold)) }
+            }
+        }
+        .tint(Palette.ink)
+        .presentationDetents([.medium, .large])
+    }
+
+    private func binding(_ widget: TodayWidget) -> Binding<Bool> {
+        Binding(get: { !hidden.split(separator: ",").contains(Substring(widget.rawValue)) },
+                set: { on in
+                    var set = Set(hidden.split(separator: ",").map(String.init))
+                    if on { set.remove(widget.rawValue) } else { set.insert(widget.rawValue) }
+                    hidden = TodayWidget.allCases.map(\.rawValue).filter(set.contains).joined(separator: ",")
+                })
+    }
+}
+
+/// A whole card that opens another tab (Jídlo on Today).
+struct TabLinkCard<Label: View>: View {
+    @Environment(AppModel.self) private var model
+    let tab: AppTab
+    @ViewBuilder var label: Label
+
+    var body: some View {
+        Button { model.tab = tab } label: { label }
+            .buttonStyle(PressableCardStyle())
+    }
+}
+
+/// "Plán dne" without a bedtime: no alarm and no recorded nights yet.
+struct BedtimeSetupCard: View {
+    var body: some View {
+        Card {
+            HStack(spacing: 12) {
+                Image(systemName: "moon.zzz").font(.system(size: 20)).foregroundStyle(Palette.indigo)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Kdy jít spát?").font(Typo.bodyStrong).foregroundStyle(Palette.ink)
+                    Text("Nastav si budík a cíl spánku, večerka se pak ukáže v plánu dne.").font(Typo.caption).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.faint)
+            }
+        }
+    }
+}
+
+// MARK: - Connections
+
+/// A data source that stopped working (Google or Intervals.icu refused the
+/// stored access, or Google permissions are missing), with a way to connect
+/// it again right here. Loads the connections itself, like the coach's check-in.
+struct ConnectionProblemCard: View {
+    @Environment(AppModel.self) private var model
+    @State private var problems: [ConnectionsResponse.Provider] = []
+    @State private var working: String?
+    @State private var message: String?
+    @State private var googleDisclosure = false
+    @State private var intervalsKey = false
+
+    var body: some View {
+        Group {
+            if !problems.isEmpty {
+                Card {
+                    WidgetHeader(title: "Propojení", color: Palette.rust)
+                    ForEach(problems) { provider in
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 16)).foregroundStyle(Palette.rust)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(provider.name ?? provider.id).font(Typo.bodyStrong).foregroundStyle(Palette.ink)
+                                if let problem = provider.problemText {
+                                    Text(problem).font(Typo.caption).foregroundStyle(Palette.muted)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Button { start(provider.id) } label: {
+                                Group {
+                                    if working == provider.id { ProgressView().tint(Palette.onButton) } else { Text("Připojit znovu") }
+                                }
+                                .font(.footnote.weight(.semibold)).foregroundStyle(Palette.onButton)
+                                .padding(.horizontal, 14).frame(height: 34)
+                                .background(Palette.button, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(working != nil)
+                        }
+                    }
+                    if let message {
+                        Text(message).font(Typo.small).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 20)
+            }
+        }
+        .task(id: model.loading) {
+            guard !model.loading else { return }
+            await load()
+        }
+        .sheet(isPresented: $googleDisclosure) { GoogleDisclosureSheet {
+            googleDisclosure = false
+            // The browser sheet opens once this one has closed.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { connect("google") }
+        } }
+        .sheet(isPresented: $intervalsKey) { IntervalsKeySheet { await load() } }
+    }
+
+    private func load() async {
+        guard !model.demo, let response = try? await model.api.connections() else { return }
+        withAnimation { problems = response.providers.filter(\.needsAttention) }
+    }
+
+    /// Google first shows what Loadwise does with the data (Google's policy).
+    private func start(_ provider: String) {
+        if provider == "google" { googleDisclosure = true } else { connect(provider) }
+    }
+
+    private func connect(_ provider: String) {
+        Task {
+            working = provider
+            defer { working = nil }
+            do {
+                guard let event = try await model.connect(provider: provider) else { return }
+                switch event {
+                case "google", "intervals": message = nil
+                case "intervals-failed": intervalsKey = true
+                case "expired": message = L10n.tr("Odkaz vypršel, zkus to znovu.")
+                default: message = L10n.tr("Připojení se nedokončilo.")
+                }
+                await load()
+            } catch {
+                message = error.localizedDescription
+            }
+        }
     }
 }

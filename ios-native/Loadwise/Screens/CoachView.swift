@@ -23,6 +23,7 @@ struct CoachView: View {
         var text: String
         var actions: [CoachAction] = []
         var decided: [Int: String] = [:]
+        var visuals: [String] = []
     }
 
     var body: some View {
@@ -94,9 +95,15 @@ struct CoachView: View {
                     }
                 }
             }
+            HStack(spacing: 10) {
+                NavigationLink { DayReviewView() } label: { coachTool("Posoudit dnešek", "checkmark.seal") }
+                NavigationLink { WeekPlanView() } label: { coachTool("Naplánovat týden", "calendar.badge.plus") }
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 6)
             SectionLabel(text: "Zkus třeba").padding(.top, 6)
             ForEach(["Jak mám dnes trénovat?", "Necítím se dobře, uprav mi týden.", "Co sníst před večerním tréninkem?", "Proč mám nízkou připravenost?"], id: \.self) { q in
-                Button { input = q; Task { await send() } } label: {
+                Button { input = L10n.tr(q); Task { await send() } } label: {
                     Text(q).font(.subheadline).foregroundStyle(Palette.ink)
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -106,10 +113,17 @@ struct CoachView: View {
         }
     }
 
+    private func coachTool(_ title: String, _ symbol: String) -> some View {
+        Label(L10n.tr(title), systemImage: symbol)
+            .font(Typo.bodyStrong).foregroundStyle(Palette.ink)
+            .frame(maxWidth: .infinity).frame(height: 46)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     private var consentCard: some View {
         Card {
             Text("Kouč používá AI").font(.headline)
-            Text("Aby mohl odpovídat, potřebuje tvůj souhlas se zpracováním dat pomocí AI. Stejný souhlas jako ve webové aplikaci; jde kdykoli vzít zpět v jejím nastavení.")
+            Text("Aby mohl odpovídat, potřebuje tvůj souhlas se zpracováním dat pomocí AI. Jde kdykoli vzít zpět v Nastavení → Soukromí a data.")
                 .font(Typo.small).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
             Button {
                 Task {
@@ -165,6 +179,7 @@ struct CoachView: View {
                 case .done(let result):
                     if let a = result.answer { messages[index].text = a }
                     messages[index].actions = result.actions ?? []
+                    messages[index].visuals = result.visuals ?? []
                     if let id = result.chatId { chatId = id }
                 }
             }
@@ -213,12 +228,22 @@ struct BubbleView: View {
     var body: some View {
         VStack(alignment: bubble.mine ? .trailing : .leading, spacing: 8) {
             if !bubble.text.isEmpty {
-                Text(LocalizedStringKey(bubble.text))
-                    .font(bubble.mine ? .body : Typo.sentence(18))
-                    .foregroundStyle(bubble.mine ? Palette.onButton : Palette.ink)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(bubble.mine ? Palette.button : Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .textSelection(.enabled)
+                if bubble.mine {
+                    Text(bubble.text)
+                        .font(.body)
+                        .foregroundStyle(Palette.onButton)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Palette.button, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .textSelection(.enabled)
+                } else {
+                    CoachMarkdown(text: bubble.text)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .textSelection(.enabled)
+                }
+            }
+            ForEach(bubble.visuals, id: \.self) { kind in
+                CoachVisual(kind: kind)
             }
             ForEach(bubble.actions) { action in
                 ActionCard(action: action, result: action.draftId.flatMap { bubble.decided[$0] }, decide: { decide(action, $0) })

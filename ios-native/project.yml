@@ -7,6 +7,8 @@ options:
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
+  # Czech is the source language; en.lproj (Shared/) holds the English.
+  developmentLanguage: cs
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -19,6 +21,15 @@ targets:
     platform: iOS
     sources:
       - path: Loadwise
+      - path: Shared
+    dependencies:
+      - target: LoadwiseWidgets
+    # The App Group the home-screen widgets read Today from (WidgetBridge).
+    entitlements:
+      path: Loadwise/Loadwise.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.eu.petrfitnessdata.loadwise
     settings:
       base:
         # Its own bundle ID, so it installs next to the Capacitor app (mobile/).
@@ -35,6 +46,16 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: Loadwise čte čárové kódy na obalech potravin, aby je mohl zapsat do jídelníčku.
+        NSPhotoLibraryUsageDescription: Loadwise načte fotku jídla nebo posilovny, kterou vybereš.
+        # iOS 26 AlarmKit: the alarm from Nastavení → Spánek rings like the Clock's.
+        NSAlarmKitUsageDescription: Loadwise tě vzbudí v čase budíku, podle kterého počítá večerku.
+        # Built with the iOS 26 SDK for AlarmKit, the app keeps its own design.
+        UIDesignRequiresCompatibility: true
+        # loadwise://open/sleep: the widgets open a screen of the app.
+        CFBundleURLTypes:
+          - CFBundleURLName: eu.petrfitnessdata.loadwise.native
+            CFBundleURLSchemes:
+              - loadwise
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -44,6 +65,32 @@ targets:
           - InstrumentSerif-Italic.ttf
           - Newsreader-Regular.ttf
           - Newsreader-Italic.ttf
+  # Home-screen and lock-screen widgets (WidgetKit), embedded in the app.
+  LoadwiseWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LoadwiseWidgets
+      - path: Shared
+    entitlements:
+      path: LoadwiseWidgets/LoadwiseWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.eu.petrfitnessdata.loadwise
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: eu.petrfitnessdata.loadwise.native.widgets
+        PRODUCT_NAME: LoadwiseWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+    info:
+      path: LoadwiseWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Loadwise
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
   LoadwiseTests:
     type: bundle.unit-test
     platform: iOS

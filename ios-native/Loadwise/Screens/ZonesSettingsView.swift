@@ -25,6 +25,10 @@ struct ZonesSettingsView: View {
             .pickerStyle(.segmented)
 
             if let training = store.training {
+                if changes != original {
+                    Label("Zóny níže se přepočítají po uložení.", systemImage: "info.circle")
+                        .font(Typo.caption).foregroundStyle(Palette.amber)
+                }
                 if sport == "run" { run(training) } else { bike(training) }
                 intervals(training)
             } else if store.demo {
@@ -47,12 +51,12 @@ struct ZonesSettingsView: View {
     @ViewBuilder
     private func run(_ t: TrainingProfileResponse) -> some View {
         SettingsGroup(title: "Prahové hodnoty") {
-            SettingsField(title: "Prahové tempo", text: $runPace, unit: "/km", keyboard: .numbersAndPunctuation, placeholder: t.resolved.runThresholdPace.map(Self.pace) ?? "m:ss")
+            SettingsField(title: "Prahové tempo", text: $runPace, unit: Units.paceUnit, keyboard: .numbersAndPunctuation, placeholder: t.resolved.runThresholdPace.map { Self.pace(Units.pace($0)) } ?? "m:ss")
             SettingsDivider()
             SettingsField(title: "Prahový tep", text: $runLthr, unit: "bpm", keyboard: .numberPad, placeholder: t.resolved.runLthr.map { Fmt.int($0) } ?? "–")
         }
         SettingsGroup(title: "Tempové zóny", footer: "Procenta jsou z prahové rychlosti.") {
-            SettingsPicker(title: "Předvolba", selection: $paceModel, options: t.paceZoneModels.map { ($0.id, $0.label) })
+            OptionListRow(title: "Předvolba", selection: $paceModel, options: t.paceZoneModels.map { ($0.id, $0.label) }, footer: Self.presetFooter)
             ForEach(t.paceZones) { z in
                 SettingsDivider()
                 ZoneRow(name: z.name, percent: z.percentHigh.map { Fmt.decimal($0, digits: $0.rounded() == $0 ? 0 : 1) + " %" },
@@ -81,14 +85,14 @@ struct ZonesSettingsView: View {
             SettingsField(title: "Maximální tep", text: $maxHr, unit: "bpm", keyboard: .numberPad, placeholder: t.resolved.maxHr.map { Fmt.int($0) } ?? "–")
         }
         SettingsGroup(title: "Výkonové zóny", footer: "Procenta jsou z FTP.") {
-            SettingsPicker(title: "Předvolba", selection: $powerModel, options: t.powerZoneModels.map { ($0.id, $0.label) })
+            OptionListRow(title: "Předvolba", selection: $powerModel, options: t.powerZoneModels.map { ($0.id, $0.label) }, footer: Self.presetFooter)
             ForEach(t.powerZones) { z in
                 SettingsDivider()
                 ZoneRow(name: z.name, percent: z.percentHigh.map { Fmt.int($0) + " %" }, range: wattRange(z))
             }
         }
         SettingsGroup(title: "Tepové zóny pro kolo") {
-            SettingsPicker(title: "Předvolba", selection: $hrModel, options: t.hrZoneModels.map { ($0.id, $0.label) })
+            OptionListRow(title: "Předvolba", selection: $hrModel, options: t.hrZoneModels.map { ($0.id, $0.label) }, footer: Self.presetFooter)
             ForEach(t.hrZones) { z in
                 SettingsDivider()
                 ZoneRow(name: z.name, percent: nil, range: bpmRange(z))
@@ -100,14 +104,18 @@ struct ZonesSettingsView: View {
 
     @ViewBuilder
     private func intervals(_ t: TrainingProfileResponse) -> some View {
-        SettingsGroup(title: "Intervals.icu", footer: "Po uložení se prahy i hranice zón zapíšou do nastavení sportů Ride a Run v Intervals.icu, takže kalendář, hodinky i trenér počítají se stejnými čísly. Prázdné prahy se berou z Intervals.icu.") {
-            SettingsToggle(title: "Zapisovat do Intervals.icu", subtitle: t.intervalsConnected == false ? "Intervals.icu není připojené" : nil,
-                           isOn: $writeIntervals, disabled: t.intervalsConnected == false)
+        VStack(alignment: .leading, spacing: 10) {
+            PillToggle(title: "Zapisovat do Intervals.icu",
+                       subtitle: t.intervalsConnected == false ? "Intervals.icu není připojené" : writeIntervals ? "Prahy a zóny se po uložení pošlou do Intervals.icu" : "Zóny zůstanou jen v Loadwise",
+                       systemImage: "arrow.triangle.2.circlepath", isOn: $writeIntervals, disabled: t.intervalsConnected == false)
+            Text("Kalendář, hodinky i trenér pak počítají se stejnými čísly. Prázdné prahy se berou z Intervals.icu.")
+                .font(Typo.caption).foregroundStyle(Palette.muted).padding(.horizontal, 4)
+                .fixedSize(horizontal: false, vertical: true)
         }
         if let result = t.intervals {
             switch result.status {
             case "ok":
-                Label("Zapsáno do Intervals.icu" + ((result.updated ?? []).isEmpty ? "" : " (" + (result.updated ?? []).map { $0 == "Ride" ? "kolo" : "běh" }.joined(separator: ", ") + ")"), systemImage: "checkmark.circle.fill")
+                Label(L10n.tr("Zapsáno do Intervals.icu") + ((result.updated ?? []).isEmpty ? "" : " (" + (result.updated ?? []).map { L10n.tr($0 == "Ride" ? "kolo" : "běh") }.joined(separator: ", ") + ")"), systemImage: "checkmark.circle.fill")
                     .font(Typo.small).foregroundStyle(Palette.green)
             case "needs-permission":
                 VStack(alignment: .leading, spacing: 10) {
@@ -121,7 +129,7 @@ struct ZonesSettingsView: View {
                     }
                 }
             case "error":
-                Text("Do Intervals.icu se nepodařilo zapsat" + (result.message.map { ": " + $0 } ?? "."))
+                Text(result.message.map { L10n.f("Do Intervals.icu se nepodařilo zapsat: %@", $0) } ?? L10n.tr("Do Intervals.icu se nepodařilo zapsat."))
                     .font(Typo.small).foregroundStyle(Palette.rust)
             default:
                 EmptyView()
@@ -131,16 +139,27 @@ struct ZonesSettingsView: View {
 
     // MARK: Values
 
+    static let presetFooter = "Předvolby jsou stejné jako v Intervals.icu. Hranice zón se přepočítají po uložení."
+
     static func pace(_ seconds: Double) -> String {
         let s = Int(seconds.rounded())
         return "\(s / 60):" + String(format: "%02d", s % 60)
     }
 
+    /// The typed threshold pace as the server reads it, m:ss per km: per mile
+    /// with imperial units is converted, otherwise it goes as typed.
+    static func paceForServer(_ typed: String) -> String {
+        guard Units.imperial else { return typed }
+        let parts = typed.trimmingCharacters(in: .whitespaces).split(separator: ":")
+        guard parts.count == 2, let m = Double(parts[0]), let s = Double(parts[1]) else { return typed }
+        return pace((m * 60 + s) / Units.pace(1))
+    }
+
     private func paceRange(_ z: TrainingProfileResponse.PaceZone) -> String {
         switch (z.paceSlow, z.paceFast) {
-        case (let slow?, let fast?): return Self.pace(fast) + "–" + Self.pace(slow)
-        case (nil, let fast?): return "nad " + Self.pace(fast)
-        case (let slow?, nil): return "pod " + Self.pace(slow)
+        case (let slow?, let fast?): return Self.pace(Units.pace(fast)) + "–" + Self.pace(Units.pace(slow))
+        case (nil, let fast?): return L10n.f("nad %@", Self.pace(Units.pace(fast)))
+        case (let slow?, nil): return L10n.f("pod %@", Self.pace(Units.pace(slow)))
         default: return "–"
         }
     }
@@ -148,7 +167,7 @@ struct ZonesSettingsView: View {
     private func bpmRange(_ z: TrainingProfileResponse.HRZone) -> String {
         switch (z.bpmLow, z.bpmHigh) {
         case (let low?, let high?): return Fmt.int(low) + "–" + Fmt.int(high)
-        case (nil, let high?): return "do " + Fmt.int(high)
+        case (nil, let high?): return L10n.f("do %@", Fmt.int(high))
         case (let low?, nil): return Fmt.int(low) + "+"
         default: return "–"
         }
@@ -167,7 +186,7 @@ struct ZonesSettingsView: View {
         ftp = p["ftp"]?.string ?? ""
         lthr = p["lthr"]?.string ?? ""
         maxHr = p["maxHr"]?.string ?? ""
-        runPace = (p["runThresholdPace"]?.number).map(Self.pace) ?? ""
+        runPace = (p["runThresholdPace"]?.number).map { Self.pace(Units.pace($0)) } ?? ""
         runLthr = p["runLthr"]?.string ?? ""
         powerModel = p["powerZoneModel"]?.string ?? "coggan7"
         hrModel = p["hrZoneModel"]?.string ?? "frielLthr"
@@ -179,7 +198,7 @@ struct ZonesSettingsView: View {
         [
             "ftp": .field(ftp), "lthr": .field(lthr), "maxHr": .field(maxHr),
             // "4:35" goes as text, the server reads m:ss.
-            "runThresholdPace": runPace.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(runPace),
+            "runThresholdPace": runPace.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(Self.paceForServer(runPace)),
             "runLthr": .field(runLthr),
             "powerZoneModel": .string(powerModel), "hrZoneModel": .string(hrModel), "paceZoneModel": .string(paceModel)
         ]
@@ -198,7 +217,7 @@ struct ZoneRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(name).font(.subheadline).foregroundStyle(Palette.ink).lineLimit(1)
+            Text(name).font(.subheadline).foregroundStyle(Palette.ink).lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             if let percent { Text(percent).font(.caption).foregroundStyle(Palette.faint) }
             Text(range).font(Typo.number(17)).foregroundStyle(Palette.ink).frame(minWidth: 82, alignment: .trailing)

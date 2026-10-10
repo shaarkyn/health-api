@@ -4,7 +4,7 @@ struct HealthView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: model.path(.health)) {
             ZStack {
                 ScreenBackground(glow: Palette.Glow.health)
                 if let health = model.health {
@@ -24,23 +24,10 @@ struct HealthView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: HealthDetail.self) { detail in
-                if let health = model.health {
-                    switch detail {
-                    case .readiness: DetailScreen(glow: Palette.Glow.health) { ReadinessDetailContent(health: health) }
-                    case .sleep: SleepDetailView(health: health)
-                    case .heart: DetailScreen(glow: Palette.Glow.health) { HeartDetailContent(health: health) }
-                    case .weight: WeightDetailView(health: health)
-                    }
-                }
-            }
+            .appRoutes()
         }
         .task { if model.health == nil { await model.refreshHealth() } }
     }
-}
-
-enum HealthDetail: Hashable {
-    case readiness, sleep, heart, weight
 }
 
 /// A drill-down page: the section's background, a back button and a column.
@@ -54,7 +41,7 @@ struct DetailScreen<Content: View>: View {
             ScreenBackground(glow: glow)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    CircleButton(systemImage: "chevron.left", label: "Zpět") { dismiss() }
+                    CircleButton(systemImage: "chevron.left", label: L10n.tr("Zpět")) { dismiss() }
                     content
                 }
                 .padding(.horizontal, 24)
@@ -72,39 +59,39 @@ struct HealthContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionLabel(text: "Zdraví · " + Fmt.dayHeading(health.date))
+            DayNavigator(date: health.date)
                 .frame(height: 36)
 
-            NavigationLink(value: HealthDetail.readiness) { ReadinessCard(readiness: health.readiness) }
-                .buttonStyle(.plain)
+            RouteLink(route: .readiness) { ReadinessCard(readiness: health.readiness) }
                 .padding(.top, 24)
 
             HealthSection(title: "Spánek") {
-                NavigationLink(value: HealthDetail.sleep) { SleepWidget(sleep: health.sleep) }.buttonStyle(.plain)
+                RouteLink(route: .sleep) { SleepWidget(sleep: health.sleep) }
                 if health.sleep.debt != nil || health.oxygen != nil {
                     WidgetRow {
-                        if let debt = health.sleep.debt { SleepDebtWidget(debt: debt) } else { Color.clear }
+                        if let debt = health.sleep.debt { RouteLink(route: .sleep) { SleepDebtWidget(debt: debt) } } else { Color.clear }
                     } right: {
-                        if let oxygen = health.oxygen { OxygenWidget(oxygen: oxygen) } else { Color.clear }
+                        if let oxygen = health.oxygen { RouteLink(route: .sleep) { OxygenWidget(oxygen: oxygen) } } else { Color.clear }
                     }
                 }
                 if health.respiration != nil || health.skinTemp != nil {
                     WidgetRow {
-                        if let r = health.respiration { RespirationWidget(respiration: r) } else { Color.clear }
+                        if let r = health.respiration { RouteLink(route: .sleep) { RespirationWidget(respiration: r) } } else { Color.clear }
                     } right: {
-                        if let t = health.skinTemp { SkinTempWidget(skin: t) } else { Color.clear }
+                        if let t = health.skinTemp { RouteLink(route: .sleep) { SkinTempWidget(skin: t) } } else { Color.clear }
                     }
                 }
+                RouteLink(route: .sleepSettings) { SleepSettingsCard(tonight: health.sleep.tonight) }
             }
 
             if health.hrv != nil || health.restingHR != nil {
                 HealthSection(title: "Srdce") {
                     if let hrv = health.hrv {
-                        NavigationLink(value: HealthDetail.heart) { HRVWideWidget(hrv: hrv, restingHR: health.restingHR?.value) }.buttonStyle(.plain)
+                        RouteLink(route: .heart) { HRVWideWidget(hrv: hrv, restingHR: health.restingHR?.value) }
                     }
                     WidgetRow {
                         if let rhr = health.restingHR {
-                            RestingHRWidget(restingHR: TodaySnapshot.RestingHR(value: rhr.value, baseline: rhr.baseline, series: rhr.series))
+                            RouteLink(route: .heart) { RestingHRWidget(restingHR: TodaySnapshot.RestingHR(value: rhr.value, baseline: rhr.baseline, series: rhr.series)) }
                         } else { Color.clear }
                     } right: {
                         AppleHealthWidget(title: "Nálada", color: Palette.gold)
@@ -114,20 +101,18 @@ struct HealthContent: View {
 
             HealthSection(title: "Tělo") {
                 if let weight = health.weight {
-                    NavigationLink(value: HealthDetail.weight) {
+                    RouteLink(route: .weight) {
                         WeightWidget(weight: TodaySnapshot.Weight(latest: weight.latest, goal: weight.goal, series: Array(weight.series.filter { $0.date > (AppModel.shift(health.date, by: -30) ?? "") })))
                     }
-                    .buttonStyle(.plain)
-                    if let fat = weight.bodyFat { BodyFatWidget(fat: fat) }
+                    if let fat = weight.bodyFat { RouteLink(route: .weight) { BodyFatWidget(fat: fat) } }
                     AppleHealthWidget(title: "Svalová hmota", color: Palette.brown)
                 } else {
-                    NavigationLink(value: HealthDetail.weight) {
+                    RouteLink(route: .weight) {
                         Card {
                             WidgetHeader(title: "Váha", color: Palette.brown)
                             Text("Zatím žádné vážení. Klepni a zapiš první.").font(Typo.small).foregroundStyle(Palette.muted)
                         }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -238,12 +223,14 @@ enum ReadinessText {
             default: break
             }
         }
-        var text = bits.isEmpty ? "Tělo je ve své normě" : Fmt.capitalized(bits.joined(separator: " a "))
+        let parts = bits.map { L10n.tr($0) }
+        let joined = parts.count > 1 ? L10n.f("%@ a %@", parts[0], parts[1]) : parts.joined()
+        var text = parts.isEmpty ? L10n.tr("Tělo je ve své normě") : Fmt.capitalized(joined)
         text += "."
         if r.flags.contains("respiration_elevated") || r.flags.contains("skin_temp_elevated") {
-            text += " Může to být začínající nemoc, dnes raději lehce."
+            text += " " + L10n.tr("Může to být začínající nemoc, dnes raději lehce.")
         } else if let strain = r.strainYesterday, strain >= 14 {
-            text += " Včerejší zátěž ještě trochu doznívá."
+            text += " " + L10n.tr("Včerejší zátěž ještě trochu doznívá.")
         }
         return text
     }
@@ -291,7 +278,7 @@ struct ReadinessDetailContent: View {
                 HStack {
                     SectionLabel(text: "Posledních 14 dní")
                     Spacer()
-                    Text("průměr " + Fmt.int(r.history.map(\.value).reduce(0, +) / Double(r.history.count))).font(Typo.caption).foregroundStyle(Palette.faint)
+                    Text(L10n.f("průměr %@", Fmt.int(r.history.map(\.value).reduce(0, +) / Double(r.history.count)))).font(Typo.caption).foregroundStyle(Palette.faint)
                 }
                 .padding(.top, 32)
                 BarChart(values: r.history.map(\.value),
@@ -312,7 +299,7 @@ struct ReadinessDetailContent: View {
         case "restingHR": return r.restingHR.map { Fmt.int($0) + " bpm" } ?? "–"
         case "sleep": return Fmt.hoursMinutes(r.sleepMinutes)
         case "respiration": return health.respiration.map { Fmt.decimal($0.value) + " /min" } ?? "–"
-        case "skinTemp": return health.skinTemp.map { Fmt.signed($0.deviation, digits: 1) + " °C" } ?? "–"
+        case "skinTemp": return health.skinTemp.map { Fmt.signed(Units.temperatureChange($0.deviation), digits: 1) + " " + Units.temperatureUnit } ?? "–"
         default: return ""
         }
     }
@@ -333,7 +320,7 @@ struct SleepWidget: View {
                         Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.faint)
                     }
                     if let index = sleep.night?.index {
-                        Text("index \(index)").font(Typo.caption).foregroundStyle(Palette.indigo)
+                        Text(L10n.f("index %@", String(index))).font(Typo.caption).foregroundStyle(Palette.indigo)
                     } else {
                         Text(sleep.night == nil ? "dnešní noc chybí" : " ").font(Typo.caption).foregroundStyle(Palette.faint)
                     }
@@ -349,7 +336,6 @@ struct SleepWidget: View {
                              height: 56)
                 }
             }
-            Text("7 nocí · čárkovaně = tvoje potřeba spánku").font(Typo.tiny).foregroundStyle(Palette.faint)
         }
     }
 }
@@ -361,7 +347,7 @@ struct SleepDebtWidget: View {
         Card {
             WidgetHeader(title: "Spánkový dluh", color: Palette.amberBar)
             NumberText(value: Fmt.hoursMinutes(Double(debt.minutes)), unit: "h")
-            Text("za \(debt.nights) " + Fmt.plural(debt.nights, "noc", "noci", "nocí")).font(Typo.caption).foregroundStyle(Palette.faint)
+            Text(L10n.f("za %@ %@", String(debt.nights), Fmt.plural(debt.nights, "noc", "noci", "nocí"))).font(Typo.caption).foregroundStyle(Palette.faint)
             ProgressLine(fraction: Double(debt.minutes) / 360, color: debt.minutes > 180 ? Palette.rust : Palette.amberBar)
         }
     }
@@ -374,7 +360,7 @@ struct OxygenWidget: View {
         Card {
             WidgetHeader(title: "Kyslík v krvi", color: Palette.blue)
             NumberText(value: Fmt.decimal(oxygen.value, digits: oxygen.value.rounded() == oxygen.value ? 0 : 1), unit: "%")
-            Text("14 dní " + Fmt.int(oxygen.low) + "–" + Fmt.int(oxygen.high) + " %").font(Typo.caption).foregroundStyle(Palette.faint)
+            Text(L10n.f("14 dní %@–%@ %%", Fmt.int(oxygen.low), Fmt.int(oxygen.high))).font(Typo.caption).foregroundStyle(Palette.faint)
             let values = oxygen.series.map(\.value)
             LineChart(values: values, color: Palette.blue, lo: (values.min() ?? 90) - 1, hi: 100, height: 30)
         }
@@ -402,7 +388,7 @@ struct SkinTempWidget: View {
     var body: some View {
         Card {
             WidgetHeader(title: "Teplota zápěstí", color: Palette.rust)
-            NumberText(value: Fmt.signed(skin.deviation, digits: 1), unit: "°C")
+            NumberText(value: Fmt.signed(Units.temperatureChange(skin.deviation), digits: 1), unit: Units.temperatureUnit)
             Text(skin.elevated ? "zvýšená" : "odchylka v normě").font(Typo.caption).foregroundStyle(skin.elevated ? Palette.rust : Palette.green)
             BarChart(values: skin.series.map { $0.value + 1 }, styles: skin.series.map { BarStyle(fill: $0.value > 0 ? Palette.rust.opacity(0.6) : Palette.blue.opacity(0.5)) },
                      lo: 0, hi: 2, target: 1, height: 30)
@@ -425,7 +411,7 @@ struct HRVWideWidget: View {
                         NumberText(value: Fmt.int(hrv.value ?? hrv.series.last?.value), unit: "ms")
                         Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.faint)
                     }
-                    Text(status + (restingHR.map { " · tep " + Fmt.int($0) } ?? "")).font(Typo.caption).foregroundStyle(Palette.green)
+                    Text(L10n.tr(status) + (restingHR.map { " · " + L10n.f("tep %@", Fmt.int($0)) } ?? "")).font(Typo.caption).foregroundStyle(Palette.green)
                 }
                 .frame(width: 120, alignment: .leading)
                 let values = hrv.series.map(\.value)
@@ -473,7 +459,7 @@ struct BodyFatWidget: View {
                 VStack(alignment: .leading, spacing: 4) {
                     NumberText(value: Fmt.decimal(fat.value), unit: "%")
                     if let change = fat.change, change != 0 {
-                        Text((change < 0 ? "↓ " : "↑ ") + Fmt.decimal(abs(change)) + " za 2 měsíce").font(Typo.caption)
+                        Text(L10n.f("%@ %@ za 2 měsíce", change < 0 ? "↓" : "↑", Fmt.decimal(abs(change)))).font(Typo.caption)
                             .foregroundStyle(change < 0 ? Palette.green : Palette.amber)
                     }
                 }

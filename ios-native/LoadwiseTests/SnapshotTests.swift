@@ -26,7 +26,7 @@ final class SnapshotTests: XCTestCase {
 
     func testHealthScreens() throws {
         let health = DemoData.health
-        try render("health", glow: Palette.Glow.health) { NavigationStack { HealthContent(health: health) }.padding(.top, 50).padding(.bottom, 40) }
+        try render("health", glow: Palette.Glow.health) { NavigationStack { HealthContent(health: health) }.padding(.top, 50).padding(.bottom, 40).environment(AppModel(demo: true)) }
         try render("health-readiness", glow: Palette.Glow.health) { ReadinessDetailContent(health: health).padding(24).padding(.top, 30) }
         try render("health-sleep", glow: Palette.Glow.health) { SleepDetailContent(health: health, detail: nil).padding(24).padding(.top, 30) }
         try render("health-heart", glow: Palette.Glow.health) { HeartDetailContent(health: health).padding(24).padding(.top, 30) }
@@ -124,11 +124,39 @@ final class SnapshotTests: XCTestCase {
         }
     }
 
+    func testEnglishAndImperial() throws {
+        L10n.setLanguage("en")
+        Units.setSystem("imperial")
+        defer {
+            L10n.setLanguage("cs")
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            Units.setSystem("metric")
+        }
+        XCTAssertEqual(L10n.tr("Spánek"), "Sleep")
+        XCTAssertEqual(L10n.tr("text bez překladu"), "text bez překladu")
+        XCTAssertEqual(Fmt.plural(5, "den", "dny", "dní"), "days")
+        XCTAssertEqual(Units.weightText(100, digits: 0), "220 lb")
+        XCTAssertEqual(Units.distanceText(10), "6.2 mi")
+        // Every translation keeps the placeholders of its Czech key.
+        let path = try XCTUnwrap(Bundle(for: AppModel.self).path(forResource: "en", ofType: "lproj"))
+        let table = try XCTUnwrap(NSDictionary(contentsOfFile: path + "/Localizable.strings") as? [String: String])
+        XCTAssertGreaterThan(table.count, 1000)
+        let specifier = try NSRegularExpression(pattern: "%(?:[0-9]+\\$)?(@|lld|lf|d|%)")
+        func specifiers(_ s: String) -> [String] {
+            specifier.matches(in: s, range: NSRange(s.startIndex..., in: s)).map { (s as NSString).substring(with: $0.range(at: 1)) }.sorted()
+        }
+        for (key, value) in table { XCTAssertEqual(specifiers(key), specifiers(value), key) }
+        try render("today-en", glow: Palette.Glow.today) { TodayContent(today: DemoData.today).padding(.top, 50).padding(.bottom, 40).environment(AppModel(demo: true)).environment(\.locale, L10n.locale) }
+        try render("health-weight-en", glow: Palette.Glow.health) { WeightDetailContent(health: DemoData.health).padding(24).padding(.top, 30) }
+        let store = SettingsStore(api: APIClient(), demo: true)
+        try render("settings-en", height: 1100) { NavigationStack { SettingsMenu(store: store) }.environment(AppModel(demo: true)).environment(\.locale, L10n.locale) }
+    }
+
     func testSettingsScreens() throws {
         let store = SettingsStore(api: APIClient(), demo: true)
         try render("settings", height: 1100) { NavigationStack { SettingsMenu(store: store) }.environment(AppModel(demo: true)) }
-        try render("settings-profile", height: 900) { NavigationStack { ProfileSettingsView(store: store) } }
-        try render("settings-sources", height: 900) { NavigationStack { SourcesSettingsView(store: store) } }
+        try render("settings-profile", height: 900) { NavigationStack { ProfileSettingsView(store: store) }.environment(AppModel(demo: true)) }
+        try render("settings-sources", height: 900) { NavigationStack { SourcesSettingsView(store: store) }.environment(AppModel(demo: true)) }
     }
 
     func testJSONValueKeepsUnknownKeys() throws {
@@ -202,6 +230,247 @@ final class SnapshotTests: XCTestCase {
         let t = try JSONDecoder().decode(TrainingSnapshot.self, from: Data(json.utf8))
         XCTAssertNil(t.next)
         XCTAssertEqual(t.thisWeek.planned, 0)
+    }
+
+    func testNewScreens() throws {
+        try render("add-sheet", height: 1000) { AddSheet().environment(AppModel(demo: true)) }
+        try render("body-map", height: 320) {
+            BodyMap(load: ["chest": 1, "biceps": 0.6, "quads": 0.3], selected: ["chest"]).padding(20)
+        }
+        try render("sleep-settings", height: 800) { NavigationStack { SleepSettingsView(given: SettingsStore(api: APIClient(), demo: true)) }.environment(AppModel(demo: true)) }
+    }
+
+    func testCoachMarkdownBlocks() {
+        let text = "## Shrnutí\nDnes **lehce**.\n\n- spánek\n- HRV\n\n1. rozjezd\n2. klid\n\n| den | km |\n|---|---|\n| po | 10 |\n\n---"
+        let blocks = CoachMarkdown.blocks(text)
+        XCTAssertEqual(blocks.first, .heading(2, "Shrnutí"))
+        XCTAssertTrue(blocks.contains(.bullets(["spánek", "HRV"])))
+        XCTAssertTrue(blocks.contains(.numbered(["rozjezd", "klid"])))
+        XCTAssertTrue(blocks.contains(.table([["den", "km"], ["po", "10"]])))
+        XCTAssertEqual(blocks.last, .rule)
+    }
+
+    func testBodyFigurePaths() {
+        for part in BodyFigure.front + BodyFigure.back {
+            let box = SVGPath.parse(part.path).boundingRect
+            XCTAssertFalse(box.isEmpty, part.id)
+            XCTAssertLessThanOrEqual(box.maxX, BodyFigure.size.width + 1, part.id)
+            XCTAssertLessThanOrEqual(box.maxY, BodyFigure.size.height + 1, part.id)
+        }
+        XCTAssertEqual(BodyFigure.label("biceps"), BodyFigure.muscles.first { $0.id == "biceps" }?.label)
+    }
+
+    func testDeepLinks() {
+        XCTAssertEqual(AppRoute(url: URL(string: "loadwise://open/sleep")!), .sleep)
+        XCTAssertEqual(AppRoute(url: URL(string: "loadwise://open/gym/2026-10-08")!), .gym("2026-10-08"))
+        XCTAssertNil(AppRoute(url: URL(string: "loadwise://open/food")!))
+        XCTAssertNil(AppRoute(url: URL(string: "https://open/sleep")!))
+        XCTAssertEqual(TabLink.tab(URL(string: "loadwise://open/food")!), .food)
+        let model = AppModel(demo: true)
+        model.handle(URL(string: "loadwise://open/sleep")!)
+        XCTAssertEqual(model.tab, .health)
+        XCTAssertEqual(model.paths[.health], [.sleep])
+    }
+
+    func testNewFieldsDecode() throws {
+        let food = DemoData.food
+        XCTAssertEqual(food.macros.fiber?.target, 32)
+        XCTAssertEqual(food.water.drinks?.count, 3)
+        XCTAssertEqual(food.water.drunkMl, 1600)
+        XCTAssertEqual(DemoData.today.plan.first?.sport, "strength")
+        XCTAssertEqual(DemoData.today.tonight?.wakeSet, true)
+        let result = try JSONDecoder().decode(AssistantResult.self, from: Data(#"{"status":"ok","answer":"Ahoj","visuals":["sleep","form"]}"#.utf8))
+        XCTAssertEqual(result.visuals, ["sleep", "form"])
+        let old = try JSONDecoder().decode(AssistantResult.self, from: Data(#"{"status":"ok","answer":"Ahoj"}"#.utf8))
+        XCTAssertNil(old.visuals)
+        let snapshot = WidgetSnapshot.sample
+        XCTAssertEqual(snapshot.readiness, 78)
+    }
+
+    func testPlanEditing() {
+        var day = DemoData.gym
+        day.moveExercise(from: 2, to: 0)
+        XCTAssertEqual(day.exercises.map(\.name), ["Přítahy v předklonu", "Dřep", "Tlak na lavici"])
+        day.moveExercise(from: 0, to: 3)
+        XCTAssertEqual(day.exercises.map(\.name), ["Dřep", "Tlak na lavici", "Přítahy v předklonu"])
+        XCTAssertEqual(day.planName, "Celé tělo", "the head of the sheet stays")
+
+        let sets = day.exercises[1].sets.count
+        day.addSet(at: 1)
+        XCTAssertEqual(day.exercises[1].sets.count, sets + 1)
+        XCTAssertEqual(day.exercises[1].sets.last?.done, false)
+        day.removeSet(at: 1)
+        XCTAssertEqual(day.exercises[1].sets.count, sets)
+
+        day.removeExercise(at: 0)
+        XCTAssertEqual(day.exercises.first?.name, "Dřep", "a done set stays recorded")
+        XCTAssertTrue(day.exercises[0].sets.allSatisfy(\.done))
+        day.addExercise("Leg press", sets: 3, reps: "10-12")
+        XCTAssertEqual(day.exercises.last?.name, "Leg press")
+        XCTAssertEqual(day.exercises.last?.sets.map(\.plannedReps), ["10-12", "10-12", "10-12"])
+        guard case .array(let rows) = day.saveBody["values"] else { return XCTFail("body") }
+        XCTAssertEqual(rows.count, day.exercises.reduce(0) { $0 + $1.sets.count })
+    }
+
+    func testMealSlotsAndTargets() {
+        let late = Calendar.current.date(bySettingHour: 21, minute: 15, second: 0, of: Date())!
+        XCTAssertEqual(MealSlot.now(late), "dinner")
+        XCTAssertEqual(MealSlot.now(late, slots: ["breakfast", "lunch", "dinner", "snack_late"]), "snack_late")
+        let morning = Calendar.current.date(bySettingHour: 10, minute: 30, second: 0, of: Date())!
+        XCTAssertTrue(["breakfast", "lunch"].contains(MealSlot.now(morning, slots: ["breakfast", "lunch", "dinner"])), "a meal the day has")
+        XCTAssertEqual(MealSlot.toMeal("snack_late"), "k druhé večeři")
+        let food = DemoData.food
+        XCTAssertEqual(food.mealSlots?.count, 5)
+        XCTAssertEqual(food.meals.first { $0.type == "lunch" }?.target?.kcal, 800)
+        XCTAssertEqual(food.macros.sugar?.target, 66)
+        XCTAssertEqual(food.meals[0].entries[0].sugar, 14)
+        let recipe = try? JSONDecoder().decode(FoodRecipe.self, from: Data(#"{"id":"r1","name":"Rizoto","servings":2,"ingredients":[{"name":"Rýže","quantity":150,"unit":"g","calories":540}],"portion":{"name":"Rizoto","nutrition_basis":"portion","calories_100g":420,"protein_100g":30,"carbs_100g":50,"fat_100g":9},"calories":840}"#.utf8))
+        XCTAssertEqual(recipe?.product.kcal(for: 1), 420)
+        XCTAssertEqual(recipe?.product.source, "composed", "a recipe portion is not saved again as a food")
+    }
+
+    func testEquipmentAndLibrary() throws {
+        let home = GymEquipment(equipment: "home", selected: ["dumbbells", "adjustable_bench"], gymName: "", gymUrl: "", dumbbellWeights: [5, 10])
+        let curl = try JSONDecoder().decode(GymCatalogExercise.self, from: Data(#"{"name":"DB curl","muscle":"Biceps","stations":["dumbbells"]}"#.utf8))
+        let press = try JSONDecoder().decode(GymCatalogExercise.self, from: Data(#"{"name":"Leg press","muscle":"Přední stehna","stations":["pivot_leg_press"],"muscles":{"quads":1,"hips":0.5}}"#.utf8))
+        XCTAssertTrue(EquipmentView.fits(curl, home))
+        XCTAssertFalse(EquipmentView.fits(press, home))
+        XCTAssertTrue(ExerciseCatalog.works(curl, "biceps"), "an older server without the muscle map: by the muscle name")
+        XCTAssertFalse(ExerciseCatalog.works(curl, "upper_back"))
+        XCTAssertTrue(ExerciseCatalog.works(press, "quads"))
+        XCTAssertFalse(ExerciseCatalog.works(press, "calves"))
+        XCTAssertEqual(EquipmentView.summary(home), "Domácí posilovna · 2 věci")
+        XCTAssertEqual(EquipmentView.kg(2.5), "2,5 kg")
+        XCTAssertEqual(AppRoute(url: URL(string: "loadwise://open/vo2max")!), .vo2max)
+        XCTAssertEqual(AppRoute(url: URL(string: "loadwise://open/library/run")!), .workoutLibrary("run"))
+    }
+
+    func testRoundTwoScreens() throws {
+        let vo2 = try XCTUnwrap(DemoData.training.vo2max)
+        try render("training-vo2max", glow: Palette.Glow.training) { VO2maxContent(vo2: vo2).padding(.top, 50).padding(.bottom, 40) }
+        try render("plan-editor", height: 700) { PlanEditorSheet(day: DemoData.gym, catalog: [], save: { _ in }) }
+        try render("body-map-legend", height: 360) {
+            BodyMap(load: ["quads": 1, "hips": 0.6, "hamstrings": 0.35, "calves": 0.2], height: 280, legend: true).padding(20)
+        }
+        try render("drink-settings", height: 1000) { NavigationStack { DrinkSettingsView() } }
+        try render("gym-rest-settings", height: 500) { NavigationStack { GymRestSettingsView() } }
+        try render("food-amount-edit", height: 1100) {
+            NavigationStack { FoodAmountView(product: DemoData.foods[0], meal: "snack_late", editing: true) }.environment(AppModel(demo: true))
+        }
+    }
+
+    func testCalendarData() throws {
+        let json = """
+        {"status":"ok","start":"2026-10-05","end":"2026-10-06","today":"2026-10-06","days":[
+         {"date":"2026-10-05","primary":"ride","count":2,"minutes":125,"kcal":1250,"planned":0,"activities":[
+          {"id":"activity:i1","sport":"ride","status":"done","title":"Ranní kolo","date":"2026-10-05","time":"07:00","minutes":90,"km":42.3,"kcal":1100,"activityId":"i1","eventId":null},
+          {"id":"g2","sport":"walk","status":"done","title":"Chůze","date":"2026-10-05","time":"17:00","minutes":35,"km":3.1,"kcal":150,"activityId":null,"eventId":null}]},
+         {"date":"2026-10-06","primary":"rest","count":0,"minutes":0,"kcal":0,"planned":0,"activities":[]}]}
+        """
+        let calendar = try JSONDecoder().decode(TrainingCalendar.self, from: Data(json.utf8))
+        let ride = try XCTUnwrap(calendar.days.first?.activities.first)
+        XCTAssertEqual(ride.session.kind, "activity")
+        XCTAssertEqual(CalendarDayList.route(ride), .activity(ride.session))
+        XCTAssertEqual(CalendarActivityRow.detail(ride), "Kolo · 07:00 · 1 h 30 min · 42,3 km")
+        XCTAssertEqual(MonthGrid.value(calendar.days.first, .count), "2")
+        XCTAssertEqual(MonthGrid.value(calendar.days.first, .time), "2:05")
+        XCTAssertEqual(MonthGrid.value(calendar.days.first, .kcal), Fmt.int(1250))
+        XCTAssertEqual(MonthGrid.value(calendar.days.last, .count), " ")
+        // October 2026 starts on a Thursday: three empty cells first.
+        let grid = ISODay.monthGrid("2026-10-15")
+        XCTAssertEqual(grid.first?.prefix(4).map { $0 ?? "" }, ["", "", "", "2026-10-01"])
+        XCTAssertEqual(grid.flatMap { $0 }.compactMap { $0 }.count, 31)
+        XCTAssertEqual(ISODay.addMonths("2026-12-20", 1), "2027-01-01")
+        XCTAssertEqual(ISODay.monthEnd("2026-02-10"), "2026-02-28")
+        XCTAssertEqual(ISODay.weekdayIndex("2026-10-12"), 0)
+        XCTAssertEqual(ISODay.monthTitle("2026-10-01"), "Říjen 2026")
+        XCTAssertFalse(DemoData.calendarByDate.isEmpty)
+    }
+
+    func testRoundThreeLogic() {
+        let months = VO2maxContent.months([("2026-08-30", 47), ("2026-09-01", 47.5), ("2026-09-20", 48.5), ("2026-10-02", 48)])
+        XCTAssertEqual(months.map(\.month), ["2026-10-01", "2026-09-01", "2026-08-01"])
+        XCTAssertEqual(months[1].average, 48)
+        XCTAssertEqual(months[1].change, 1)
+        XCTAssertNil(months[2].change)
+        XCTAssertEqual(VO2maxMonths.change(0), "=")
+        XCTAssertEqual(StageTotals.note(share: 0.19, wakeups: 3), "19 %")
+        XCTAssertEqual(StageTotals.note(share: nil, wakeups: 3), "3×")
+        let entry = FoodSnapshot.Entry(id: 1, name: "Jogurt", time: "08:00", meal: "breakfast", kcal: 133, protein: 14, carbs: 6, fat: 5,
+                                       amount: "140 g", brand: "Madeta", fiber: nil, sugar: 6, salt: 0.15)
+        XCTAssertEqual(FoodEntryCard.detail(entry), "140 g · Madeta · 08:00")
+        XCTAssertEqual(FoodEntryCard.extras(entry), "vláknina – · cukry 6,0 g · sůl 0,15 g")
+    }
+
+    func testRoundThreeScreens() throws {
+        let model = AppModel(demo: true)
+        let today = DemoData.training.date
+        try render("training-calendar", glow: Palette.Glow.training, height: 700) {
+            NavigationStack {
+                VStack(spacing: 16) {
+                    MonthGrid(month: ISODay.monthStart(today), today: today, selected: today, mode: .time, days: DemoData.calendarByDate, pick: { _ in }, move: { _ in })
+                    CalendarDayList(date: ISODay.shift(today, -2), today: today, day: DemoData.calendarByDate[ISODay.shift(today, -2)])
+                }
+                .padding(.vertical, 14)
+                .background(Palette.card, in: RoundedRectangle(cornerRadius: 24))
+                .padding(24)
+            }
+            .environment(model)
+        }
+        try render("calendar-days", glow: Palette.Glow.training, height: 140) {
+            HStack(spacing: 0) {
+                ForEach(-2...2, id: \.self) { i in
+                    let date = ISODay.shift(today, i)
+                    DayCircle(date: date, today: today, selected: i == 0, day: DemoData.calendarByDate[date])
+                }
+            }
+            .padding(20)
+        }
+        let breakfast = try XCTUnwrap(DemoData.food.meals.first)
+        try render("meal-detail", glow: Palette.Glow.food, height: 1100) {
+            MealDetailContent(meal: breakfast).environment(model)
+        }
+        try render("library-widget", glow: Palette.Glow.training, height: 220) {
+            NavigationStack { LibraryWidget().padding(24) }
+        }
+    }
+
+    func testRoundFourLogic() {
+        XCTAssertEqual(AppRoute(url: URL(string: "loadwise://open/library")!), .library)
+        XCTAssertEqual(AppRoute(url: URL(string: "loadwise://open/library/gym")!), .workoutLibrary("gym"))
+        let presets = DrinkPrefs.presets(favorites: ["water", "coffee", "tea"], saved: { $0 == "tea" ? [300, 400, 500] : nil })
+        XCTAssertEqual(presets.map(\.id), ["water.250", "water.500", "coffee.200", "tea.300", "tea.400"])
+        XCTAssertEqual(DrinkPrefs.presets(favorites: DrinkKind.all.map(\.id), saved: { _ in nil }).count, 8, "at most eight choices")
+        XCTAssertEqual(LibrarySport.find("run")?.label, "Běh")
+        XCTAssertNil(LibrarySport.find("swim"))
+        XCTAssertEqual(DrinkFigureKind.from("octopus"), .octopus)
+        XCTAssertEqual(DrinkFigureKind.from("dragon"), .whale, "an unknown figure falls back to the whale")
+        XCTAssertEqual(DrinksCard.remaining(ml: 1200, target: 2500), "ještě 1,3 l do cíle")
+        XCTAssertEqual(DrinksCard.remaining(ml: 2600, target: 2500), "cíl splněn")
+    }
+
+    func testRoundFourScreens() throws {
+        let model = AppModel(demo: true)
+        try render("training-tools", glow: Palette.Glow.training, height: 330) {
+            NavigationStack { TrainingTools(today: DemoData.training.date).padding(24) }
+        }
+        try render("drinks-card", glow: Palette.Glow.food, height: 460) {
+            DrinksCard(water: DemoData.food.water).environment(model).padding(24)
+        }
+        try render("drink-figures", glow: Palette.Glow.food, height: 760) {
+            VStack(spacing: 6) {
+                ForEach(DrinkFigureKind.allCases) { kind in
+                    HStack(spacing: 12) {
+                        Text(kind.label).font(.caption).frame(width: 80, alignment: .leading)
+                        ForEach([0.0, 0.5, 1.0], id: \.self) { DrinkFigure(kind: kind, fraction: $0, size: 80, animate: false) }
+                    }
+                }
+            }
+            .padding(20)
+        }
+        try render("library-choice", glow: Palette.Glow.training, height: 520) {
+            NavigationStack { TrainingLibraryView() }.environment(model)
+        }
     }
 
     private func render<V: View>(_ name: String, glow: Color = Palette.Glow.today, height: CGFloat? = nil, @ViewBuilder _ content: () -> V) throws {

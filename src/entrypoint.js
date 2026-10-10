@@ -26,7 +26,9 @@ import {getCookbookRecipeByPage,useCookbookDatabase,saveCookbook} from './cookbo
 import {googleDashboard} from './google-dashboard.js';
 import {applyEnergyBudget} from './energy-budget.js';
 import {buildToday} from './app-today.js';
+import {withIdempotency} from './idempotency.js';
 import {buildTraining, weekStart} from './app-training.js';
+import {buildCalendar} from './app-calendar.js';
 import {buildHealth} from './app-health.js';
 import {buildFood} from './app-food.js';
 import {normalizeProfile} from './energy-profile.js';
@@ -54,7 +56,9 @@ async function queueFoodGoogleSafely(env,ctx,id,options){
   }
 }
 import { lookupFoodWithAI } from "./food-ai.js";
-import { addFluid, deleteFluid, listFluids, hydrationTarget, dayActivityHours, foodDrinks } from "./fluids.js";
+import { EXERCISE_STATIONS } from "./gym-equipment.js";
+import { equipmentCatalog, detectGymEquipment } from "./gym-equipment-ai.js";
+import { addFluid, deleteFluid, updateFluid, listFluids, hydrationTarget, dayActivityHours, foodDrinks, hydrationMl } from "./fluids.js";
 import { isFoodLogMessage, buildFoodDraft, foodDraftSummary } from "./food-chat.js";
 import dashboardClient from "./dashboard-client.js";
 import { loadRecoveryValidation } from "./recovery-validation.js";
@@ -64,6 +68,7 @@ const CLIENT_VERSION = assetVersion(dashboardClient);
 import { handleGoogleOAuth } from "./google-oauth.js";
 import { importStrengthHistory, getStrengthHistory, parseStrengthPlan, removeManualSets } from "./strength-history.js";
 import { searchCookbookRecipes, logFood, mealConsumedAt } from "./food-log.js";
+import { explainWorkout } from "./workout-explanation.js";
 import { getWorkout, searchWorkoutLibrary, parseWorkoutSearchFilters, getCapabilities, getScheduledWorkouts, recordWorkoutFeedback, scheduleWorkoutInIntervals, generateWorkout, pendingScheduledWorkouts, hasFeedback, markScheduleCompleted, scheduledLink, stepRows } from "./workout-library.js";
 import { buildCyclingCoachV2 } from "./cycling-coach-v2.js";
 import { athleteThresholds, rideFtpFor } from "./intervals-athlete.js";
@@ -88,6 +93,7 @@ import { estimateFtp, estimateThresholdPace, FTP_METHODS, PACE_METHODS, POWER_ZO
 import {updateFoodEntry,copyFoodEntry,deleteFoodEntry} from './food-entry-management.js';
 import legacyHealthApi, { googleToken } from "./index.js";
 import { handleGoogleLogin } from "./google-login.js";
+import { handleNativeConnect } from "./native-connect.js";
 import { handleAppleLogin, appleConfigured, appleIdentity, unlinkAppleIdentity } from "./apple-login.js";
 import { chatContext, appendChatTurn, listChats, readChat, deleteChat } from "./assistant-chats.js";
 import { intervalsAuthorization } from "./intervals-auth.js";
@@ -103,6 +109,9 @@ import { ensureTenancy, TenancyUpgradeInProgress, userEnv, findUser, ownerUser, 
 import { handlePasskeyLogin, handlePasskeyApi, listPasskeys } from "./passkeys.js";
 import { handleEmailLogin, handleEmailChange, emailChangeRefusal, notifyOldAddress, requestLanguage } from "./email-login.js";
 import { emailConfigured } from "./email-sender.js";
+import { needsAIAccess } from "./ai-routes.js";
+import { clearConnectionHealth, connectionProblems } from "./connection-health.js";
+import { handleSupportReport } from "./support-report.js";
 import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.js';
 import { englishScript } from './i18n.js';
 import { dateFormat } from "./date-format.js";
@@ -116,7 +125,7 @@ const googleHealthFor = (env, ctx, date) => cached(env, ctx, "google-dashboard:"
 
 // Requests that read or preview only and so keep the cache.
 // Unlinking Apple (/app/api/me/apple) and adding or removing passkeys change no training data.
-const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me\/apple$|account\/email\/(start|verify)$|passkeys$|passkeys\/options$)/;
+const CACHE_NEUTRAL = /^\/app\/api\/(food\/(label|photo|search|ai-lookup)|workouts\/generate|gym\/generate|gym\/equipment\/detect|gym\/technique|training-profile\/estimate|assistant$|assistant\/stream|assistant\/chats|me\/apple$|account\/email\/(start|verify)$|support\/report$|passkeys$|passkeys\/options$)/;
 const STATIC_PATHS = new Set(['/app','/app/dashboard-client.js','/app/i18n-en.js','/manifest.webmanifest','/logo.svg','/','/privacy','/terms','/support']);
 
 // Runs fn once per active user (with that user's env and credentials), for
@@ -212,7 +221,7 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
     // Every change made with the session cookie, whatever the route.
     if (foreignOriginChange(request, principal)) return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
     const signedIn = principal?.kind === "user" && Boolean(user);
-    if(signedIn&&request.method==='POST'&&/^\/app\/api\/(assistant(?:\/stream)?$|gym\/adjust$|food\/(ai-lookup|photo|chat)$|review(?:\/|$))/.test(url.pathname)){
+    if(signedIn&&needsAIAccess(request.method,url.pathname)){
       try{await assertAIAccess(env);}catch(error){return error.consent?Response.json({status:'ai_consent_required',message:error.message},{status:403}):Response.json({status:'subscription_required',message:error.message},{status:402});}
     }
 
@@ -231,11 +240,13 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
     }
     if ((url.pathname.startsWith('/oauth/google') || url.pathname.startsWith('/oauth/intervals')) && !signedIn) return new Response(L('Připojení vyžaduje přihlášení do dashboardu.', 'Connecting requires signing in to the app.'),{status:401});
     const googleOAuth = await handleGoogleOAuth(request, env, url.pathname);
-    if (googleOAuth) {if(url.pathname==="/oauth/google/callback"&&googleOAuth.status===302){await dashboardSyncStatus(env.DB);await env.DB.prepare("DELETE FROM sync_status WHERE user_id=? AND sync_name='initial_google'").bind(env.USER_ID).run();await initialImport(await connectionEnvironment(env),ctx);}return googleOAuth;}
+    if (googleOAuth) {if(url.pathname==="/oauth/google/callback"&&googleOAuth.status===302){await clearConnectionHealth(env,'google');await dashboardSyncStatus(env.DB);await env.DB.prepare("DELETE FROM sync_status WHERE user_id=? AND sync_name='initial_google'").bind(env.USER_ID).run();await initialImport(await connectionEnvironment(env),ctx);}return googleOAuth;}
     const intervalsOAuth = await handleIntervalsOAuth(request, env, url.pathname);
     // A new Intervals.icu connection imports its history, the same as a pasted key.
-    if (intervalsOAuth) {if(url.pathname==="/oauth/intervals/callback"&&intervalsOAuth.status===302){await dashboardSyncStatus(env.DB);await env.DB.prepare("DELETE FROM sync_status WHERE user_id=? AND sync_name='initial_intervals'").bind(env.USER_ID).run();await initialImport(await connectionEnvironment(env),ctx);}return intervalsOAuth;}
+    if (intervalsOAuth) {if(url.pathname==="/oauth/intervals/callback"&&intervalsOAuth.status===302){await clearConnectionHealth(env,'intervals');await dashboardSyncStatus(env.DB);await env.DB.prepare("DELETE FROM sync_status WHERE user_id=? AND sync_name='initial_intervals'").bind(env.USER_ID).run();await initialImport(await connectionEnvironment(env),ctx);}return intervalsOAuth;}
     if (url.pathname === "/app/logout" && request.method === "POST") return handleDashboardLogout();
+    const nativeConnect = await handleNativeConnect(request, rawEnv, url, { user, signedIn });
+    if (nativeConnect) return nativeConnect;
     const googleLogin = await handleGoogleLogin(request, rawEnv, url.pathname);
     if (googleLogin) return googleLogin;
     const appleLogin = await handleAppleLogin(request, rawEnv, url.pathname, { user: signedIn ? user : null });
@@ -246,7 +257,8 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
     if (emailLogin) return emailLogin;
     if (url.pathname.startsWith("/app/api/")) {
       if (!user) return unauthorizedResponse();
-      const response = await handleDashboardApi(request, env, ctx, url, { user, signedIn });
+      // A write the app replays after a lost signal is stored once (idempotency.js).
+      const response = await withIdempotency(request, env, url, r => handleDashboardApi(r, env, ctx, url, { user, signedIn }));
       // A change by the user makes the cached coach inputs outdated.
       if (request.method !== "GET" && !CACHE_NEUTRAL.test(url.pathname)) await bumpCacheVersion(env.DB);
       return response;
@@ -669,7 +681,23 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
   // Connections are optional: without them the dashboard works from manual
   // entries (weight, food) and the profile; missingProviders drives the
   // connection prompt in the client.
-  if(url.pathname==='/app/api/gym/exercises'&&request.method==='GET')return Response.json({status:'ok',exercises:gymExerciseCatalog()},{headers:{'Cache-Control':'no-store'}});
+  // The athlete's gym: the stations it has (equipment "custom"), and AI that
+  // picks them from a photo of the gym or its web page (nothing is saved there).
+  if(url.pathname==='/app/api/gym/equipment'){
+    if(request.method==='GET'){const training=await trainingSetup(env.DB);return Response.json({status:'ok',stations:equipmentCatalog(),equipment:training.equipment,selected:training.stations||[],gymName:training.gymName||'',gymUrl:training.gymUrl||'',dumbbellWeights:training.dumbbellWeights||[]},{headers:{'Cache-Control':'no-store'}});}
+    if(request.method==='POST'){
+      if(!session.signedIn||request.headers.get('Origin')!==url.origin)return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
+      try{const body=await request.json().catch(()=>({}));const training=await updateTrainingSetup(env.DB,{equipment:body.equipment,stations:body.stations,gymName:body.gymName,gymUrl:body.gymUrl,...(Array.isArray(body.dumbbellWeights)?{dumbbellWeights:body.dumbbellWeights}:{})});await bumpCacheVersion(env.DB);return Response.json({status:'ok',equipment:training.equipment,selected:training.stations||[],gymName:training.gymName||'',gymUrl:training.gymUrl||'',dumbbellWeights:training.dumbbellWeights||[]});}
+      catch(error){return Response.json({message:error.message},{status:400});}
+    }
+  }
+  if(url.pathname==='/app/api/gym/equipment/detect'&&request.method==='POST'){
+    if(!session.signedIn||request.headers.get('Origin')!==url.origin)return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
+    if(!env.OPENAI_API_KEY)return Response.json({message:L('AI není připojena (chybí OPENAI_API_KEY).', 'AI is not connected (OPENAI_API_KEY is missing).')},{status:503});
+    try{const body=await request.json().catch(()=>({}));const r=await detectGymEquipment(env,{images:body.images||(body.image?[body.image]:[]),url:body.url});return Response.json({status:r.found?'ok':'not_found',...r,message:r.found?null:L('Vybavení se nepodařilo poznat. Zkus jinou fotku nebo vyber stroje ručně.', 'The equipment couldn\'t be recognised. Try another photo or pick the machines by hand.')},{headers:{'Cache-Control':'no-store'}});}
+    catch(error){return Response.json({status:'error',message:error.limit?error.message:String(error.message).slice(0,200)},{status:error.limit?(error.status||429):400});}
+  }
+  if(url.pathname==='/app/api/gym/exercises'&&request.method==='GET')return Response.json({status:'ok',exercises:gymExerciseCatalog().map(e=>({...e,stations:EXERCISE_STATIONS[e.name]||[],muscles:exerciseMuscles(e.name)}))},{headers:{'Cache-Control':'no-store'}});
   // Replacements for one exercise of a day's plan (workout mode, gym table).
   if(url.pathname==='/app/api/gym/alternatives'&&request.method==='GET'){
     const date=/^\d{4}-\d{2}-\d{2}$/.test(String(url.searchParams.get('date')||''))?url.searchParams.get('date'):localToday(),exercise=String(url.searchParams.get('exercise')||'').slice(0,120);
@@ -777,7 +805,10 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
         if(request.headers.get('Origin')!==url.origin)return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
         const body=await request.json().catch(()=>({})),date=validDay(body.date)?body.date:localToday();
         const notes=typeof body.notes==='string'&&body.notes.trim()?body.notes.trim().slice(0,1000):null,rpe=Number.isFinite(Number(body.rpe))&&Number(body.rpe)>=1&&Number(body.rpe)<=10?Number(body.rpe):null;
-        const reflection=await createReflection(env,{date,rpe,notes},day=>reflectionData(env,ctx,internalAuth,day));
+        // Without AI access (consent, subscription) the note is the rule-based one, never sent to OpenAI.
+        const aiAllowed=(await subscriptionStatus(env).catch(()=>({aiAccess:false}))).aiAccess;
+        const ruleEnv={...env};if(!aiAllowed)delete ruleEnv.OPENAI_API_KEY;
+        const reflection=await createReflection(ruleEnv,{date,rpe,notes},day=>reflectionData(env,ctx,internalAuth,day));
         return Response.json({status:'ok',reflection},{headers:{'Cache-Control':'no-store'}});
       }
     }catch(error){return Response.json({status:'error',message:error.message},{status:500})}
@@ -985,7 +1016,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     }catch(error){return Response.json({message:error.message},{status:409})}
   }
   if(url.pathname==='/app/api/food/personal'&&request.method==='POST'){try{return Response.json({status:'ok',product:await savePersonalFood(env.DB,await request.json())});}catch(e){return Response.json({message:e.message},{status:400});}}
-  if(url.pathname==='/app/api/food/personal'&&request.method==='GET')return Response.json({status:'ok',products:await listPersonalFoods(env.DB)},{headers:{'Cache-Control':'no-store'}});
+  if(url.pathname==='/app/api/food/personal'&&request.method==='GET')return Response.json({status:'ok',products:await listPersonalFoods(env.DB,{sort:url.searchParams.get('sort')==='frequent'?'frequent':'recent'})},{headers:{'Cache-Control':'no-store'}});
   if(url.pathname==='/app/api/food/sync'){
     if(request.method==='POST'){
       try{const body=await request.json();await retryFoodGoogle(env.DB,body.id);ctx.waitUntil(processFoodGoogle(env,{token:googleToken}).catch(error=>console.error('Food export',error.message)));return Response.json({status:'queued'});}
@@ -1065,11 +1096,12 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
           dashboardProfile(env).catch(()=>null),dayActivityHours(env.DB,env.USER_ID,date)]);
         const target=hydrationTarget({weightKg:weight?.value_numeric,sex:profile?.sex,...hours});
         // Drinks from the food diary are listed with the logged ones and counted (alcohol not).
-        const entries=[...logged,...fromFood].sort((a,b)=>String(a.consumedAt).localeCompare(String(b.consumedAt)));
-        return Response.json({status:'ok',date,entries,totalMl:entries.reduce((s,e)=>s+e.ml,0),target},{headers:{'Cache-Control':'no-store'}});
+        const entries=[...logged,...fromFood].sort((a,b)=>String(a.consumedAt).localeCompare(String(b.consumedAt))).map(e=>({...e,hydrationMl:hydrationMl(e.ml,e.kind)}));
+        return Response.json({status:'ok',date,entries,totalMl:entries.reduce((s,e)=>s+e.ml,0),hydrationMl:entries.reduce((s,e)=>s+e.hydrationMl,0),target},{headers:{'Cache-Control':'no-store'}});
       }
       if(request.headers.get('Origin')!==url.origin)return Response.json({message:L('Neplatný původ požadavku.', 'Invalid request origin.')},{status:403});
       if(request.method==='POST'){const body=await request.json().catch(()=>({}));return Response.json({status:'ok',entry:await addFluid(env.DB,{date:validDay(body.date)?body.date:localToday(),ml:body.ml,kind:body.kind,at:body.at})},{headers:{'Cache-Control':'no-store'}});}
+      if(request.method==='PATCH'){const body=await request.json().catch(()=>({}));return Response.json({status:'ok',entry:await updateFluid(env.DB,{id:body.id,ml:body.ml,kind:body.kind,at:body.at})},{headers:{'Cache-Control':'no-store'}});}
       if(request.method==='DELETE'){await deleteFluid(env.DB,url.searchParams.get('id'));return Response.json({status:'ok'},{headers:{'Cache-Control':'no-store'}});}
       return Response.json({message:'Method not allowed'},{status:405});
     }catch(error){return Response.json({status:'error',message:error.message},{status:400});}
@@ -1084,16 +1116,18 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       for(const field of ['calories_100g','protein_100g','carbs_100g','fat_100g'])if(p[field]==null||p[field]===''||!Number.isFinite(Number(p[field]))||Number(p[field])<0||Number(p[field])>(field==='calories_100g'?(p.nutrition_basis==='portion'?10000:1000):(p.nutrition_basis==='portion'?1000:100)))return Response.json({message:L('Doplň energii i všechna tři makra pro zvolený základ tabulky.', 'Fill in the energy and all three macros for the chosen table basis.')},{status:400});
       let amount;try{amount=foodIntake(p,body.quantity??body.grams,body.unit||(p.nutrition_basis==='portion'?'portion':p.nutrition_basis==='ml'?'ml':'g'),{pieceAmount:body.pieceAmount,pieceUnit:body.pieceUnit,density:body.density});}catch(error){return Response.json({message:error.message},{status:400});}
       const ingredients=Array.isArray(body.ingredients)?body.ingredients.slice(0,50).map(a=>({name:String(a.name||'').slice(0,180),amount:Number(a.amount)||null,unit:['g','ml','portion'].includes(a.unit)?a.unit:'g'})):[];
-      const saved=await legacyHealthApi.fetch(new Request(new URL('/food/log',request.url),{method:'POST',headers:{...internalAuth,'Content-Type':'application/json'},body:JSON.stringify({date:body.date,consumed_at:mealConsumedAt(body.date,body.mealType)||undefined,name:String(p.name).slice(0,180),kcal:amount.calories,protein_g:amount.protein_g,carbs_g:amount.carbs_g,fat_g:amount.fat_g,fiber_g:amount.fiber_g,source:'package_label',note:JSON.stringify({product:productFromLabel(p),amount:amount.amount,unit:amount.unit,enteredQuantity:body.quantity??body.grams,enteredUnit:body.unit||'g',barcode:p.barcode||null,brand:p.brand||null,mealType:body.mealType||'snack',salt_g:amount.salt_g,source_url:p.source_url||null,ingredients})})}),env,ctx);
+      const saved=await legacyHealthApi.fetch(new Request(new URL('/food/log',request.url),{method:'POST',headers:{...internalAuth,'Content-Type':'application/json'},body:JSON.stringify({date:body.date,consumed_at:mealConsumedAt(body.date,body.mealType)||undefined,name:String(p.name).slice(0,180),kcal:amount.calories,protein_g:amount.protein_g,carbs_g:amount.carbs_g,fat_g:amount.fat_g,fiber_g:amount.fiber_g,source:'package_label',note:JSON.stringify({product:productFromLabel(p),amount:amount.amount,unit:amount.unit,enteredQuantity:body.quantity??body.grams,enteredUnit:body.unit||'g',barcode:p.barcode||null,brand:p.brand||null,mealType:body.mealType||'snack',salt_g:amount.salt_g,sugar_g:amount.sugar_g,source_url:p.source_url||null,ingredients})})}),env,ctx);
       const result=await saved.json();if(!saved.ok)throw new Error(L('Uložení selhalo.', 'Saving failed.'));
       let personal=null,warning=null;
-      if(p.source!=='composed'){try{personal=await savePersonalFood(env.DB,p);}catch(error){warning=L('Jídlo je zapsané, ale potravinu pro příště se nepodařilo uložit: ', 'The meal is logged, but the food couldn\'t be saved for next time: ')+error.message;}}
+      if(p.source!=='composed'){try{personal=await savePersonalFood(env.DB,p,{used:true});}catch(error){warning=L('Jídlo je zapsané, ale potravinu pro příště se nepodařilo uložit: ', 'The meal is logged, but the food couldn\'t be saved for next time: ')+error.message;}}
       const google=await queueFoodGoogleSafely(env,ctx,result.id);
       warning ||= google.status==='error'?google.message:null;
       return Response.json({...result,google,personal,warning,message:warning||L('Jídlo je zapsané', 'The meal is logged')+(personal?L(' a potravina uložená pro příště', ' and the food is saved for next time'):'')+'.'},{headers:{'Cache-Control':'no-store'}});
     }catch{return Response.json({message:L('Jídlo se nepodařilo uložit. Zkontroluj hodnoty a zkus to znovu.', 'The meal couldn\'t be saved. Check the values and try again.')},{status:500});}
   }
 
+  // "Nahlásit problém": the user's report with a screenshot and diagnostics (support-report.js).
+  if (url.pathname === "/app/api/support/report") return handleSupportReport(request, env, { signedIn: session.signedIn, origin: url.origin });
   if (url.pathname === "/app/api/connections" && request.method === "GET") {
     return Response.json(await connectionStatus(env), {headers:{"Cache-Control":"no-store"}});
   }
@@ -1107,6 +1141,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       if(body.provider==='google'&&!env.USER_IS_OWNER) await revokeGoogle(env);
       await deleteConnectionSecret(env,body.provider);
       if(body.provider==='google') await deleteConnectionSecret(env,'google_scopes');
+      await clearConnectionHealth(env,body.provider);
       return Response.json({status:'ok',message:L('Připojení je odebrané.', 'The connection has been removed.')},{headers:{'Cache-Control':'no-store'}});
     }
     if(body.provider!=='intervals'||typeof body.key!=='string'||body.key.trim().length<8||body.key.length>512) return Response.json({message:L('Zadej platný API klíč Intervals.icu.', 'Enter a valid Intervals.icu API key.')},{status:400});
@@ -1115,6 +1150,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
     if(!check.ok) return Response.json({message:L('Intervals klíč nepřijal. Zkontroluj klíč v nastavení Intervals.', 'Intervals didn\'t accept the key. Check the key in your Intervals settings.')},{status:400});
     const athlete=await check.json().catch(()=>({}));
     await saveConnectionSecret(env,'intervals',apiKey);
+    await clearConnectionHealth(env,'intervals');
     await env.DB.prepare("DELETE FROM sync_status WHERE user_id=? AND sync_name='initial_intervals'").bind(env.USER_ID).run();
     await initialImport(await connectionEnvironment(env),ctx);
     return Response.json({status:'ok',athleteId:athlete.id||null,message:'Intervals.icu je připojené'+(athlete.name?' ('+athlete.name+')':'')+'.'},{headers:{'Cache-Control':'no-store'}});
@@ -1141,8 +1177,10 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
         read('/health/sleep?start='+from+'&end='+to).then(d=>withIntervalsSleep(env,d,from,to)).catch(()=>({})),
         api('/app/api/fluids?date='+date),read('/health/weight'),api('/app/api/coaches?date='+date),dashboardProfile(env).catch(()=>null)
       ]);
+      // Connected services that need the user (access refused, Google permissions missing), shown at the top of Today.
+      const problems=connectionProblems(await connectionStatus(env).catch(()=>null));
       applyEnergyBudget(daily,profile,health);
-      return Response.json(buildToday({date,hour:date===localToday()?localHour():null,daily,health,fitness,sleep,fluids,weight,coaches,profile:profile||{}}),{headers:{'Cache-Control':'no-store'}});
+      return Response.json(buildToday({date,hour:date===localToday()?localHour():null,daily,health,fitness,sleep,fluids,weight,coaches,profile:profile||{},connectionProblems:problems}),{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({message:error.message},{status:500})}
   }
 
@@ -1158,7 +1196,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
         googleHealthFor(env,ctx,date).catch(()=>({})),dashboardProfile(env).catch(()=>null)
       ]);
       applyEnergyBudget(daily,profile,health);
-      return Response.json(buildFood({date,hour:date===localToday()?localHour():null,daily,food,fluids}),{headers:{'Cache-Control':'no-store'}});
+      return Response.json(buildFood({date,hour:date===localToday()?localHour():null,daily,food,fluids,slots:profile?.meals}),{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({message:error.message},{status:500})}
   }
 
@@ -1197,6 +1235,25 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       ]);
       return Response.json(buildTraining({date,days,gym,health,fitness,insights,coaches,profile:profile||{}}),{headers:{'Cache-Control':'no-store'}});
     }catch(error){return Response.json({message:error.message},{status:500})}
+  }
+
+  // Training → the day strip and the month: done and planned per day (app-calendar.js).
+  if(url.pathname==='/app/api/training/calendar'&&request.method==='GET'){
+    try{
+      const today=localToday(),valid=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));
+      const start=valid(url.searchParams.get('start'))?url.searchParams.get('start'):shiftDate(today,-35);
+      let end=valid(url.searchParams.get('end'))?url.searchParams.get('end'):shiftDate(today,14);
+      if(end<start||end>shiftDate(start,92))end=shiftDate(start,92);
+      const result=await cached(env,ctx,'training-calendar:'+start+':'+end+':'+today,async()=>{
+        const rows=(await env.DB.prepare("SELECT data_type,source_family,external_id,start_time,end_time,value_numeric,payload_json FROM health_datapoints WHERE user_id=? AND ((source_family IN ('intervals','local') AND data_type IN ('planned-workout','activity')) OR (source_family='google-wearables' AND data_type='exercise')) AND start_time>=? AND start_time<? AND (record_role IS NULL OR record_role!='duplicate') ORDER BY start_time").bind(env.USER_ID,shiftDate(start,-1),shiftDate(end,2)).all().catch(()=>({results:[]}))).results||[];
+        const gym=await trainingGymPlans(env,today>start?today:start,end).catch(()=>({}));
+        return buildCalendar({start,end,today,gym,
+          activities:rows.filter(r=>r.data_type==='activity'),
+          google:rows.filter(r=>r.data_type==='exercise'),
+          planned:rows.filter(r=>r.data_type==='planned-workout')});
+      },{ttl:120});
+      return Response.json(result,{headers:{'Cache-Control':'no-store'}});
+    }catch(error){return Response.json({status:'error',message:error.message},{status:500})}
   }
 
   if(url.pathname==='/app/api/coaches'&&request.method==='GET'){
@@ -1612,7 +1669,9 @@ async function handleWorkoutsApi(request,env,ctx,url,session,internalAuth){
       const [result,thresholds]=await Promise.all([searchWorkoutLibrary(env.DB,filters,context),cached(env,ctx,'thresholds',()=>athleteThresholds(env))]);
       result.autoDuration=autoDuration;result.coachPick={system:filters.preferredSystem||null,durationMinutes:autoDuration?.durationMinutes||null};
       // Step rows with watts or paces for each card.
-      for(const w of result.workouts){let structure=[];try{structure=JSON.parse(w.structure_json||'[]')}catch{}w.steps=sport==='run'?stepRows(structure,{environment:w.environment,sport,thresholdPace:thresholds.runThresholdPace,zones:thresholds.paceZones}):stepRows(structure,{environment:w.environment,ftp:rideFtpFor(thresholds,w.environment).ftp,zones:thresholds.powerZones});}
+      for(const w of result.workouts){let structure=[];try{structure=JSON.parse(w.structure_json||'[]')}catch{}w.steps=sport==='run'?stepRows(structure,{environment:w.environment,sport,thresholdPace:thresholds.runThresholdPace,zones:thresholds.paceZones}):stepRows(structure,{environment:w.environment,ftp:rideFtpFor(thresholds,w.environment).ftp,zones:thresholds.powerZones});
+        // How to ride or run it, fuelling and terrain, as the web's workout card explains it.
+        try{const e=explainWorkout(w,{environment:w.environment||filters.environment,thresholds,sport});w.guide={title:e.title,how:e.how||[],fueling:e.fueling||[],environment:e.environment||[]};}catch{w.guide=null;}}
       return Response.json({...result,date,athlete:{ftp:thresholds.ftp,indoorFtp:rideFtpFor(thresholds,'indoor').ftp,indoorFtpEstimated:rideFtpFor(thresholds,'indoor').estimated,source:thresholds.source,runThresholdPace:thresholds.runThresholdPace,runPaceSource:thresholds.runPaceSource},rankingContext:{...context,tsb:coach.readiness.tsb,readinessScore:coach.readiness.score},sourcePolicy:sport==='run'?L('Vlastní PFD běžecké tréninky, publikované výzkumné protokoly (Helgerud, Billat, Seiler, Daniels) a veřejně popsané metody s uvedením zdroje. Placené plány a aplikace se nekopírují.', 'Own PFD running workouts, published research protocols (Helgerud, Billat, Seiler, Daniels) and publicly described methods with their source. Paid plans and apps are not copied.'):L('Vlastní PFD workouty, publikované výzkumné protokoly a veřejně popsané tréninky profi s uvedením zdroje. Proprietární knihovny (TrainerRoad, Xert, JOIN, Zwift, TrainerDay) se nekopírují.', 'Own PFD workouts, published research protocols and publicly described pro workouts with their source. Proprietary libraries (TrainerRoad, Xert, JOIN, Zwift, TrainerDay) are not copied.')},{headers:{'Cache-Control':'no-store'}});
     }
     if(url.pathname==='/app/api/workouts/generate'&&request.method==='POST'){

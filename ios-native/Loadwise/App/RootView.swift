@@ -6,16 +6,10 @@ enum AppTab: Hashable {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    // "-tab training" (simulator screenshots) opens another tab first.
-    @State private var tab: AppTab = {
-        let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-tab"), i + 1 < args.count else { return .today }
-        let tabs: [String: AppTab] = ["training": .training, "food": .food, "health": .health]
-        return tabs[args[i + 1]] ?? .today
-    }()
     @State private var showAdd = false
     @State private var showSettings = false
     @State private var showCoach = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         if model.updateRequired {
@@ -32,26 +26,55 @@ struct RootView: View {
         case .signedIn:
             ZStack(alignment: .bottom) {
                 Group {
-                    switch tab {
+                    switch model.tab {
                     case .today: TodayView(openSettings: { showSettings = true }, openCoach: { showCoach = true })
                     case .training: TrainingView()
                     case .food: FoodView()
                     case .health: HealthView()
                     }
                 }
-                if model.offline {
-                    OfflineBanner()
-                        .frame(maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 4)
+                if model.offline || !model.outbox.isEmpty || model.outboxNote != nil {
+                    VStack(spacing: 6) {
+                        if model.offline || !model.outbox.isEmpty {
+                            OfflineBanner(offline: model.offline, waiting: model.outbox.count)
+                        }
+                        if let note = model.outboxNote {
+                            OutboxNote(text: note) { model.outboxNote = nil }
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 4)
                 }
-                TabBar(tab: $tab, onAdd: { showAdd = true })
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+                if !model.immersive {
+                    TabBar(tab: Binding(get: { model.tab }, set: { select($0) }), onAdd: { showAdd = true })
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            .sheet(isPresented: $showAdd) { AddSheet() }
+            .sheet(isPresented: $showAdd) {
+                AddSheet(openCoach: {
+                    showAdd = false
+                    // One sheet at a time: the coach opens once "+" has closed.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showCoach = true }
+                })
+            }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showCoach) { CoachView() }
+            .fullScreenCover(isPresented: Binding(get: { model.needsSetup }, set: { model.needsSetup = $0 })) { SetupFlowView() }
+            .task { await model.checkSetup(); await model.loadAccountInitial() }
+            // Back in the app: new data, and what waited for signal (and water
+            // added from the widget) goes out.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active, model.today != nil || !model.outbox.isEmpty { Task { await model.refresh() } }
+            }
         }
+    }
+
+    /// The tab again: back to its first screen.
+    private func select(_ tab: AppTab) {
+        if model.tab == tab { model.paths[tab] = [] }
+        model.tab = tab
     }
 }
 
@@ -63,8 +86,8 @@ struct UpdateRequiredView: View {
             Image(systemName: "arrow.down.app")
                 .font(.system(size: 44, weight: .light))
                 .foregroundStyle(Palette.ink)
-            Text("Je potřeba nová verze").font(Typo.sentence(30, relativeTo: .title)).foregroundStyle(Palette.ink)
-            Text("Server se změnil a tahle verze aplikace už jeho data nepřečte správně. Nainstaluj novou verzi přes Sideloadly. Data zůstávají uložená na serveru.")
+            Text(L10n.tr("Je potřeba nová verze")).font(Typo.sentence(30, relativeTo: .title)).foregroundStyle(Palette.ink)
+            Text(L10n.tr("Server se změnil a tahle verze aplikace už jeho data nepřečte správně. Nainstaluj novou verzi přes Sideloadly. Data zůstávají uložená na serveru."))
                 .font(.subheadline)
                 .foregroundStyle(Palette.muted)
                 .multilineTextAlignment(.center)
@@ -75,16 +98,51 @@ struct UpdateRequiredView: View {
     }
 }
 
-/// "Bez připojení": the screens show what was saved on the phone.
+/// "Bez připojení": the screens show what was saved on the phone, and how
+/// many writes wait for signal (Outbox).
 struct OfflineBanner: View {
+    var offline = true
+    var waiting = 0
+
+    private var text: String {
+        let parts = [offline ? L10n.tr("Bez připojení · uložená data") : nil, waiting > 0 ? Self.waitingText(waiting) : nil]
+        return parts.compactMap { $0 }.joined(separator: " · ")
+    }
+
+    static func waitingText(_ n: Int) -> String {
+        if n == 1 { return L10n.f("%@ zápis čeká na signál", String(n)) }
+        if (2...4).contains(n) { return L10n.f("%@ zápisy čekají na signál", String(n)) }
+        return L10n.f("%@ zápisů čeká na signál", String(n))
+    }
+
     var body: some View {
-        Label("Bez připojení · uložená data", systemImage: "wifi.slash")
+        Label(text, systemImage: offline ? "wifi.slash" : "arrow.triangle.2.circlepath")
             .font(.footnote.weight(.medium))
             .foregroundStyle(Palette.ink)
             .padding(.horizontal, 14).frame(height: 32)
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().stroke(Palette.hairline, lineWidth: 1))
             .allowsHitTesting(false)
+    }
+}
+
+/// A waiting write the server turned down; a tap puts it away.
+struct OutboxNote: View {
+    let text: String
+    let dismiss: () -> Void
+
+    var body: some View {
+        Button(action: dismiss) {
+            Label(text, systemImage: "exclamationmark.circle")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Palette.rust)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Palette.hairline, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
     }
 }
 
@@ -124,59 +182,8 @@ struct TabBar: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         }
-        .accessibilityLabel(label)
+        .accessibilityLabel(L10n.tr(label))
         .accessibilityAddTraits(tab == value ? .isSelected : [])
     }
 }
 
-/// The "+" in the tab bar: food, water or weight.
-struct AddSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    @State private var food = false
-    @State private var weight = false
-    @State private var workout = false
-    @State private var water: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Co přidáme?").font(Typo.sentence(30, relativeTo: .title)).foregroundStyle(Palette.ink)
-                Spacer()
-                Button("Zavřít") { dismiss() }.font(.subheadline).foregroundStyle(Palette.muted)
-            }
-            HStack(spacing: 10) {
-                tile("Jídlo", "fork.knife") { food = true }
-                tile(water ?? "Voda 250 ml", "drop.fill") {
-                    Task {
-                        water = "Přidávám…"
-                        await model.addWater(ml: 250)
-                        water = "Přidáno ✓"
-                    }
-                }
-                tile("Váha", "scalemass") { weight = true }
-                tile("Trénink", "figure.run") { workout = true }
-            }
-            Spacer()
-        }
-        .padding(24)
-        .presentationDetents([.height(240)])
-        .presentationBackground(Palette.background)
-        .sheet(isPresented: $food, onDismiss: { dismiss() }) { AddFoodSheet(meal: MealSlot.now()) }
-        .sheet(isPresented: $weight, onDismiss: { dismiss() }) { WeightEntrySheet() }
-        .sheet(isPresented: $workout, onDismiss: { dismiss() }) { ManualWorkoutSheet() }
-    }
-
-    private func tile(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: symbol).font(.system(size: 21))
-                Text(title).font(.footnote.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(Palette.ink)
-            .frame(maxWidth: .infinity).frame(height: 84)
-            .background(Palette.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}

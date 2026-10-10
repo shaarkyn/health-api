@@ -46,6 +46,9 @@ struct SettingsMenu: View {
     let store: SettingsStore
     var signOut: () -> Void = {}
     @AppStorage("appearance") private var appearance = "system"
+    @AppStorage("restSets") private var restSets = 90
+    @AppStorage("restExercises") private var restExercises = 120
+    @AppStorage(DrinkFigureKind.storageKey) private var drinkFigure = DrinkFigureKind.fallback.rawValue
 
     var body: some View {
         SettingsPage(title: "Nastavení") {
@@ -84,11 +87,50 @@ struct SettingsMenu: View {
                 SettingsDivider()
                 NavigationLink { SourcesSettingsView(store: store) } label: {
                     SettingsRow(icon: SettingsIcon(systemImage: "arrow.triangle.2.circlepath", color: Palette.indigo), title: "Zdroje dat",
-                                value: store.loaded ? "\(store.connectedCount) " + Fmt.plural(store.connectedCount, "připojený", "připojené", "připojených") : nil)
+                                value: !store.problems.isEmpty ? L10n.tr("připojit znovu")
+                                    : store.loaded ? "\(store.connectedCount) " + Fmt.plural(store.connectedCount, "připojený", "připojené", "připojených") : nil)
+                        // A source to connect again: a red dot on the icon.
+                        .overlay(alignment: .topLeading) {
+                            if !store.problems.isEmpty {
+                                Circle().fill(Palette.rust).frame(width: 10, height: 10)
+                                    .overlay(Circle().stroke(Palette.card, lineWidth: 2))
+                                    .offset(x: 40, y: 8)
+                                    .accessibilityLabel("Připojit znovu")
+                            }
+                        }
+                }
+                SettingsDivider()
+                NavigationLink { SleepSettingsView(given: store) } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "moon.zzz.fill", color: Palette.indigo), title: "Spánek a budík", value: sleepValue)
                 }
                 SettingsDivider()
                 NavigationLink { ZonesSettingsView(store: store) } label: {
                     SettingsRow(icon: SettingsIcon(systemImage: "heart.text.square", color: Palette.rust), title: "Tréninkové zóny", value: "běh, kolo")
+                }
+            }
+            .buttonStyle(.plain)
+
+            SettingsGroup(title: "Posilovna, jídlo a pití") {
+                NavigationLink { EquipmentView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "dumbbell.fill", color: Palette.brown), title: "Vybavení na posilování")
+                }
+                SettingsDivider()
+                NavigationLink { GymRestSettingsView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "timer", color: Palette.amberBar), title: "Pauzy v posilovně",
+                                value: GymRestSettingsView.label(restSets) + " / " + GymRestSettingsView.label(restExercises))
+                }
+                SettingsDivider()
+                NavigationLink { MealSlotsSettingsView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "fork.knife", color: Palette.amber), title: "Jídla dne")
+                }
+                SettingsDivider()
+                NavigationLink { DrinkSettingsView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "cup.and.saucer.fill", color: Palette.blue), title: "Oblíbené nápoje")
+                }
+                SettingsDivider()
+                NavigationLink { DrinkFigureSettingsView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "drop.fill", color: Palette.blue), title: "Postavička pití",
+                                value: DrinkFigureKind.from(drinkFigure).label)
                 }
             }
             .buttonStyle(.plain)
@@ -103,16 +145,22 @@ struct SettingsMenu: View {
                 }
                 SettingsDivider()
                 NavigationLink { UnitsSettingsView() } label: {
-                    SettingsRow(icon: SettingsIcon(systemImage: "ruler", color: Color(light: 0x5B7FA6, dark: 0x8FB1D6)), title: "Jednotky", value: "metrické")
+                    SettingsRow(icon: SettingsIcon(systemImage: "ruler", color: Color(light: 0x5B7FA6, dark: 0x8FB1D6)), title: "Jednotky", value: UnitsSettingsView.label(units))
                 }
                 SettingsDivider()
-                SettingsRow(icon: SettingsIcon(systemImage: "globe", color: Palette.blue), title: "Jazyk", value: "čeština", chevron: false)
+                NavigationLink { LanguageSettingsView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "globe", color: Palette.blue), title: "Jazyk", value: LanguageSettingsView.label(language))
+                }
             }
             .buttonStyle(.plain)
 
             SettingsGroup(title: "Ostatní") {
                 NavigationLink { PrivacySettingsView() } label: {
                     SettingsRow(icon: SettingsIcon(systemImage: "lock.fill", color: Palette.faint), title: "Soukromí a data")
+                }
+                SettingsDivider()
+                NavigationLink { ReportProblemView(store: store) } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "ladybug.fill", color: Palette.rust), title: "Nahlásit problém")
                 }
                 SettingsDivider()
                 Link(destination: URL(string: "https://petrfitnessdata.eu/app")!) {
@@ -128,12 +176,14 @@ struct SettingsMenu: View {
                 .buttonStyle(.plain)
             }
 
-            Text("Loadwise \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+            Text(verbatim: "Loadwise \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
                 .font(Typo.caption).foregroundStyle(Palette.faint)
                 .frame(maxWidth: .infinity)
         }
     }
 
+    @AppStorage(Units.key) private var units = "metric"
+    @AppStorage(L10n.key) private var language = "cs"
     @AppStorage(Reminders.bedtimeKey) private var r1 = true
     @AppStorage(Reminders.workoutKey) private var r2 = true
     @AppStorage(Reminders.waterKey) private var r3 = true
@@ -142,6 +192,11 @@ struct SettingsMenu: View {
     private var remindersValue: String {
         let on = [r1, r2, r3, r4].filter { $0 }.count
         return on == 0 ? "vypnutá" : "\(on) " + Fmt.plural(on, "zapnuté", "zapnutá", "zapnutých")
+    }
+
+    private var sleepValue: String? {
+        if let wake = store.profile["wakeTime"]?.string { return L10n.f("budík %@", wake) }
+        return store.profile["sleepGoal"]?.number.map { Fmt.hoursMinutes($0) + " h" }
     }
 
     private var goalsValue: String? {

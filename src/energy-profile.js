@@ -45,6 +45,19 @@ export function ageFrom(birthDate, now = new Date()) {
 }
 
 // Cleans a profile posted from the dashboard; unknown values become null.
+const clockText = v => { const m = String(v ?? "").trim().match(/^(\d{1,2}):(\d{2})$/); return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? m[1].padStart(2, "0") + ":" + m[2] : ""; };
+
+// The profile's sleep settings for the recovery model: the goal in minutes
+// and the wake times in minutes after midnight.
+export function sleepSettings(profile = {}) {
+  const minutes = t => { const m = String(t || "").match(/^(\d{2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  const goal = num(profile.sleepGoal);
+  return { goal: goal >= 360 && goal <= 600 ? goal : null, wake: { workday: minutes(profile.wakeTime), weekend: minutes(profile.wakeTimeWeekend) } };
+}
+
+export const MEAL_SLOTS = ["breakfast", "snack_am", "lunch", "snack_pm", "dinner", "snack_late"];
+const mealSlots = v => { const chosen = new Set(Array.isArray(v) ? v.map(String) : []); return MEAL_SLOTS.filter(m => chosen.has(m)); };
+
 export function normalizeProfile(p = {}) {
   const inRange = (v, lo, hi) => { const x = num(v); return Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
   const birthDate = ageFrom(p.birthDate) != null ? p.birthDate : "";
@@ -59,6 +72,13 @@ export function normalizeProfile(p = {}) {
     sportHours: p.sportHours==='auto'||Object.hasOwn(SPORT_HOURS, p.sportHours) ? p.sportHours : "",
     goal: Object.hasOwn(GOALS, p.goal) ? p.goal : "",
     targetWeight: inRange(p.targetWeight, 35, 250),
+    // Sleep: an own goal (6–10 h, in minutes) and the alarm on work days and
+    // at the weekend ("HH:MM"); empty means the usual from recorded nights.
+    sleepGoal: inRange(p.sleepGoal, 360, 600),
+    wakeTime: clockText(p.wakeTime),
+    wakeTimeWeekend: clockText(p.wakeTimeWeekend),
+    // The meals of the day the app plans (app-food.js MEALS); empty is the usual five.
+    meals: mealSlots(p.meals),
     ...normalizeFocus(p)
   };
 }

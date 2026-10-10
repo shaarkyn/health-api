@@ -4,7 +4,14 @@ import { L } from './lang.js';
 import { activityFromRow, dedupeActivities } from "./coach-reflection.js";
 import { localDateTime } from "./user-time.js";
 
-const KINDS = ["water", "coffee", "tea", "juice", "milk", "sport", "other"];
+const KINDS = ["water", "coffee", "tea", "juice", "milk", "sport", "soda", "beer", "wine", "other"];
+
+// How much of a drink counts towards hydration, against water (the Beverage
+// Hydration Index, Maughan 2016: milk and oral-rehydration drinks keep more
+// water in the body, coffee and tea about as much as water). Coffee is counted
+// at 0.9 to stay on the safe side; beer at half; wine and spirits not at all.
+export const HYDRATION_FACTORS = { water: 1, tea: 1, coffee: 0.9, juice: 1, milk: 1.1, sport: 1.1, soda: 0.9, beer: 0.5, wine: 0, other: 1, food: 1 };
+export const hydrationMl = (ml, kind) => Math.round((Number(ml) || 0) * (HYDRATION_FACTORS[kind] ?? 1));
 const round100 = ml => Math.round(ml / 100) * 100;
 
 // Drinks per day: 30 ml per kg of body weight (food covers the rest of the
@@ -45,6 +52,19 @@ export async function addFluid(db, { date, ml, kind = "water", at = null }) {
   const r = await db.prepare("INSERT INTO fluid_log(user_id,date,consumed_at,ml,kind) VALUES(?,?,?,?,?)")
     .bind(db.userId, date, consumedAt, amount, KINDS.includes(kind) ? kind : "other").run();
   return { id: r.meta?.last_row_id ?? null, date, consumedAt, ml: amount, kind: KINDS.includes(kind) ? kind : "other" };
+}
+
+// A drink changed afterwards: another amount, kind or time.
+export async function updateFluid(db, { id, ml, kind, at }) {
+  await ensure(db);
+  const row = await db.prepare("SELECT id,date,consumed_at,ml,kind FROM fluid_log WHERE user_id=? AND id=?").bind(db.userId, Number(id)).first();
+  if (!row) throw new Error(L("Pití nenalezeno.", "Drink not found."));
+  const amount = ml == null ? Number(row.ml) : Math.round(Number(ml));
+  if (!(amount >= 10 && amount <= 3000)) throw new Error(L("Zadej množství 10–3000 ml.", "Enter an amount of 10–3,000 ml."));
+  const type = kind == null ? row.kind : KINDS.includes(kind) ? kind : "other";
+  const consumedAt = at && /^\d{2}:\d{2}$/.test(String(at)) ? `${row.date}T${at}` : row.consumed_at;
+  await db.prepare("UPDATE fluid_log SET ml=?,kind=?,consumed_at=? WHERE user_id=? AND id=?").bind(amount, type, consumedAt, db.userId, Number(id)).run();
+  return { id: Number(id), date: row.date, consumedAt, ml: amount, kind: type };
 }
 
 export async function deleteFluid(db, id) {

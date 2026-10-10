@@ -1,4 +1,5 @@
 import { L } from './lang.js';
+import { healthPointJson } from './health-point-json.js';
 import {localExportIndex} from './local-workouts.js';
 import {hasRecentActivityData} from './onboarding.js';
 import { getCookbook, getCookbookRecipeByPage } from "./cookbook.js";
@@ -14,6 +15,7 @@ import { healthScopes, hasGoogleScope, HEALTH_PERMISSIONS, googleTypeAllowed, sk
 import { pairSessions } from "./activity-match.js";
 import { localToday, zonedIso, localNoon, dayStartUtc, localDate } from "./user-time.js";
 import { intervalsAuthorization } from "./intervals-auth.js";
+import { markConnectionBroken, markConnectionOk, isGoogleAuthFailure, isIntervalsAuthFailure } from "./connection-health.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -362,6 +364,8 @@ export async function googleToken(env, scopes = healthScopes(env)) {
   const data = await response.json();
 
   if (!response.ok) {
+    // A revoked or expired grant asks the user to connect Google again (connection-health.js).
+    if (isGoogleAuthFailure(data)) await markConnectionBroken(env, "google", data.error_description || data.error);
     if (data?.error === "invalid_grant") {
       throw new Error(
         "Google OAuth refresh token is invalid or expired. Reauthorize at /oauth/google and replace the GOOGLE_REFRESH_TOKEN secret with the newly issued token."
@@ -370,6 +374,7 @@ export async function googleToken(env, scopes = healthScopes(env)) {
     throw new Error("Google OAuth error: " + JSON.stringify(data));
   }
 
+  await markConnectionOk(env, "google");
   return data.access_token;
 }
 
@@ -420,6 +425,8 @@ async function intervalsGet(
   }
 
   if (!response.ok) {
+    // A refused key or token asks the user to connect Intervals.icu again (connection-health.js).
+    if (isIntervalsAuthFailure(response.status)) await markConnectionBroken(env, "intervals", "Intervals.icu HTTP " + response.status);
     throw new Error(
       "Intervals.icu HTTP " +
       response.status +
@@ -427,6 +434,7 @@ async function intervalsGet(
     );
   }
 
+  await markConnectionOk(env, "intervals");
   return data;
 }
 
@@ -509,7 +517,13 @@ function pointStatement(env, source, type, payload, value = null, unit = null, s
         value_numeric = excluded.value_numeric,
         value_unit = excluded.value_unit,
         payload_json = excluded.payload_json,
-        updated_at = CURRENT_TIMESTAMP`
+        updated_at = CURRENT_TIMESTAMP
+      WHERE health_datapoints.sample_time IS NOT excluded.sample_time
+        OR health_datapoints.start_time IS NOT excluded.start_time
+        OR health_datapoints.end_time IS NOT excluded.end_time
+        OR health_datapoints.value_numeric IS NOT excluded.value_numeric
+        OR health_datapoints.value_unit IS NOT excluded.value_unit
+        OR health_datapoints.payload_json IS NOT excluded.payload_json`
     )
     .bind(
       env.USER_ID,
@@ -521,7 +535,7 @@ function pointStatement(env, source, type, payload, value = null, unit = null, s
       endTime,
       value,
       unit,
-      JSON.stringify(payload)
+      healthPointJson(payload)
     );
 }
 
@@ -862,7 +876,13 @@ async function saveGooglePointsBatch(env, family, type, points) {
         value_numeric = excluded.value_numeric,
         value_unit = excluded.value_unit,
         payload_json = excluded.payload_json,
-        updated_at = CURRENT_TIMESTAMP`
+        updated_at = CURRENT_TIMESTAMP
+      WHERE health_datapoints.sample_time IS NOT excluded.sample_time
+        OR health_datapoints.start_time IS NOT excluded.start_time
+        OR health_datapoints.end_time IS NOT excluded.end_time
+        OR health_datapoints.value_numeric IS NOT excluded.value_numeric
+        OR health_datapoints.value_unit IS NOT excluded.value_unit
+        OR health_datapoints.payload_json IS NOT excluded.payload_json`
     ).bind(
       env.USER_ID,
       family,
@@ -873,7 +893,7 @@ async function saveGooglePointsBatch(env, family, type, points) {
       i.end,
       i.value,
       i.unit,
-      JSON.stringify(point)
+      healthPointJson(point)
     );
   });
 
