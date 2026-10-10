@@ -151,12 +151,12 @@ final class APIClient: @unchecked Sendable {
         return me.consent?.aiAllowed ?? false
     }
 
-    /// The signed-in account's name or e-mail (GET /app/api/me → user).
-    func accountName() async throws -> String? {
+    /// The signed-in account's name and e-mail (GET /app/api/me → user).
+    func account() async throws -> (name: String?, email: String?) {
         struct User: Decodable { let name: String?; let email: String? }
         struct Me: Decodable { let user: User? }
         let me: Me = try await get("/app/api/me")
-        return me.user?.name ?? me.user?.email
+        return (me.user?.name?.nilIfBlank, me.user?.email?.nilIfBlank)
     }
 
     func setAI(_ allowed: Bool) async throws {

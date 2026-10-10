@@ -66,7 +66,12 @@ struct RootView: View {
             // Back in the app: new data, and what waited for signal (and water
             // added from the widget) goes out.
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active, model.today != nil || !model.outbox.isEmpty { Task { await model.refresh() } }
+                guard phase == .active else { return }
+                Task {
+                    if model.today != nil || !model.outbox.isEmpty { await model.refresh() }
+                    // The open tab too, so Health or Food are not a day behind Today.
+                    if model.tab != .today { await model.refreshIfStale(model.tab) }
+                }
             }
         }
     }

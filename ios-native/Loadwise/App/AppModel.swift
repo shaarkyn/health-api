@@ -33,6 +33,12 @@ final class AppModel {
     private(set) var selectedDate: String?
     /// The server answered 426: this build is too old (src/app-version.js).
     private(set) var updateRequired = false
+    /// When each tab's data last came from the server, and for which day. The
+    /// screens open with the copy saved on the phone; refreshIfStale loads it again.
+    @ObservationIgnored private var fetched: [AppTab: (at: Date, day: String)] = [:]
+    /// The day the screens show: the chosen one, else today (so a load from
+    /// 23:58 counts as stale after midnight).
+    private var shownDay: String { selectedDate ?? Self.localDate(Date()) }
     /// The open tab and each tab's navigation stack, so cards, widgets and
     /// links (loadwise://open/sleep) can open any detail.
     var tab: AppTab = .today
@@ -150,11 +156,21 @@ final class AppModel {
     nonisolated static let setupDoneKey = "setupDone"
     nonisolated static let accountInitialKey = "accountInitial"
 
-    /// The first letter of the account's name or e-mail for the settings button.
+    /// The account's name and e-mail for Profil, and the first letter of the
+    /// name for the settings button while there is no photo.
     func loadAccountInitial() async {
-        guard !demo, phase == .signedIn, let name = try? await api.accountName(), let first = name.trimmingCharacters(in: .whitespaces).first else { return }
-        UserDefaults.standard.set(String(first).uppercased(), forKey: Self.accountInitialKey)
+        guard !demo, phase == .signedIn, let account = try? await api.account() else { return }
+        let defaults = UserDefaults.standard
+        defaults.set(account.name, forKey: AvatarStore.nameKey)
+        defaults.set(account.email, forKey: AvatarStore.emailKey)
+        let shown = defaults.string(forKey: Self.displayNameKey)?.nilIfBlank ?? account.name ?? account.email
+        if let first = shown?.trimmingCharacters(in: .whitespaces).first {
+            defaults.set(String(first).uppercased(), forKey: Self.accountInitialKey)
+        }
     }
+
+    /// The name the user typed in Profil (kept in the profile on the server too).
+    nonisolated static let displayNameKey = "displayName"
 
     func signIn() async {
         signingIn = true
@@ -208,6 +224,7 @@ final class AppModel {
             let (snapshot, data) = try await api.todayData(date: selectedDate)
             today = snapshot
             todayBase = data
+            fetched[.today] = (Date(), shownDay)
             applyOutbox()
             errorMessage = nil
             _ = noteConnection(nil)
@@ -223,12 +240,32 @@ final class AppModel {
         }
     }
 
+    /// A tab's data again unless it came from the server in the last 5 minutes
+    /// for the same day. Without this a tab kept the copy saved on the phone
+    /// (yesterday's night on Health while Today already had last night).
+    func refreshIfStale(_ tab: AppTab) async {
+        guard !demo, phase == .signedIn else { return }
+        let day = tab == .training ? Self.localDate(Date()) : shownDay
+        if let last = fetched[tab], last.day == day, Date().timeIntervalSince(last.at) < 300 { return }
+        switch tab {
+        case .today: await refresh()
+        case .training: await refreshTraining()
+        case .health: await refreshHealth()
+        case .food: await refreshFood()
+        }
+    }
+
     func refreshTraining() async {
         guard !demo, phase == .signedIn else { return }
         do {
             training = try await api.training()
+            fetched[.training] = (Date(), Self.localDate(Date()))
             trainingError = nil
             _ = noteConnection(nil)
+            // The calendar too: loadCalendar alone fetches only missing days, so a
+            // moved or deleted session, or a new activity, stayed as it was.
+            let today = Self.localDate(Date())
+            await loadCalendar(from: ISODay.shift(today, -14), to: ISODay.shift(today, 28), force: true)
         } catch APIError.unauthorized {
             signOut()
         } catch {
@@ -240,6 +277,7 @@ final class AppModel {
         guard !demo, phase == .signedIn else { return }
         do {
             health = try await api.health(date: selectedDate)
+            fetched[.health] = (Date(), shownDay)
             healthError = nil
             _ = noteConnection(nil)
         } catch APIError.unauthorized {
@@ -255,6 +293,7 @@ final class AppModel {
             let (snapshot, data) = try await api.foodData(date: selectedDate)
             food = snapshot
             foodBase = data
+            fetched[.food] = (Date(), shownDay)
             applyOutbox()
             foodError = nil
             _ = noteConnection(nil)
@@ -599,6 +638,8 @@ final class AppModel {
         WidgetBridge.clear()
         UserDefaults.standard.removeObject(forKey: Self.setupDoneKey)
         UserDefaults.standard.removeObject(forKey: Self.accountInitialKey)
+        for key in [AvatarStore.nameKey, AvatarStore.emailKey, Self.displayNameKey] { UserDefaults.standard.removeObject(forKey: key) }
+        AvatarStore.remove()
         needsSetup = false
         paths = [:]
         tab = .today

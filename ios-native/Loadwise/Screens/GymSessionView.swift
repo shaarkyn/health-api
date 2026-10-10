@@ -289,7 +289,7 @@ struct TechniqueSheet: View {
     @State private var error: String?
 
     var body: some View {
-        ScrollView {
+        PageScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text(exercise).font(Typo.sentence(28, relativeTo: .title2)).foregroundStyle(Palette.ink)
@@ -365,7 +365,7 @@ struct AlternativesSheet: View {
             } else if items.isEmpty {
                 Text("Žádná náhrada se nenašla.").font(Typo.small).foregroundStyle(Palette.muted)
             }
-            ScrollView {
+            PageScroll {
                 VStack(spacing: 0) {
                     ForEach(items) { alt in
                         Button {
