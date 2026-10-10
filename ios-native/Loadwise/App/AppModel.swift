@@ -35,6 +35,9 @@ final class AppModel {
     private(set) var offline = false
     /// The day on the Today, Food and Health screens, nil for today.
     private(set) var selectedDate: String?
+    /// Stav sportovce on Today (active, sick, injured, on a break).
+    private(set) var athleteStatus: AthleteStatus?
+
     /// The server answered 426: this build is too old (src/app-version.js).
     private(set) var updateRequired = false
     /// When each tab's data last came from the server, and for which day. The
@@ -98,6 +101,9 @@ final class AppModel {
         // After every stored property is set: the closure captures self.
         api.onUpdateRequired = { [weak self] in
             Task { @MainActor in self?.updateRequired = true }
+        }
+        api.onSubscriptionRequired = { [weak self] in
+            Task { @MainActor in if let self { Paywall.present(self) } }
         }
     }
 
@@ -261,6 +267,7 @@ final class AppModel {
                 await Reminders.reschedule(from: today)
                 WidgetBridge.update(today)
             }
+            if let status = try? await api.athleteStatus() { athleteStatus = status }
         } catch APIError.unauthorized {
             signOut(expired: true)
         } catch {
@@ -290,6 +297,15 @@ final class AppModel {
         }
     }
     @ObservationIgnored private var refreshing: Set<AppTab> = []
+
+    /// A new Stav sportovce. The coach and the plans follow it, so Today and
+    /// Training load again.
+    func setAthleteStatus(_ status: String, until: String?, note: String?) async throws {
+        guard !demo else { athleteStatus = AthleteStatus(status: status, note: note, statusUntil: until); return }
+        athleteStatus = try await api.setAthleteStatus(status, until: until, note: note)
+        await refresh()
+        if training != nil { await refreshTraining() }
+    }
 
     /// Every tab again, e.g. after a change of language (the server's texts).
     func refreshAll() async {
@@ -735,6 +751,7 @@ final class AppModel {
         calendar = [:]
         selectedDate = nil
         fetched = [:]
+        athleteStatus = nil
         phase = .signedOut
     }
 }

@@ -60,6 +60,8 @@ struct SettingsMenu: View {
                 Text(error).font(Typo.small).foregroundStyle(Palette.rust)
             }
 
+            ProSettingsRow()
+
             NavigationLink { ProfileSettingsView(store: store, signOut: signOut) } label: {
                 HStack(spacing: 14) {
                     AvatarView(size: 56)
@@ -133,13 +135,6 @@ struct SettingsMenu: View {
                 NavigationLink { DrinkFigureSettingsView() } label: {
                     SettingsRow(icon: SettingsIcon(systemImage: "drop.fill", color: Palette.blue), title: "Postavička pití",
                                 value: DrinkFigureKind.from(drinkFigure).label)
-                }
-            }
-            .buttonStyle(.plain)
-
-            SettingsGroup {
-                NavigationLink { SubscriptionView() } label: {
-                    SettingsRow(icon: SettingsIcon(systemImage: "sparkles", color: Palette.indigo), title: "Předplatné", subtitle: "Loadwise AI")
                 }
             }
             .buttonStyle(.plain)

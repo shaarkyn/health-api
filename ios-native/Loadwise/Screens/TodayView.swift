@@ -59,6 +59,10 @@ struct TodayContent: View {
                 .accessibilityLabel("Profil a nastavení")
             }
 
+            if model.selectedDate == nil {
+                AthleteStatusPill().padding(.top, 14)
+            }
+
             if model.selectedDate == nil && !model.demo {
                 ConnectionProblemCard()
             }

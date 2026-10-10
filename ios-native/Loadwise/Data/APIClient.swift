@@ -30,6 +30,9 @@ final class APIClient: @unchecked Sendable {
     /// change breaks what installed apps expect; older apps then ask for an update.
     static let apiLevel = 1
 
+    /// An AI feature answered 402: AppModel shows the Loadwise Pro offer.
+    var onSubscriptionRequired: (@Sendable () -> Void)?
+
     /// Called on the first 426: AppModel swaps the screens for the update notice.
     var onUpdateRequired: (@Sendable () -> Void)?
 
@@ -542,6 +545,7 @@ final class APIClient: @unchecked Sendable {
                 throw APIError.aiConsentRequired(message ?? L10n.tr("AI funkce potřebují tvůj souhlas."))
             }
             if http.statusCode == 402 {
+                onSubscriptionRequired?()
                 throw APIError.subscriptionRequired(message ?? L10n.tr("Tahle AI funkce je součástí AI předplatného."))
             }
             throw APIError.message(message ?? L10n.f("Server odpověděl chybou %@.", String(http.statusCode)))
