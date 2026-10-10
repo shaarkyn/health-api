@@ -65,9 +65,6 @@ final class AppModel {
         self.api = api
         self.auth = AuthService(api: api)
         self.demo = demo
-        api.onUpdateRequired = { [weak self] in
-            Task { @MainActor in self?.updateRequired = true }
-        }
         if demo {
             phase = .signedIn
             today = DemoData.today
@@ -88,6 +85,10 @@ final class AppModel {
         // The network back: what waited goes out and the screens load again.
         if !demo {
             network = NetworkWatch { [weak self] in await self?.networkBack() }
+        }
+        // After every stored property is set: the closure captures self.
+        api.onUpdateRequired = { [weak self] in
+            Task { @MainActor in self?.updateRequired = true }
         }
     }
 
