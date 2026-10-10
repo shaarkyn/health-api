@@ -1267,3 +1267,7 @@
 "zítra" = "tomorrow";
 "včera" = "yesterday";
 "Doplň energii v kcal, jinak by se jídlo počítalo jako 0 kcal." = "Add the energy in kcal, otherwise the food would count as 0 kcal.";
+"Doba pohybu" = "Moving time";
+"Průměrný tep" = "Average heart rate";
+"Kroky" = "Steps";
+"Google Health posílá jen souhrn aktivity, ne průběh výkonu ani trasu." = "Google Health sends only a summary of the activity, not its course or route.";

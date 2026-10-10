@@ -13,6 +13,8 @@ struct CoachView: View {
     @State private var progress: String?
     @State private var error: String?
     @State private var needsConsent = false
+    /// The question that asked for the AI consent: sent again once it is given.
+    @State private var unsent: (bubble: UUID, text: String)?
     @State private var home: CoachesSnapshot?
     @State private var showChats = false
     @FocusState private var focused: Bool
@@ -133,6 +135,13 @@ struct CoachView: View {
                         try await model.api.allowAI()
                         needsConsent = false
                         error = nil
+                        // The question that ran into the consent goes out now, no need to type it again.
+                        if let question = unsent {
+                            unsent = nil
+                            messages.removeAll { $0.id == question.bubble }
+                            input = question.text
+                            await send()
+                        }
                     } catch { self.error = error.localizedDescription }
                 }
             } label: {
@@ -168,7 +177,8 @@ struct CoachView: View {
         guard !text.isEmpty, !sending, !model.demo else { return }
         input = ""
         error = nil
-        messages.append(Bubble(mine: true, text: text))
+        let mine = Bubble(mine: true, text: text)
+        messages.append(mine)
         let reply = Bubble(mine: false, text: "")
         messages.append(reply)
         // By id, not index: the list may change while the answer streams in.
@@ -193,6 +203,7 @@ struct CoachView: View {
             messages.removeAll { $0.id == id && $0.text.isEmpty }
         } catch APIError.aiConsentRequired {
             messages.removeAll { $0.id == id }
+            unsent = (mine.id, text)
             needsConsent = true
         } catch {
             messages.removeAll { $0.id == id && $0.text.isEmpty }

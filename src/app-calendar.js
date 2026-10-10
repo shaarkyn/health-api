@@ -3,7 +3,7 @@
 // distance and calories, and the day's main sport for its icon. Pure: GET
 // /app/api/training/calendar reads the rows of health_datapoints and gym plans.
 import { pairSessions, sessionLocalStart } from "./activity-match.js";
-import { localDate } from "./user-time.js";
+import { localDate, localDateTime } from "./user-time.js";
 import { bilingual, L } from "./lang.js";
 
 const num = v => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -44,6 +44,36 @@ function intervalsActivity(row) {
   };
 }
 
+// A value from Google's metricsSummary by the shape of its name (the API
+// names them e.g. averageHeartRateBeatsPerMinute), a number or {bpm|value}.
+function metric(metrics, match, skip = /zone|variab/i) {
+  const key = Object.keys(metrics).find(k => match(k) && !skip.test(k));
+  if (!key) return null;
+  const v = metrics[key];
+  const n = num(v && typeof v === "object" ? v.bpm ?? v.value ?? v.count : v);
+  return n > 0 ? n : null;
+}
+
+// What the app's detail of a watch session shows: Google gives a summary only
+// (no laps, no track), so the detail stays to these.
+function googleSummary(row, metrics) {
+  const local = sessionLocalStart(row) || "";
+  const endLocal = localDateTime(row.end_time) || "";
+  const avgHr = metric(metrics, k => /heart/i.test(k) && /avg|average/i.test(k));
+  const maxHr = metric(metrics, k => /heart/i.test(k) && /max/i.test(k));
+  const steps = metric(metrics, k => /steps/i.test(k));
+  const elevation = metric(metrics, k => /elevation/i.test(k) && /gain|meter|m$/i.test(k));
+  return {
+    source: "google",
+    start: local.slice(11, 16) || null,
+    end: /T\d{2}:\d{2}/.test(endLocal) ? endLocal.slice(11, 16) : null,
+    avgHr: avgHr && avgHr < 250 ? Math.round(avgHr) : null,
+    maxHr: maxHr && maxHr < 250 ? Math.round(maxHr) : null,
+    steps: steps ? Math.round(steps) : null,
+    elevationM: elevation ? Math.round(/millimeter/i.test(Object.keys(metrics).find(k => /elevation/i.test(k)) || "") ? elevation / 1000 : elevation) : null
+  };
+}
+
 // A watch session from Google Health (also the walks it finds on its own).
 function googleActivity(row) {
   const p = parse(row.payload_json), ex = p.exercise || {}, metrics = ex.metricsSummary || {};
@@ -60,7 +90,8 @@ function googleActivity(row) {
     time: local.slice(11, 16) || null,
     minutes: round(minutes), km: meters > 0 ? round(meters / 1000, 1) : null,
     kcal: round(num(metrics.caloriesKcal)) || null,
-    activityId: null, eventId: null
+    activityId: null, eventId: null,
+    summary: googleSummary(row, metrics)
   };
 }
 
