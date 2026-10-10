@@ -137,6 +137,13 @@ struct SettingsMenu: View {
             }
             .buttonStyle(.plain)
 
+            SettingsGroup {
+                NavigationLink { SubscriptionView() } label: {
+                    SettingsRow(icon: SettingsIcon(systemImage: "sparkles", color: Palette.indigo), title: "Předplatné", subtitle: "Loadwise AI")
+                }
+            }
+            .buttonStyle(.plain)
+
             SettingsGroup(title: "Aplikace") {
                 NavigationLink { NotificationsSettingsView() } label: {
                     SettingsRow(icon: SettingsIcon(systemImage: "bell.fill", color: Palette.amberBar), title: "Oznámení", value: remindersValue)

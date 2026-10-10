@@ -7,6 +7,8 @@ enum APIError: LocalizedError, Equatable {
     case aiConsentRequired(String)
     /// The server no longer serves this version of the app (426, src/app-version.js).
     case updateRequired(String)
+    /// The AI feature needs the AI subscription (402 subscription_required).
+    case subscriptionRequired(String)
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +16,7 @@ enum APIError: LocalizedError, Equatable {
         case .message(let text): return text
         case .aiConsentRequired(let text): return text
         case .updateRequired(let text): return text
+        case .subscriptionRequired(let text): return text
         }
     }
 }
@@ -537,6 +540,9 @@ final class APIClient: @unchecked Sendable {
             }
             if json?["status"] as? String == "ai_consent_required" {
                 throw APIError.aiConsentRequired(message ?? L10n.tr("AI funkce potřebují tvůj souhlas."))
+            }
+            if http.statusCode == 402 {
+                throw APIError.subscriptionRequired(message ?? L10n.tr("Tahle AI funkce je součástí AI předplatného."))
             }
             throw APIError.message(message ?? L10n.f("Server odpověděl chybou %@.", String(http.statusCode)))
         }

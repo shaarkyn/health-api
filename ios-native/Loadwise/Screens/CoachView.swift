@@ -13,6 +13,9 @@ struct CoachView: View {
     @State private var progress: String?
     @State private var error: String?
     @State private var needsConsent = false
+    /// The coach needs the AI subscription (402): the offer instead of an error.
+    @State private var needsSubscription = false
+    @State private var showSubscription = false
     /// The question that asked for the AI consent: sent again once it is given.
     @State private var unsent: (bubble: UUID, text: String)?
     @State private var home: CoachesSnapshot?
@@ -43,6 +46,7 @@ struct CoachView: View {
                                 HStack(spacing: 8) { ProgressView(); Text(progress).font(Typo.caption).foregroundStyle(Palette.muted) }
                             }
                             if needsConsent { consentCard }
+                            if needsSubscription { AISubscriptionCard { showSubscription = true } }
                             if let error { Text(error).font(Typo.small).foregroundStyle(Palette.rust) }
                             Color.clear.frame(height: 1).id("end")
                         }
@@ -70,6 +74,7 @@ struct CoachView: View {
                     .accessibilityLabel("Konverzace")
                 }
             }
+            .sheet(isPresented: $showSubscription) { NavigationStack { SubscriptionView() } }
             .sheet(isPresented: $showChats) { ChatsSheet { id in Task { await open(id) } } }
         }
         .tint(Palette.ink)
@@ -205,6 +210,9 @@ struct CoachView: View {
             messages.removeAll { $0.id == id }
             unsent = (mine.id, text)
             needsConsent = true
+        } catch APIError.subscriptionRequired {
+            messages.removeAll { $0.id == id }
+            needsSubscription = true
         } catch {
             messages.removeAll { $0.id == id && $0.text.isEmpty }
             self.error = error.localizedDescription
