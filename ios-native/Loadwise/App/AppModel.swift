@@ -21,6 +21,10 @@ final class AppModel {
     var healthError: String?
     private(set) var food: FoodSnapshot?
     var foodError: String?
+    /// A write or a refresh that failed while data is on screen: shown on top
+    /// of every tab until tapped away (the screens' own errors show only
+    /// without data).
+    var notice: String?
     private(set) var loading = false
     private(set) var signingIn = false
     var errorMessage: String?
@@ -39,6 +43,11 @@ final class AppModel {
     /// The day the screens show: the chosen one, else today (so a load from
     /// 23:58 counts as stale after midnight).
     private var shownDay: String { selectedDate ?? Self.localDate(Date()) }
+    /// The "+" sheet is open: what it adds goes to today, whatever day the
+    /// screens show (weight always did).
+    var writesToday = false
+    /// The day food and drinks are written to.
+    private var writeDay: String { writesToday ? Self.localDate(Date()) : shownDay }
     /// The open tab and each tab's navigation stack, so cards, widgets and
     /// links (loadwise://open/sleep) can open any detail.
     var tab: AppTab = .today
@@ -178,10 +187,7 @@ final class AppModel {
         defer { signingIn = false }
         do {
             try await auth.signIn()
-            demo = false
-            phase = .signedIn
-            errorMessage = nil
-            await checkSetup()
+            await signedIn()
             await refresh()
         } catch is CancellationError {
             // The user closed the sign-in sheet.
@@ -193,11 +199,33 @@ final class AppModel {
     /// Signs in with the code from the e-mail.
     func signIn(email: String, code: String) async throws {
         try await api.verifyEmailLogin(email: email, code: code)
-        demo = false
+        await signedIn()
+        await refresh()
+    }
+
+    /// After either sign-in: no sample data left on screen, and what an expired
+    /// session left behind (writes waiting for signal, the photo) is kept only
+    /// for the same account.
+    private func signedIn() async {
+        if demo {
+            today = nil; training = nil; health = nil; food = nil
+            calendar = [:]
+            demo = false
+        }
         phase = .signedIn
         errorMessage = nil
+        let defaults = UserDefaults.standard
+        if let previous = defaults.string(forKey: AvatarStore.emailKey), let account = try? await api.account(), account.email != previous {
+            outbox = []
+            OutboxStore.save([])
+            AvatarStore.remove()
+            defaults.removeObject(forKey: Self.displayNameKey)
+            SnapshotCache.clear()
+            today = nil; training = nil; health = nil; food = nil
+            calendar = [:]
+        }
+        await loadAccountInitial()
         await checkSetup()
-        await refresh()
     }
 
     /// Connects a data source; the event says how it went ("intervals",
@@ -234,10 +262,12 @@ final class AppModel {
                 WidgetBridge.update(today)
             }
         } catch APIError.unauthorized {
-            signOut()
+            signOut(expired: true)
         } catch {
             // Without signal the saved screen stays; an error only without one.
-            if !(noteConnection(error) && today != nil) { errorMessage = error.localizedDescription }
+            let lost = noteConnection(error)
+            if !(lost && today != nil) { errorMessage = error.localizedDescription }
+            if !lost && today != nil { notice = error.localizedDescription }
         }
     }
 
@@ -245,15 +275,29 @@ final class AppModel {
     /// for the same day. Without this a tab kept the copy saved on the phone
     /// (yesterday's night on Health while Today already had last night).
     func refreshIfStale(_ tab: AppTab) async {
-        guard !demo, phase == .signedIn else { return }
+        guard !demo, phase == .signedIn, !refreshing.contains(tab) else { return }
+        // Today is already loading (the app came back): no second request.
+        if tab == .today && loading { return }
         let day = tab == .training ? Self.localDate(Date()) : shownDay
         if let last = fetched[tab], last.day == day, Date().timeIntervalSince(last.at) < 300 { return }
+        refreshing.insert(tab)
+        defer { refreshing.remove(tab) }
         switch tab {
         case .today: await refresh()
         case .training: await refreshTraining()
         case .health: await refreshHealth()
         case .food: await refreshFood()
         }
+    }
+    @ObservationIgnored private var refreshing: Set<AppTab> = []
+
+    /// Every tab again, e.g. after a change of language (the server's texts).
+    func refreshAll() async {
+        fetched = [:]
+        await refresh()
+        if training != nil { await refreshTraining() }
+        if health != nil { await refreshHealth() }
+        if food != nil { await refreshFood() }
     }
 
     func refreshTraining() async {
@@ -268,9 +312,11 @@ final class AppModel {
             let today = Self.localDate(Date())
             await loadCalendar(from: ISODay.shift(today, -14), to: ISODay.shift(today, 28), force: true)
         } catch APIError.unauthorized {
-            signOut()
+            signOut(expired: true)
         } catch {
-            if !(noteConnection(error) && training != nil) { trainingError = error.localizedDescription }
+            let lost = noteConnection(error)
+            if !(lost && training != nil) { trainingError = error.localizedDescription }
+            if !lost && training != nil { notice = error.localizedDescription }
         }
     }
 
@@ -282,9 +328,11 @@ final class AppModel {
             healthError = nil
             _ = noteConnection(nil)
         } catch APIError.unauthorized {
-            signOut()
+            signOut(expired: true)
         } catch {
-            if !(noteConnection(error) && health != nil) { healthError = error.localizedDescription }
+            let lost = noteConnection(error)
+            if !(lost && health != nil) { healthError = error.localizedDescription }
+            if !lost && health != nil { notice = error.localizedDescription }
         }
     }
 
@@ -299,9 +347,11 @@ final class AppModel {
             foodError = nil
             _ = noteConnection(nil)
         } catch APIError.unauthorized {
-            signOut()
+            signOut(expired: true)
         } catch {
-            if !(noteConnection(error) && food != nil) { foodError = error.localizedDescription }
+            let lost = noteConnection(error)
+            if !(lost && food != nil) { foodError = error.localizedDescription }
+            if !lost && food != nil { notice = error.localizedDescription }
         }
     }
 
@@ -310,13 +360,14 @@ final class AppModel {
     func addDrink(ml: Int, kind: String) async -> Bool {
         guard !demo else { return true }
         do {
-            if try await deliver(drinkItem(ml: ml, kind: kind, date: selectedDate ?? Self.localDate(Date()))) {
+            if try await deliver(drinkItem(ml: ml, kind: kind, date: writeDay)) {
                 await refreshFood()
                 await refresh()
             }
             return true
         } catch {
             foodError = error.localizedDescription
+            notice = error.localizedDescription
             return false
         }
     }
@@ -452,10 +503,22 @@ final class AppModel {
     func saveGym(_ day: GymDay, date: String) async throws {
         guard !demo else { return }
         GymDayCache.save(day, date: date)
-        let item = OutboxItem(path: "/app/api/gym", method: "POST", body: OutboxItem.json(APIClient.gymBody(day, date: date)),
-                              label: L10n.tr("Posilovna"), key: "gym:" + date)
-        _ = try await deliver(item)
+        // One save of a day at a time. Sets ticked meanwhile go out after it,
+        // only the newest sheet, so an older sheet can never land last.
+        if gymSaving.contains(date) { gymPending[date] = day; return }
+        gymSaving.insert(date)
+        defer { gymSaving.remove(date) }
+        var next: GymDay? = day
+        while let current = next {
+            gymPending[date] = nil
+            let item = OutboxItem(path: "/app/api/gym", method: "POST", body: OutboxItem.json(APIClient.gymBody(current, date: date)),
+                                  label: L10n.tr("Posilovna"), key: "gym:" + date)
+            _ = try await deliver(item)
+            next = gymPending[date]
+        }
     }
+    @ObservationIgnored private var gymSaving: Set<String> = []
+    @ObservationIgnored private var gymPending: [String: GymDay] = [:]
 
     /// A day's gym sheet: the one waiting to be sent, the server's, or the
     /// last one seen on the phone when there is no signal.
@@ -507,13 +570,15 @@ final class AppModel {
             return true
         } catch {
             foodError = error.localizedDescription
+            notice = error.localizedDescription
             return false
         }
     }
 
-    func deleteDrink(id: Int) async {
-        guard !demo else { return }
-        if id < 0 { dropWaiting(localId: id); return }
+    @discardableResult
+    func deleteDrink(id: Int) async -> Bool {
+        guard !demo else { return true }
+        if id < 0 { dropWaiting(localId: id); return true }
         let old = food?.water.drinks?.first { $0.id == id }
         let item = OutboxItem(path: "/app/api/fluids?id=\(id)", method: "DELETE", body: OutboxItem.json(JSONObject()), label: L10n.tr("Pití"),
                               overlay: OutboxOverlay(kind: .removeDrink, date: food?.date ?? Self.localDate(Date()), id: id, ml: old?.ml, drink: old?.kind))
@@ -522,8 +587,11 @@ final class AppModel {
                 await refreshFood()
                 await refresh()
             }
+            return true
         } catch {
             foodError = error.localizedDescription
+            notice = error.localizedDescription
+            return false
         }
     }
 
@@ -536,13 +604,16 @@ final class AppModel {
     /// Logs a food; nil when it worked, else the message to show.
     func logFood(product: FoodProduct, amount: Double, meal: String) async -> String? {
         guard !demo else { return nil }
-        let date = selectedDate ?? Self.localDate(Date())
+        let date = writeDay
         let request = FoodLogRequest(date: date, product: product.forLogging, quantity: amount, unit: product.unit, mealType: meal)
         let overlay = OutboxOverlay(kind: .food, date: date, id: Outbox.localId(), name: product.name, meal: meal,
                                     kcal: product.kcal(for: amount), protein: product.grams(product.protein_100g, for: amount),
                                     carbs: product.grams(product.carbs_100g, for: amount), fat: product.grams(product.fat_100g, for: amount),
                                     time: date == Self.localDate(Date()) ? Outbox.clock() : nil)
-        let item = OutboxItem(path: "/app/api/food/log", method: "POST", body: OutboxItem.json(request, adding: ["requestId": .string(UUID().uuidString)]),
+        // Today's meal keeps the time it was logged, also when it waits for signal.
+        var extra: JSONObject = ["requestId": .string(UUID().uuidString)]
+        if date == Self.localDate(Date()) { extra["time"] = .string(Outbox.clock()) }
+        let item = OutboxItem(path: "/app/api/food/log", method: "POST", body: OutboxItem.json(request, adding: extra),
                               label: product.name, overlay: overlay)
         do {
             if try await deliver(item) {
@@ -555,9 +626,11 @@ final class AppModel {
         }
     }
 
-    func deleteFood(id: Int) async {
-        guard !demo else { return }
-        if id < 0 { dropWaiting(localId: id); return }
+    /// true when it was deleted (or waits for signal).
+    @discardableResult
+    func deleteFood(id: Int) async -> Bool {
+        guard !demo else { return true }
+        if id < 0 { dropWaiting(localId: id); return true }
         let entry = food?.meals.flatMap(\.entries).first { $0.id == id }
         let item = OutboxItem(path: "/app/api/food/entry", method: "DELETE", body: OutboxItem.json(["id": JSONValue.number(Double(id))]),
                               label: entry?.name ?? L10n.tr("Jídlo"),
@@ -568,8 +641,11 @@ final class AppModel {
                 await refreshFood()
                 await refresh()
             }
+            return true
         } catch {
             foodError = error.localizedDescription
+            notice = error.localizedDescription
+            return false
         }
     }
 
@@ -625,22 +701,28 @@ final class AppModel {
         signOut()
     }
 
-    func signOut() {
+    /// expired: the session ran out (401), not "Odhlásit se". Writes waiting
+    /// for signal, the photo and the account's name stay until the next
+    /// sign-in shows whether it is the same account (signedIn()).
+    func signOut(expired: Bool = false) {
         api.signOut()
         SnapshotCache.clear()
         GymDayCache.clear()
-        // Waiting writes belong to this account; the next one must not send them.
-        outbox = []
-        OutboxStore.save([])
+        if !expired {
+            // Waiting writes belong to this account; the next one must not send them.
+            outbox = []
+            OutboxStore.save([])
+            for key in [AvatarStore.nameKey, AvatarStore.emailKey, Self.displayNameKey] { UserDefaults.standard.removeObject(forKey: key) }
+            AvatarStore.remove()
+        }
         outboxNote = nil
+        notice = nil
         todayBase = nil
         foodBase = nil
         Reminders.cancelAll()
         WidgetBridge.clear()
         UserDefaults.standard.removeObject(forKey: Self.setupDoneKey)
         UserDefaults.standard.removeObject(forKey: Self.accountInitialKey)
-        for key in [AvatarStore.nameKey, AvatarStore.emailKey, Self.displayNameKey] { UserDefaults.standard.removeObject(forKey: key) }
-        AvatarStore.remove()
         needsSetup = false
         paths = [:]
         tab = .today
@@ -650,7 +732,9 @@ final class AppModel {
         training = nil
         health = nil
         food = nil
+        calendar = [:]
         selectedDate = nil
+        fetched = [:]
         phase = .signedOut
     }
 }

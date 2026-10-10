@@ -484,6 +484,11 @@ final class APIClient: @unchecked Sendable {
         guard (200..<300).contains(http.statusCode) else {
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             let message = json?["message"] as? String ?? L10n.f("Server odpověděl chybou %@.", String(http.statusCode))
+            // Too old an app: the write waits for the new version instead of being dropped.
+            if http.statusCode == 426 {
+                onUpdateRequired?()
+                throw OutboxRefusal.retry(message)
+            }
             // A timeout or too many requests at the server: later, as with a server error.
             if (400..<500).contains(http.statusCode), ![408, 429].contains(http.statusCode) { throw OutboxRefusal.rejected(message) }
             throw OutboxRefusal.retry(message)

@@ -4,6 +4,7 @@
 // /app/api/training/calendar reads the rows of health_datapoints and gym plans.
 import { pairSessions, sessionLocalStart } from "./activity-match.js";
 import { localDate } from "./user-time.js";
+import { bilingual, L } from "./lang.js";
 
 const num = v => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const round = (v, d = 0) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
@@ -16,7 +17,10 @@ export function sportOf(text) {
 }
 
 const GOOGLE_TYPES = { WALKING: "Walk", RUNNING: "Run", BIKING: "Ride", CYCLING: "Ride", MOUNTAIN_BIKING: "Ride", INDOOR_BIKING: "VirtualRide", TREADMILL_RUNNING: "VirtualRun", SWIMMING: "Swim", HIKING: "Hike", WEIGHTLIFTING: "WeightTraining", WEIGHTS: "WeightTraining", STRENGTH_TRAINING: "WeightTraining" };
-const NAMES = { ride: "Kolo", run: "Běh", strength: "Posilovna", swim: "Plavání", walk: "Chůze", other: "Aktivita" };
+const NAMES = bilingual(
+  { ride: "Kolo", run: "Běh", strength: "Posilovna", swim: "Plavání", walk: "Chůze", other: "Aktivita" },
+  { ride: "Ride", run: "Run", strength: "Gym", swim: "Swim", walk: "Walk", other: "Activity" }
+);
 const seconds = v => { const n = Number(String(v ?? "").replace(/s$/i, "")); return Number.isFinite(n) && n > 0 ? n : null; };
 const minutesBetween = (a, b) => { const m = (Date.parse(b) - Date.parse(a)) / 60000; return Number.isFinite(m) && m > 0 && m < 24 * 60 ? m : null; };
 
@@ -121,7 +125,7 @@ export function buildCalendar({ start, end, today, activities = [], google = [],
     if (!days.has(date) || date < today || !plan?.exercises?.length) continue;
     const day = days.get(date);
     if (day.some(a => a.sport === "strength")) continue;
-    day.push({ id: "gym:" + date, sport: "strength", status: "planned", title: plan.name || "Posilovna", date, time: null, minutes: null, km: null, kcal: null, activityId: null, eventId: null, exercises: plan.exercises.length });
+    day.push({ id: "gym:" + date, sport: "strength", status: "planned", title: plan.name || L("Posilovna", "Gym"), date, time: null, minutes: null, km: null, kcal: null, activityId: null, eventId: null, exercises: plan.exercises.length });
   }
 
   return {

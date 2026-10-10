@@ -33,13 +33,16 @@ struct RootView: View {
                     case .health: HealthView()
                     }
                 }
-                if model.offline || !model.outbox.isEmpty || model.outboxNote != nil {
+                if model.offline || !model.outbox.isEmpty || model.outboxNote != nil || model.notice != nil {
                     VStack(spacing: 6) {
                         if model.offline || !model.outbox.isEmpty {
                             OfflineBanner(offline: model.offline, waiting: model.outbox.count)
                         }
                         if let note = model.outboxNote {
                             OutboxNote(text: note) { model.outboxNote = nil }
+                        }
+                        if let notice = model.notice {
+                            OutboxNote(text: notice) { model.notice = nil }
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .top)

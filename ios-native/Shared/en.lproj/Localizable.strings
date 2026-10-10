@@ -1264,3 +1264,6 @@
 "Garmin, Polar, Suunto, Coros, Wahoo, Oura nebo Strava připoj v Intervals.icu. Loadwise jejich data dostane odtamtud." = "Connect Garmin, Polar, Suunto, Coros, Wahoo, Oura or Strava in Intervals.icu. Loadwise gets their data from there.";
 "Přes Intervals.icu" = "Through Intervals.icu";
 "Profil se nepodařilo načíst, takže ho teď nejde uložit. Zkus to znovu za chvíli." = "The profile couldn't be loaded, so it can't be saved right now. Try again in a moment.";
+"zítra" = "tomorrow";
+"včera" = "yesterday";
+"Doplň energii v kcal, jinak by se jídlo počítalo jako 0 kcal." = "Add the energy in kcal, otherwise the food would count as 0 kcal.";

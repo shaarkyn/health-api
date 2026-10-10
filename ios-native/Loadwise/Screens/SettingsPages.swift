@@ -1006,7 +1006,8 @@ struct LanguageSettingsView: View {
                     L10n.setLanguage(value)
                     language = value
                     WidgetBridge.reload()
-                    Task { await model.refresh() }
+                    // Every tab: the server writes its texts in the new language.
+                    Task { await model.refreshAll() }
                 }
             }
         }

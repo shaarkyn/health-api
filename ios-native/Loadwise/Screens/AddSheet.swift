@@ -64,6 +64,9 @@ struct AddSheet: View {
         }
         .presentationDetents([.large])
         .presentationBackground(Palette.background)
+        // What "+" adds goes to today, also while the screens show another day.
+        .onAppear { model.writesToday = true }
+        .onDisappear { model.writesToday = false }
         .sheet(item: $food, onDismiss: { dismiss() }) { start in AddFoodSheet(meal: MealSlot.now(slots: model.food?.mealSlots), start: start) }
         .sheet(isPresented: $weight, onDismiss: { dismiss() }) { WeightEntrySheet() }
         .sheet(isPresented: $workout, onDismiss: { dismiss() }) { ManualWorkoutSheet() }

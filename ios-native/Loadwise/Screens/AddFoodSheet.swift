@@ -439,12 +439,17 @@ struct FoodAmountView: View {
                     }
                 }
 
+                // Without energy the food would count as 0 kcal (forLogging fills zeros).
+                if current.calories_100g == nil {
+                    Text("Doplň energii v kcal, jinak by se jídlo počítalo jako 0 kcal.").font(Typo.small).foregroundStyle(Palette.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let error { Text(error).font(Typo.small).foregroundStyle(Palette.rust) }
                 Button { Task { await save() } } label: {
                     Text(saving ? L10n.tr("Ukládám…") : MealSlot.addText(meal)).font(Typo.bodyStrong).foregroundStyle(Palette.onButton)
                         .frame(maxWidth: .infinity).frame(height: 50).background(Palette.button, in: Capsule())
                 }
-                .disabled(saving || value == nil || current.name.isEmpty)
+                .disabled(saving || value == nil || current.name.isEmpty || current.calories_100g == nil)
             }
             .padding(24)
         }
@@ -456,7 +461,8 @@ struct FoodAmountView: View {
     private func fill() {
         guard !filled else { return }
         filled = true
-        edit = editing
+        // Missing energy: the values open right away to fill it in.
+        edit = editing || product.calories_100g == nil
         if amount.isEmpty { amount = Self.text(product.defaultAmount) }
         name = product.name
         brand = product.brand ?? ""

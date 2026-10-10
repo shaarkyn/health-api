@@ -179,7 +179,7 @@ struct SportStyle {
             label = L10n.tr(day == nil ? "bez dat" : "volno")
         } else {
             symbol = SportIcon.symbol(sport)
-            tint = done ? .white : Self.color(sport)
+            tint = done ? Palette.onAccent : Self.color(sport)
             fill = done ? Self.color(sport) : Self.color(sport).opacity(0.1)
             dashed = !done
             label = done ? L10n.tr(Self.name(sport)) : L10n.f("v plánu %@", L10n.tr(Self.name(sport)))
@@ -366,7 +366,7 @@ struct CalendarActivityRow: View {
         HStack(spacing: 12) {
             Image(systemName: SportIcon.symbol(activity.sport))
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(done ? .white : color)
+                .foregroundStyle(done ? Palette.onAccent : color)
                 .frame(width: 36, height: 36)
                 .background(done ? color : color.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
