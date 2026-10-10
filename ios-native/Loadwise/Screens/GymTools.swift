@@ -40,7 +40,7 @@ struct TrainingTools: View {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Palette.onAccent)
                     .frame(width: 34, height: 34)
                     .background(color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 Text(title).font(Typo.bodyStrong).foregroundStyle(Palette.ink).lineLimit(2).minimumScaleFactor(0.85)
@@ -68,7 +68,7 @@ struct LibraryWidget: View {
                     ForEach(Self.sports.indices, id: \.self) { i in
                         Image(systemName: Self.sports[i].symbol)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Palette.onAccent)
                             .frame(width: 34, height: 34)
                             .background(Self.sports[i].color, in: Circle())
                             .overlay(Circle().stroke(Palette.card, lineWidth: 2.5))

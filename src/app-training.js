@@ -5,6 +5,7 @@
 import { mergeWellnessRows, heartRateLoad, strainScore } from "./recovery-model.js";
 import { athleteFocus } from "./athlete-focus.js";
 import { localDateTime } from "./user-time.js";
+import { L } from "./lang.js";
 
 const num = v => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const round = (v, d = 0) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
@@ -34,11 +35,11 @@ function actualStrain(row) {
 // Intervals.icu's form zones (training stress balance = fitness − fatigue).
 export function formZone(tsb) {
   if (tsb == null) return null;
-  if (tsb > 25) return { key: "transition", label: "odpočatý", text: "Forma je vysoko nad nulou: tělo je odpočaté, ale kondice bez zátěže pomalu klesá." };
-  if (tsb > 5) return { key: "fresh", label: "čerstvý", text: "Čerstvá forma: únava je pod kondicí, dobrý čas na závod nebo test." };
-  if (tsb >= -10) return { key: "grey", label: "udržování", text: "Únava a kondice jsou vyrovnané: kondice se drží, ale moc neroste." };
-  if (tsb >= -30) return { key: "optimal", label: "budování", text: "Únava je nad kondicí, přesně jak má při budování být. Kondice roste." };
-  return { key: "risk", label: "vysoké riziko", text: "Únava je hodně nad kondicí. Zařaď lehčí dny, jinak hrozí přetížení." };
+  if (tsb > 25) return { key: "transition", label: L("odpočatý", "rested"), text: L("Forma je vysoko nad nulou: tělo je odpočaté, ale kondice bez zátěže pomalu klesá.", "Form is well above zero: your body is rested, but fitness slowly fades without training load.") };
+  if (tsb > 5) return { key: "fresh", label: L("čerstvý", "fresh"), text: L("Čerstvá forma: únava je pod kondicí, dobrý čas na závod nebo test.", "Fresh: fatigue is below fitness, a good time for a race or a test.") };
+  if (tsb >= -10) return { key: "grey", label: L("udržování", "maintaining"), text: L("Únava a kondice jsou vyrovnané: kondice se drží, ale moc neroste.", "Fatigue and fitness are balanced: fitness holds, but barely grows.") };
+  if (tsb >= -30) return { key: "optimal", label: L("budování", "building"), text: L("Únava je nad kondicí, přesně jak má při budování být. Kondice roste.", "Fatigue is above fitness, exactly as it should be while building. Fitness is growing.") };
+  return { key: "risk", label: L("vysoké riziko", "high risk"), text: L("Únava je hodně nad kondicí. Zařaď lehčí dny, jinak hrozí přetížení.", "Fatigue is far above fitness. Add easier days, or you risk overreaching.") };
 }
 
 // Periodization towards the main event, the same rule as the coach
@@ -52,9 +53,9 @@ export function eventPlan(event, date) {
   const now = phase === "race" ? 3 : order.indexOf(phase);
   const week = (from, to) => ({ week: Math.floor(daysBetween(from, date) / 7) + 1, weeks: Math.max(1, Math.ceil(daysBetween(from, to) / 7)) });
   const phases = [
-    { key: "base", label: "Základ", from: null, to: shift(buildFrom, -1) },
-    { key: "build", label: "Rozvoj", from: buildFrom, to: shift(taperFrom, -1) },
-    { key: "taper", label: "Ladění", from: taperFrom, to: shift(event.date, -1) }
+    { key: "base", label: L("Základ", "Base"), from: null, to: shift(buildFrom, -1) },
+    { key: "build", label: L("Rozvoj", "Build"), from: buildFrom, to: shift(taperFrom, -1) },
+    { key: "taper", label: L("Ladění", "Taper"), from: taperFrom, to: shift(event.date, -1) }
   ].map((p, i) => ({
     ...p,
     state: i < now ? "done" : i === now ? "now" : "next",
@@ -94,7 +95,7 @@ export function buildTraining({ date, days = [], health = {}, fitness = {}, insi
     const matchedIds = new Set((training.matched || []).map(m => m?.planned?.id).filter(Boolean));
     for (const a of completed) sessions.push(sessionOf(a, d, "done"));
     for (const w of planned) if (!matchedIds.has(w.id) && !(d < date && completed.length)) sessions.push(sessionOf(w, d, d < date ? "missed" : "planned"));
-    if (gymOnly) sessions.push({ id: "gym:" + d, kind: "gym", status: d < date ? "missed" : "planned", date: d, time: null, title: gym[d].name || "Posilovna", sport: "strength", minutes: null, tss: null, activityId: null, eventId: null });
+    if (gymOnly) sessions.push({ id: "gym:" + d, kind: "gym", status: d < date ? "missed" : "planned", date: d, time: null, title: gym[d].name || L("Posilovna", "Gym"), sport: "strength", minutes: null, tss: null, activityId: null, eventId: null });
     return {
       date: d,
       strain: d <= date ? actualStrain(google.find(r => r.id === d)) : null,
@@ -131,7 +132,7 @@ export function buildTraining({ date, days = [], health = {}, fitness = {}, insi
         date: d,
         time: w ? clockOf(w.start) : null,
         minutes,
-        title: (w?.name || plan?.name || w?.type || "Trénink").trim(),
+        title: (w?.name || plan?.name || w?.type || L("Trénink", "Workout")).trim(),
         sport: isGym ? "strength" : String(w?.type || "").toLowerCase() || null,
         tss: round(num(w?.tss)),
         strain: plannedStrain(num(w?.tss)),
@@ -213,7 +214,7 @@ function sessionOf(w, date, status) {
     status,
     date,
     time: clockOf(w.start),
-    title: String(w.name || w.type || "Trénink").slice(0, 120),
+    title: String(w.name || w.type || L("Trénink", "Workout")).slice(0, 120),
     sport: sportOf(w),
     minutes: num(w.durationHours) ? Math.round(num(w.durationHours) * 60) : null,
     tss: round(num(w.tss)),
@@ -224,7 +225,7 @@ function sessionOf(w, date, status) {
 
 function strainBand(v) {
   if (v == null) return null;
-  return v >= 18 ? "maximální" : v >= 14 ? "vysoká" : v >= 10 ? "střední" : "lehká";
+  return v >= 18 ? L("maximální", "all out") : v >= 14 ? L("vysoká", "high") : v >= 10 ? L("střední", "moderate") : L("lehká", "light");
 }
 
 // The coach's first tip for today's session (coach-engine.js).

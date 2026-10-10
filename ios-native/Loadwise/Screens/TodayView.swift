@@ -17,7 +17,7 @@ struct TodayView: View {
         ZStack {
             ScreenBackground(glow: Palette.Glow.today)
             if let today = model.today {
-                ScrollView {
+                PageScroll {
                     TodayContent(today: today, openSettings: openSettings, openCoach: openCoach)
                         .padding(.bottom, 100)
                 }
@@ -32,7 +32,7 @@ struct TodayView: View {
                 ProgressView()
             }
         }
-        .task { if model.today == nil { await model.refresh() } }
+        .task { await model.refreshIfStale(.today) }
     }
 }
 
@@ -43,7 +43,6 @@ struct TodayContent: View {
     var openSettings: () -> Void = {}
     var openCoach: () -> Void = {}
     /// The account's first letter on the settings button (GET /app/api/me).
-    @AppStorage(AppModel.accountInitialKey) private var initial = ""
 
     /// The widgets hidden in "Upravit přehled" (comma-separated TodayWidget).
     @AppStorage("todayHidden") private var hidden = ""
@@ -55,14 +54,13 @@ struct TodayContent: View {
                 DayNavigator(date: today.date)
                 Spacer()
                 CircleButton(systemImage: "bubble.left.and.text.bubble.right", label: L10n.tr("Kouč"), action: openCoach)
-                Button(action: openSettings) {
-                    Group { if initial.isEmpty { Image(systemName: "person") } else { Text(initial) } }
-                        .font(.footnote.weight(.medium))
-                        .frame(width: 36, height: 36)
-                        .overlay(Circle().stroke(Palette.ink.opacity(0.2), lineWidth: 1))
-                }
-                .foregroundStyle(Palette.ink)
+                Button(action: openSettings) { AvatarView(size: 36) }
+                    .buttonStyle(.plain)
                 .accessibilityLabel("Profil a nastavení")
+            }
+
+            if model.selectedDate == nil {
+                AthleteStatusPill().padding(.top, 14)
             }
 
             if model.selectedDate == nil && !model.demo {

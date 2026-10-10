@@ -9,7 +9,7 @@ struct TrainingView: View {
             ZStack {
                 ScreenBackground(glow: Palette.Glow.training)
                 if let training = model.training {
-                    ScrollView {
+                    PageScroll {
                         TrainingContent(training: training, addWorkout: { addingWorkout = true })
                             .padding(.bottom, 100)
                     }
@@ -27,7 +27,7 @@ struct TrainingView: View {
             .toolbar(.hidden, for: .navigationBar)
             .appRoutes()
         }
-        .task { if model.training == nil { await model.refreshTraining() } }
+        .task { await model.refreshIfStale(.training) }
         .sheet(isPresented: $addingWorkout) { ManualWorkoutSheet() }
     }
 }

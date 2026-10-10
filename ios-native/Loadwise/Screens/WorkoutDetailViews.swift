@@ -403,7 +403,7 @@ struct FeedbackSheet: View {
     }
 
     var body: some View {
-        ScrollView {
+        PageScroll {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Jak to šlo?").font(Typo.sentence(30, relativeTo: .title)).foregroundStyle(Palette.ink)
                 Text(session.title).font(Typo.small).foregroundStyle(Palette.muted)

@@ -58,7 +58,7 @@ async function queueFoodGoogleSafely(env,ctx,id,options){
 import { lookupFoodWithAI } from "./food-ai.js";
 import { EXERCISE_STATIONS } from "./gym-equipment.js";
 import { equipmentCatalog, detectGymEquipment } from "./gym-equipment-ai.js";
-import { addFluid, deleteFluid, updateFluid, listFluids, hydrationTarget, dayActivityHours, foodDrinks, hydrationMl } from "./fluids.js";
+import { addFluid, deleteFluid, FluidInputError, updateFluid, listFluids, hydrationTarget, dayActivityHours, foodDrinks, hydrationMl } from "./fluids.js";
 import { isFoodLogMessage, buildFoodDraft, foodDraftSummary } from "./food-chat.js";
 import dashboardClient from "./dashboard-client.js";
 import { loadRecoveryValidation } from "./recovery-validation.js";
@@ -118,6 +118,7 @@ import { overviewPage, privacyPage, termsPage, supportPage } from './site-pages.
 import { englishScript } from './i18n.js';
 import { dateFormat } from "./date-format.js";
 import { lang, withLang, storedLanguage, rememberLanguage, L } from "./lang.js";
+import { appUpdateRequired } from "./app-version.js";
 import { DEFAULT_TIME_ZONE, validTimeZone, withTimeZone, storedTimeZone, rememberTimeZone, dayStartUtc, localNow, localToday, localDate, localHour, timeZone } from "./user-time.js";
 
 // A month of Google Health samples summed per day: thousands of rows that only a
@@ -284,6 +285,9 @@ async function routeRequest(request, env, ctx, { url, rawEnv, principal, user, i
 export default {
   scheduled: worker.scheduled,
   async fetch(request, env, ctx) {
+    // An installed iPhone app older than the API answers with 426 (app-version.js).
+    const outdated = appUpdateRequired(request);
+    if (outdated) return isStaging(env) ? markStaging(outdated) : outdated;
     const response = await worker.fetch(request, env, ctx);
     return isStaging(env) ? markStaging(response) : response;
   }
@@ -1114,7 +1118,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       if(request.method==='PATCH'){const body=await request.json().catch(()=>({}));return Response.json({status:'ok',entry:await updateFluid(env.DB,{id:body.id,ml:body.ml,kind:body.kind,at:body.at})},{headers:{'Cache-Control':'no-store'}});}
       if(request.method==='DELETE'){await deleteFluid(env.DB,url.searchParams.get('id'));return Response.json({status:'ok'},{headers:{'Cache-Control':'no-store'}});}
       return Response.json({message:'Method not allowed'},{status:405});
-    }catch(error){return Response.json({status:'error',message:error.message},{status:400});}
+    }catch(error){return Response.json({status:'error',message:error.message},{status:error instanceof FluidInputError?400:500});}
   }
   if(url.pathname==='/app/api/food/recipe'&&request.method==='GET'){
     const recipe=await getCookbookRecipeByPage(url.searchParams.get('page'));
@@ -1126,7 +1130,7 @@ async function handleDashboardApi(request, env, ctx, url, session = {}) {
       for(const field of ['calories_100g','protein_100g','carbs_100g','fat_100g'])if(p[field]==null||p[field]===''||!Number.isFinite(Number(p[field]))||Number(p[field])<0||Number(p[field])>(field==='calories_100g'?(p.nutrition_basis==='portion'?10000:1000):(p.nutrition_basis==='portion'?1000:100)))return Response.json({message:L('Doplň energii i všechna tři makra pro zvolený základ tabulky.', 'Fill in the energy and all three macros for the chosen table basis.')},{status:400});
       let amount;try{amount=foodIntake(p,body.quantity??body.grams,body.unit||(p.nutrition_basis==='portion'?'portion':p.nutrition_basis==='ml'?'ml':'g'),{pieceAmount:body.pieceAmount,pieceUnit:body.pieceUnit,density:body.density});}catch(error){return Response.json({message:error.message},{status:400});}
       const ingredients=Array.isArray(body.ingredients)?body.ingredients.slice(0,50).map(a=>({name:String(a.name||'').slice(0,180),amount:Number(a.amount)||null,unit:['g','ml','portion'].includes(a.unit)?a.unit:'g'})):[];
-      const saved=await legacyHealthApi.fetch(new Request(new URL('/food/log',request.url),{method:'POST',headers:{...internalAuth,'Content-Type':'application/json'},body:JSON.stringify({date:body.date,consumed_at:mealConsumedAt(body.date,body.mealType)||undefined,name:String(p.name).slice(0,180),kcal:amount.calories,protein_g:amount.protein_g,carbs_g:amount.carbs_g,fat_g:amount.fat_g,fiber_g:amount.fiber_g,source:'package_label',note:JSON.stringify({product:productFromLabel(p),amount:amount.amount,unit:amount.unit,enteredQuantity:body.quantity??body.grams,enteredUnit:body.unit||'g',barcode:p.barcode||null,brand:p.brand||null,mealType:body.mealType||'snack',salt_g:amount.salt_g,sugar_g:amount.sugar_g,source_url:p.source_url||null,ingredients})})}),env,ctx);
+      const saved=await legacyHealthApi.fetch(new Request(new URL('/food/log',request.url),{method:'POST',headers:{...internalAuth,'Content-Type':'application/json'},body:JSON.stringify({date:body.date,consumed_at:mealConsumedAt(body.date,body.mealType,body.time)||undefined,name:String(p.name).slice(0,180),kcal:amount.calories,protein_g:amount.protein_g,carbs_g:amount.carbs_g,fat_g:amount.fat_g,fiber_g:amount.fiber_g,source:'package_label',note:JSON.stringify({product:productFromLabel(p),amount:amount.amount,unit:amount.unit,enteredQuantity:body.quantity??body.grams,enteredUnit:body.unit||'g',barcode:p.barcode||null,brand:p.brand||null,mealType:body.mealType||'snack',salt_g:amount.salt_g,sugar_g:amount.sugar_g,source_url:p.source_url||null,ingredients})})}),env,ctx);
       const result=await saved.json();if(!saved.ok)throw new Error(L('Uložení selhalo.', 'Saving failed.'));
       let personal=null,warning=null;
       if(p.source!=='composed'){try{personal=await savePersonalFood(env.DB,p,{used:true});}catch(error){warning=L('Jídlo je zapsané, ale potravinu pro příště se nepodařilo uložit: ', 'The meal is logged, but the food couldn\'t be saved for next time: ')+error.message;}}

@@ -6,6 +6,7 @@
 import { mergeWellnessRows, recoveryReadiness, sleepNeedFor, sleepIndexScore, bedtimePlan, heartRateLoad, strainScore } from "./recovery-model.js";
 import { localDateTime } from "./user-time.js";
 import { sleepSettings } from "./energy-profile.js";
+import { L } from "./lang.js";
 
 const STEP_GOAL = 10000;
 
@@ -105,11 +106,11 @@ export function buildToday({ date, hour = null, daily = {}, health = {}, fitness
       // ride, run or strength: the app opens the gym session for strength.
       sport: /weight|strength|gym/i.test(String(w.type || "")) ? "strength" : /run/i.test(String(w.type || "")) ? "run" : /ride|cycl|bike/i.test(String(w.type || "")) ? "ride" : "other",
       time: clockOf(w.start),
-      title: w.name || w.type || "Trénink",
+      title: w.name || w.type || L("Trénink", "Workout"),
       detail: [num(w.durationHours) ? Math.round(num(w.durationHours) * 60) + " min" : null, num(w.tss) ? Math.round(num(w.tss)) + " TSS" : null].filter(Boolean).join(" · ") || null,
       done: matched.has(w.name + "|" + w.start)
     })),
-    ...(plan ? [{ kind: "bedtime", time: clock(plan.bed), title: "Do postele", detail: "potřeba spánku " + Math.floor(tonightNeed / 60) + " h " + String(tonightNeed % 60).padStart(2, "0") + " min", done: false }] : [])
+    ...(plan ? [{ kind: "bedtime", time: clock(plan.bed), title: L("Do postele", "Bedtime"), detail: L("potřeba spánku ", "sleep need ") + Math.floor(tonightNeed / 60) + " h " + String(tonightNeed % 60).padStart(2, "0") + " min", done: false }] : [])
   ].sort((a, b) => String(a.time || "99").localeCompare(String(b.time || "99")));
 
   return {
